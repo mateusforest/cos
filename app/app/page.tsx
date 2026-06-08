@@ -2,36 +2,34 @@
 
 import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
-import { motion, AnimatePresence } from "framer-motion"
+import Link from "next/link"
+import { AnimatePresence, motion } from "framer-motion"
 import {
-  Sparkles,
   ArrowRight,
-  Video,
+  Briefcase,
+  Check,
+  CheckSquare,
+  FileText,
+  GripVertical,
+  LifeBuoy,
+  Lightbulb,
   Mic,
   Send,
+  Sparkles,
   Users,
-  Briefcase,
-  Wallet,
   UsersRound,
+  Video,
+  Wallet,
   X,
-  Circle,
-  Pause,
-  Square,
-  FileText,
-  CheckSquare,
-  GripVertical,
-  Check,
-  Lightbulb,
-  LifeBuoy,
 } from "lucide-react"
-import { useSupport } from "@/components/support/support-context"
-import { toast } from "@/hooks/use-toast"
-import { useAuth } from "@/components/auth/auth-provider"
 import { getClientsAction } from "@/actions/clients"
-import { getMeetingsAction } from "@/actions/meetings"
 import { getFinancialSummaryAction } from "@/actions/financial"
+import { createMeetingAction, getMeetingsAction } from "@/actions/meetings"
 import { getOperationsAction } from "@/actions/operations"
 import { getWorkspaceMembersAction } from "@/actions/workspace"
+import { useAuth } from "@/components/auth/auth-provider"
+import { useSupport } from "@/components/support/support-context"
+import { toast } from "@/hooks/use-toast"
 
 type ModalType = "sugerir" | "passo" | "meet" | "editar" | null
 type MicState = "idle" | "listening" | "processing" | "unsupported" | "error"
@@ -61,41 +59,54 @@ type SpeechRecognitionLike = {
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
 
+type MeetingFormState = {
+  title: string
+  participants: string
+  notes: string
+}
+
 const suggestions = [
   { icon: Users, color: "#ec4899", bg: "#fce7f3", title: "Cadastrar primeiro cliente", desc: "Comece organizando sua base de clientes." },
-  { icon: Wallet, color: "#22c55e", bg: "#dcfce7", title: "Registrar primeiro lançamento", desc: "Seus ganhos e gastos aparecerão aqui depois do primeiro registro." },
+  { icon: Wallet, color: "#22c55e", bg: "#dcfce7", title: "Registrar primeiro lancamento", desc: "Seus ganhos e gastos aparecerao aqui depois do primeiro registro." },
   { icon: FileText, color: "#3b82f6", bg: "#dbeafe", title: "Criar primeiro documento", desc: "Use o COS para centralizar propostas, contratos e arquivos." },
-  { icon: Video, color: "#ef4444", bg: "#fee2e2", title: "Gravar primeira reunião", desc: "Os resumos gerados ficarão disponíveis nesta área." },
+  { icon: Video, color: "#ef4444", bg: "#fee2e2", title: "Gravar primeira reuniao", desc: "Os resumos gerados ficarao disponiveis nesta area." },
 ]
 
 const nextSteps = [
-  { priority: "Alta", color: "#ef4444", title: "Cadastrar primeiro cliente", desc: "Sua operação começa quando os primeiros dados reais entrarem no COS." },
-  { priority: "Alta", color: "#ef4444", title: "Criar primeira operação", desc: "Estruture pedidos, projetos ou atendimentos no seu workspace." },
-  { priority: "Média", color: "#f97316", title: "Registrar primeiro lançamento", desc: "Isso libera os indicadores financeiros reais." },
-  { priority: "Baixa", color: "#22c55e", title: "Convidar a equipe", desc: "Adicione membros quando quiser começar a colaboração." },
+  { priority: "Alta", color: "#ef4444", title: "Cadastrar primeiro cliente", desc: "Sua operacao comeca quando os primeiros dados reais entrarem no COS." },
+  { priority: "Alta", color: "#ef4444", title: "Criar primeira operacao", desc: "Estruture pedidos, projetos ou atendimentos no seu workspace." },
+  { priority: "Media", color: "#f97316", title: "Registrar primeiro lancamento", desc: "Isso libera os indicadores financeiros reais." },
+  { priority: "Baixa", color: "#22c55e", title: "Convidar a equipe", desc: "Adicione membros quando quiser comecar a colaboracao." },
 ]
 
 const defaultShortcuts = [
   { id: "clientes", icon: Users, value: "0", label: "Clientes", enabled: true },
-  { id: "operacoes", icon: Briefcase, value: "0", label: "Operações", enabled: true },
-  { id: "balanco", icon: Wallet, value: "R$ 0,00", label: "Balanço", isBalance: true, enabled: true },
+  { id: "operacoes", icon: Briefcase, value: "0", label: "Operacoes", enabled: true },
+  { id: "balanco", icon: Wallet, value: "R$ 0,00", label: "Balanco", isBalance: true, enabled: true },
   { id: "equipe", icon: UsersRound, value: "0", label: "Equipe", enabled: true },
   { id: "vendas", icon: ArrowRight, value: "0", label: "Vendas", enabled: false },
-  { id: "reunioes", icon: Video, value: "0", label: "Reuniões", enabled: false },
+  { id: "reunioes", icon: Video, value: "0", label: "Reunioes", enabled: false },
 ]
+
+const defaultMeetingForm: MeetingFormState = {
+  title: "",
+  participants: "",
+  notes: "",
+}
 
 export default function AppHomePage() {
   const { user, profile } = useAuth()
+  const { openSupport } = useSupport()
   const [message, setMessage] = useState("")
   const [balanceOpen, setBalanceOpen] = useState(false)
   const [modal, setModal] = useState<ModalType>(null)
   const [shortcuts, setShortcuts] = useState(defaultShortcuts)
-  const [recording, setRecording] = useState<"idle" | "recording" | "paused" | "done">("idle")
-  const [seconds, setSeconds] = useState(0)
+  const [meetingForm, setMeetingForm] = useState<MeetingFormState>(defaultMeetingForm)
+  const [meetingFeedback, setMeetingFeedback] = useState<{ tone: "success" | "error"; text: string } | null>(null)
+  const [isCreatingMeeting, setIsCreatingMeeting] = useState(false)
   const [micState, setMicState] = useState<MicState>("idle")
   const [micPreview, setMicPreview] = useState("")
   const [balance, setBalance] = useState({ anterior: 0, ganhos: 0, gastos: 0 })
-  const { openSupport } = useSupport()
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
@@ -175,29 +186,42 @@ export default function AppHomePage() {
   }, [])
 
   const quickActions = [
-    { icon: Sparkles, label: "Sugerir ação", onClick: () => setModal("sugerir") },
-    { icon: ArrowRight, label: "Próximo passo", onClick: () => setModal("passo") },
-    { icon: Video, label: "Gravar reunião", onClick: () => { setRecording("idle"); setSeconds(0); setModal("meet") } },
+    { icon: Sparkles, label: "Sugerir acao", onClick: () => setModal("sugerir") },
+    { icon: ArrowRight, label: "Proximo passo", onClick: () => setModal("passo") },
+    {
+      icon: Video,
+      label: "Gravar reuniao",
+      onClick: () => {
+        setMeetingForm(defaultMeetingForm)
+        setMeetingFeedback(null)
+        setModal("meet")
+      },
+    },
     { icon: LifeBuoy, label: "Suporte", onClick: openSupport },
   ]
 
   const saldoFinal = balance.anterior + balance.ganhos - balance.gastos
-  const enabledShortcuts = shortcuts.filter((s) => s.enabled)
+  const enabledShortcuts = shortcuts.filter((shortcut) => shortcut.enabled)
   const displayName = profile?.full_name || user?.email?.split("@")[0] || "sua equipe"
 
-  const formatCurrency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-  const formatTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
+  function formatCurrency(value: number) {
+    return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+  }
 
   const toggleShortcut = (id: string) =>
-    setShortcuts((prev) => prev.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s)))
+    setShortcuts((prev) => prev.map((shortcut) => (shortcut.id === id ? { ...shortcut, enabled: !shortcut.enabled } : shortcut)))
 
-  const closeModal = () => setModal(null)
+  const closeModal = () => {
+    setModal(null)
+    setMeetingFeedback(null)
+    setIsCreatingMeeting(false)
+  }
 
   const handleSend = () => {
     if (!message.trim()) return
     toast({
       title: "Mensagem pronta",
-      description: "Sua mensagem foi preparada localmente. O envio real será conectado ao backend.",
+      description: "Sua mensagem foi preparada localmente. O envio real sera conectado ao backend.",
     })
     setMessage("")
   }
@@ -258,15 +282,15 @@ export default function AppHomePage() {
         setMicPreview("")
         toast({
           title: "Microfone bloqueado",
-          description: "Permissão de microfone negada.",
+          description: "Permissao de microfone negada.",
         })
         return
       }
 
       setMicState("error")
       toast({
-        title: "Não foi possível transcrever",
-        description: "Ocorreu um erro ao capturar o áudio.",
+        title: "Nao foi possivel transcrever",
+        description: "Ocorreu um erro ao capturar o audio.",
       })
     }
     recognition.onend = () => {
@@ -286,8 +310,8 @@ export default function AppHomePage() {
         setMicPreview("")
         finalTranscriptRef.current = ""
         toast({
-          title: "Transcrição concluída",
-          description: "Transcrição adicionada ao campo.",
+          title: "Transcricao concluida",
+          description: "Transcricao adicionada ao campo.",
         })
       }
 
@@ -304,8 +328,8 @@ export default function AppHomePage() {
     if (!recognition) {
       setMicState("unsupported")
       toast({
-        title: "Microfone indisponível",
-        description: "Ditado por voz não disponível neste navegador.",
+        title: "Microfone indisponivel",
+        description: "Ditado por voz nao disponivel neste navegador.",
       })
       return
     }
@@ -318,8 +342,8 @@ export default function AppHomePage() {
     } catch {
       setMicState("error")
       toast({
-        title: "Microfone indisponível",
-        description: "Não foi possível iniciar a captura de voz.",
+        title: "Microfone indisponivel",
+        description: "Nao foi possivel iniciar a captura de voz.",
       })
     }
   }
@@ -335,92 +359,116 @@ export default function AppHomePage() {
     recognitionRef.current?.stop()
   }
 
+  const submitMeeting = async () => {
+    if (!meetingForm.title.trim()) {
+      setMeetingFeedback({ tone: "error", text: "Informe o titulo da reuniao." })
+      return
+    }
+
+    setIsCreatingMeeting(true)
+    setMeetingFeedback(null)
+
+    const result = await createMeetingAction({
+      title: meetingForm.title,
+      status: "draft",
+      summary: [
+        meetingForm.participants ? `Participantes: ${meetingForm.participants}` : "",
+        meetingForm.notes ? `Observacoes: ${meetingForm.notes}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    })
+
+    setIsCreatingMeeting(false)
+
+    if (result.error) {
+      setMeetingFeedback({ tone: "error", text: result.error })
+      return
+    }
+
+    setMeetingFeedback({ tone: "success", text: "Reuniao criada com sucesso." })
+    setShortcuts((prev) =>
+      prev.map((shortcut) =>
+        shortcut.id === "reunioes"
+          ? {
+              ...shortcut,
+              enabled: true,
+              value: String(Number(shortcut.value || "0") + 1),
+            }
+          : shortcut,
+      ),
+    )
+
+    toast({
+      title: "Reuniao criada com sucesso.",
+      description: "A reuniao ja pode ser vista em Reunioes.",
+    })
+  }
+
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] lg:h-full lg:min-h-[600px]">
-      <div className="flex-1 flex flex-col items-center justify-center px-5">
+    <div className="flex h-[calc(100vh-120px)] flex-col lg:h-full lg:min-h-[600px]">
+      <div className="flex flex-1 flex-col items-center justify-center px-5">
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3 }} className="mb-4">
-          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
-            <Image src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/COS%20LOGO%20%281%29-mBU7xqdIZoWP3indGVxJrDFLu8urZH.png" alt="COS" width={28} height={28} className="w-7 h-7" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100">
+            <Image src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/COS%20LOGO%20%281%29-mBU7xqdIZoWP3indGVxJrDFLu8urZH.png" alt="COS" width={28} height={28} className="h-7 w-7" />
           </div>
         </motion.div>
 
-        <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05, duration: 0.3 }} className="text-center mb-5">
-          <h1 className="text-2xl font-semibold text-[#0a0a0a] mb-1">{`Olá, ${displayName}`}</h1>
-          <p className="text-gray-500 text-sm">O que você deseja fazer hoje?</p>
+        <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05, duration: 0.3 }} className="mb-5 text-center">
+          <h1 className="mb-1 text-2xl font-semibold text-[#0a0a0a]">{`Ola, ${displayName}`}</h1>
+          <p className="text-sm text-gray-500">O que voce deseja fazer hoje?</p>
         </motion.div>
 
-        <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1, duration: 0.3 }} className="w-full max-w-sm mb-4">
-          <div className="relative bg-white rounded-full shadow-sm border border-gray-200">
+        <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1, duration: 0.3 }} className="mb-4 w-full max-w-sm">
+          <div className="relative rounded-full border border-gray-200 bg-white shadow-sm">
             <input
               type="text"
               value={message || micPreview}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(event) => setMessage(event.target.value)}
               placeholder="Fale com o COS..."
-              className="w-full px-5 py-3 pr-20 rounded-full text-sm bg-transparent focus:outline-none"
+              className="w-full rounded-full bg-transparent px-5 py-3 pr-20 text-sm focus:outline-none"
             />
-            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
-              <button
-                onClick={startListening}
-                className={`p-2 transition-colors ${micState === "listening" ? "text-[#0a0a0a]" : "text-gray-400 hover:text-gray-600"}`}
-                aria-label="Falar"
-              >
-                <Mic className="w-4 h-4" />
+            <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+              <button onClick={startListening} className={`p-2 transition-colors ${micState === "listening" ? "text-[#0a0a0a]" : "text-gray-400 hover:text-gray-600"}`} aria-label="Falar">
+                <Mic className="h-4 w-4" />
               </button>
-              <button
-                onClick={handleSend}
-                disabled={!message.trim()}
-                className="p-2 bg-[#0a0a0a] text-white rounded-full hover:bg-[#1a1a1a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                aria-label="Enviar"
-              >
-                <Send className="w-4 h-4" />
+              <button onClick={handleSend} disabled={!message.trim()} className="rounded-full bg-[#0a0a0a] p-2 text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50" aria-label="Enviar">
+                <Send className="h-4 w-4" />
               </button>
             </div>
           </div>
 
           <AnimatePresence initial={false}>
             {micState !== "idle" && (
-              <motion.div
-                initial={{ y: 8, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 8, opacity: 0 }}
-                className="mt-2 rounded-2xl border border-gray-100 bg-white p-3"
-              >
+              <motion.div initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 8, opacity: 0 }} className="mt-2 rounded-2xl border border-gray-100 bg-white p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-[#0a0a0a]">
                       {micState === "listening" && "Ouvindo..."}
-                      {micState === "processing" && "Processando transcrição..."}
-                      {micState === "unsupported" && "Ditado por voz indisponível"}
+                      {micState === "processing" && "Processando transcricao..."}
+                      {micState === "unsupported" && "Ditado por voz indisponivel"}
                       {micState === "error" && "Erro no microfone"}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {micState === "listening" && (micPreview || "Fale em português para preencher o campo automaticamente.")}
-                      {micState === "processing" && "A transcrição será adicionada ao campo em seguida."}
-                      {micState === "unsupported" && "Ditado por voz não disponível neste navegador."}
-                      {micState === "error" && "Permissão de microfone negada."}
+                    <p className="mt-1 text-xs text-gray-500">
+                      {micState === "listening" && (micPreview || "Fale em portugues para preencher o campo automaticamente.")}
+                      {micState === "processing" && "A transcricao sera adicionada ao campo em seguida."}
+                      {micState === "unsupported" && "Ditado por voz nao disponivel neste navegador."}
+                      {micState === "error" && "Permissao de microfone negada."}
                     </p>
                   </div>
                   {(micState === "unsupported" || micState === "error") && (
-                    <button onClick={() => setMicState("idle")} className="p-1.5 rounded-full hover:bg-gray-100 transition-colors" aria-label="Fechar aviso">
-                      <X className="w-4 h-4 text-gray-500" />
+                    <button onClick={() => setMicState("idle")} className="rounded-full p-1.5 transition-colors hover:bg-gray-100" aria-label="Fechar aviso">
+                      <X className="h-4 w-4 text-gray-500" />
                     </button>
                   )}
                 </div>
 
                 {micState === "listening" && (
-                  <div className="flex items-center gap-2 mt-3">
-                    <button
-                      type="button"
-                      onClick={cancelListening}
-                      className="flex-1 rounded-2xl bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors"
-                    >
+                  <div className="mt-3 flex items-center gap-2">
+                    <button type="button" onClick={cancelListening} className="flex-1 rounded-2xl bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200">
                       Cancelar
                     </button>
-                    <button
-                      type="button"
-                      onClick={finalizeListening}
-                      className="flex-1 rounded-2xl bg-[#0a0a0a] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1a1a1a] transition-colors"
-                    >
+                    <button type="button" onClick={finalizeListening} className="flex-1 rounded-2xl bg-[#0a0a0a] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">
                       Finalizar
                     </button>
                   </div>
@@ -432,8 +480,8 @@ export default function AppHomePage() {
 
         <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.15, duration: 0.3 }} className="flex flex-wrap justify-center gap-2">
           {quickActions.map((action) => (
-            <button key={action.label} onClick={action.onClick} className="flex items-center gap-1.5 px-3 py-2 bg-white rounded-full border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-              <action.icon className="w-3.5 h-3.5" />
+            <button key={action.label} onClick={action.onClick} className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50">
+              <action.icon className="h-3.5 w-3.5" />
               {action.label}
             </button>
           ))}
@@ -441,23 +489,23 @@ export default function AppHomePage() {
       </div>
 
       <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2, duration: 0.3 }} className="px-4 pb-2">
-        <div className="flex items-center justify-between mb-2">
+        <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-gray-400" />
+            <Sparkles className="h-3.5 w-3.5 text-gray-400" />
             <span className="text-xs font-medium text-gray-500">Atalhos inteligentes</span>
           </div>
-          <button onClick={() => setModal("editar")} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+          <button onClick={() => setModal("editar")} className="text-xs text-gray-400 transition-colors hover:text-gray-600">
             Editar
           </button>
         </div>
 
-        <div className="bg-white rounded-xl p-3 border border-gray-100">
+        <div className="rounded-xl border border-gray-100 bg-white p-3">
           <div className={`grid gap-2 ${enabledShortcuts.length <= 4 ? "grid-cols-4" : "grid-cols-3"}`}>
             {enabledShortcuts.map((shortcut) => (
               <button key={shortcut.id} onClick={() => shortcut.isBalance && setBalanceOpen(true)} className="flex flex-col items-center text-center">
-                <shortcut.icon className="w-4 h-4 text-gray-400 mb-1" />
+                <shortcut.icon className="mb-1 h-4 w-4 text-gray-400" />
                 <span className="text-base font-semibold text-[#0a0a0a]">{shortcut.value}</span>
-                <span className="text-[10px] text-gray-500 leading-tight">{shortcut.label}</span>
+                <span className="text-[10px] leading-tight text-gray-500">{shortcut.label}</span>
               </button>
             ))}
           </div>
@@ -467,28 +515,28 @@ export default function AppHomePage() {
       <AnimatePresence>
         {balanceOpen && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40" onClick={() => setBalanceOpen(false)} />
-            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 400 }} className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl p-5 pb-8 lg:inset-0 lg:m-auto lg:h-fit lg:max-w-md lg:rounded-3xl">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-[#0a0a0a]">Balanço</h2>
-                <button onClick={() => setBalanceOpen(false)} className="p-1.5 rounded-full hover:bg-gray-100 transition-colors" aria-label="Fechar">
-                  <X className="w-5 h-5 text-gray-500" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={() => setBalanceOpen(false)} />
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 400 }} className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl bg-white p-5 pb-8 lg:inset-0 lg:m-auto lg:h-fit lg:max-w-md lg:rounded-3xl">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-[#0a0a0a]">Balanco</h2>
+                <button onClick={() => setBalanceOpen(false)} className="rounded-full p-1.5 transition-colors hover:bg-gray-100" aria-label="Fechar">
+                  <X className="h-5 w-5 text-gray-500" />
                 </button>
               </div>
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between py-2.5 px-4 bg-gray-50 rounded-xl">
+                <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-2.5">
                   <span className="text-sm text-gray-600">Saldo anterior</span>
                   <span className="text-sm font-semibold text-[#0a0a0a]">{formatCurrency(balance.anterior)}</span>
                 </div>
-                <div className="flex items-center justify-between py-2.5 px-4 bg-green-50 rounded-xl">
+                <div className="flex items-center justify-between rounded-xl bg-green-50 px-4 py-2.5">
                   <span className="text-sm text-green-700">Ganhos</span>
                   <span className="text-sm font-semibold text-green-600">+ {formatCurrency(balance.ganhos)}</span>
                 </div>
-                <div className="flex items-center justify-between py-2.5 px-4 bg-red-50 rounded-xl">
+                <div className="flex items-center justify-between rounded-xl bg-red-50 px-4 py-2.5">
                   <span className="text-sm text-red-700">Gastos</span>
                   <span className="text-sm font-semibold text-red-600">- {formatCurrency(balance.gastos)}</span>
                 </div>
-                <div className="flex items-center justify-between py-3.5 px-4 bg-[#0a0a0a] rounded-xl">
+                <div className="flex items-center justify-between rounded-xl bg-[#0a0a0a] px-4 py-3.5">
                   <span className="text-sm font-medium text-white">Saldo final</span>
                   <span className="text-base font-bold text-white">{formatCurrency(saldoFinal)}</span>
                 </div>
@@ -501,33 +549,33 @@ export default function AppHomePage() {
       <AnimatePresence>
         {modal && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40" onClick={closeModal} />
-            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 400 }} className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl p-5 pb-8 max-h-[85vh] overflow-y-auto lg:inset-0 lg:m-auto lg:h-fit lg:max-h-[80vh] lg:max-w-md lg:rounded-3xl">
-              <div className="flex items-center justify-between mb-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={closeModal} />
+            <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 400 }} className="fixed bottom-0 left-0 right-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 lg:inset-0 lg:m-auto lg:h-fit lg:max-h-[80vh] lg:max-w-md lg:rounded-3xl">
+              <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-[#0a0a0a]">
-                  {modal === "sugerir" && "Sugestões do COS"}
-                  {modal === "passo" && "Próximos passos"}
+                  {modal === "sugerir" && "Sugestoes do COS"}
+                  {modal === "passo" && "Proximos passos"}
                   {modal === "meet" && "COS Meet"}
                   {modal === "editar" && "Editar atalhos"}
                 </h2>
-                <button onClick={closeModal} className="p-1.5 rounded-full hover:bg-gray-100 transition-colors" aria-label="Fechar">
-                  <X className="w-5 h-5 text-gray-500" />
+                <button onClick={closeModal} className="rounded-full p-1.5 transition-colors hover:bg-gray-100" aria-label="Fechar">
+                  <X className="h-5 w-5 text-gray-500" />
                 </button>
               </div>
 
               {modal === "sugerir" && (
                 <div className="space-y-2.5">
-                  <p className="text-sm text-gray-500 mb-1">Com base na sua operação, o COS recomenda:</p>
-                  {suggestions.map((s) => (
-                    <button key={s.title} className="flex items-start gap-3 w-full p-3 rounded-2xl border border-gray-100 hover:bg-gray-50 transition-colors text-left">
-                      <span className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: s.bg }}>
-                        <s.icon className="w-5 h-5" style={{ color: s.color }} />
+                  <p className="mb-1 text-sm text-gray-500">Com base na sua operacao, o COS recomenda:</p>
+                  {suggestions.map((suggestion) => (
+                    <button key={suggestion.title} className="flex w-full items-start gap-3 rounded-2xl border border-gray-100 p-3 text-left transition-colors hover:bg-gray-50">
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: suggestion.bg }}>
+                        <suggestion.icon className="h-5 w-5" style={{ color: suggestion.color }} />
                       </span>
-                      <span className="flex-1 min-w-0">
-                        <span className="block text-sm font-medium text-[#0a0a0a]">{s.title}</span>
-                        <span className="block text-xs text-gray-500">{s.desc}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-[#0a0a0a]">{suggestion.title}</span>
+                        <span className="block text-xs text-gray-500">{suggestion.desc}</span>
                       </span>
-                      <ArrowRight className="w-4 h-4 text-gray-300 mt-1 flex-shrink-0" />
+                      <ArrowRight className="mt-1 h-4 w-4 flex-shrink-0 text-gray-300" />
                     </button>
                   ))}
                 </div>
@@ -535,20 +583,20 @@ export default function AppHomePage() {
 
               {modal === "passo" && (
                 <div className="space-y-2.5">
-                  <p className="text-sm text-gray-500 mb-1">Prioridades recomendadas para hoje:</p>
-                  {nextSteps.map((s) => (
-                    <div key={s.title} className="flex items-start gap-3 w-full p-3 rounded-2xl border border-gray-100">
+                  <p className="mb-1 text-sm text-gray-500">Prioridades recomendadas para hoje:</p>
+                  {nextSteps.map((step) => (
+                    <div key={step.title} className="flex w-full items-start gap-3 rounded-2xl border border-gray-100 p-3">
                       <span className="mt-0.5 flex-shrink-0">
-                        <Lightbulb className="w-5 h-5" style={{ color: s.color }} />
+                        <Lightbulb className="h-5 w-5" style={{ color: step.color }} />
                       </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-sm font-medium text-[#0a0a0a]">{s.title}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-0.5 flex items-center gap-2">
+                          <span className="text-sm font-medium text-[#0a0a0a]">{step.title}</span>
                         </div>
-                        <span className="text-xs text-gray-500">{s.desc}</span>
+                        <span className="text-xs text-gray-500">{step.desc}</span>
                       </div>
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ color: s.color, backgroundColor: `${s.color}1a` }}>
-                        {s.priority}
+                      <span className="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ color: step.color, backgroundColor: `${step.color}1a` }}>
+                        {step.priority}
                       </span>
                     </div>
                   ))}
@@ -556,65 +604,85 @@ export default function AppHomePage() {
               )}
 
               {modal === "meet" && (
-                <div className="flex flex-col items-center">
-                  <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 ${recording === "recording" ? "bg-red-50" : "bg-gray-100"}`}>
-                    <motion.div animate={recording === "recording" ? { scale: [1, 1.15, 1] } : { scale: 1 }} transition={{ repeat: recording === "recording" ? Infinity : 0, duration: 1.5 }}>
-                      {recording === "done" ? <Check className="w-9 h-9 text-green-600" /> : <Mic className={`w-9 h-9 ${recording === "recording" ? "text-red-500" : "text-gray-500"}`} />}
-                    </motion.div>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50">
+                      <Video className="h-6 w-6 text-red-500" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-[#0a0a0a]">Criar reuniao</p>
+                      <p className="text-sm text-gray-500">Transcricao e gravacao automatica serao ativadas quando a IA estiver conectada.</p>
+                    </div>
                   </div>
 
-                  <span className="text-2xl font-semibold text-[#0a0a0a] tabular-nums mb-1">{formatTime(seconds)}</span>
-                  <span className="text-sm text-gray-500 mb-6">
-                    {recording === "idle" && "Pronto para gravar"}
-                    {recording === "recording" && "Gravando reunião..."}
-                    {recording === "paused" && "Pausado"}
-                    {recording === "done" && "Gravação concluída"}
-                  </span>
-
-                  {recording === "idle" && (
-                    <button onClick={() => { setRecording("recording"); setSeconds(0) }} className="flex items-center justify-center gap-2 w-full py-3 bg-red-500 text-white rounded-2xl text-sm font-medium hover:bg-red-600 transition-colors">
-                      <Circle className="w-4 h-4 fill-current" /> Iniciar gravação
-                    </button>
-                  )}
-
-                  {(recording === "recording" || recording === "paused") && (
-                    <div className="flex items-center gap-2 w-full">
-                      <button onClick={() => setRecording(recording === "recording" ? "paused" : "recording")} className="flex items-center justify-center gap-2 flex-1 py-3 bg-gray-100 text-gray-700 rounded-2xl text-sm font-medium hover:bg-gray-200 transition-colors">
-                        {recording === "recording" ? <><Pause className="w-4 h-4" /> Pausar</> : <><Circle className="w-4 h-4 fill-current" /> Retomar</>}
-                      </button>
-                      <button onClick={() => setRecording("done")} className="flex items-center justify-center gap-2 flex-1 py-3 bg-[#0a0a0a] text-white rounded-2xl text-sm font-medium hover:bg-[#1a1a1a] transition-colors">
-                        <Square className="w-4 h-4 fill-current" /> Encerrar
-                      </button>
-                    </div>
-                  )}
-
-                  {recording === "done" && (
-                    <div className="w-full space-y-2.5">
-                      <div className="p-3 rounded-2xl bg-gray-50">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <FileText className="w-4 h-4 text-blue-500" />
-                          <span className="text-sm font-medium text-[#0a0a0a]">Resumo gerado</span>
+                  {!meetingFeedback?.tone || meetingFeedback.tone === "error" ? (
+                    <>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-[#0a0a0a]">Titulo</label>
+                        <input
+                          type="text"
+                          value={meetingForm.title}
+                          onChange={(event) => setMeetingForm((prev) => ({ ...prev, title: event.target.value }))}
+                          placeholder="Ex: Alinhamento semanal"
+                          className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-[#0a0a0a]">Participantes</label>
+                        <input
+                          type="text"
+                          value={meetingForm.participants}
+                          onChange={(event) => setMeetingForm((prev) => ({ ...prev, participants: event.target.value }))}
+                          placeholder="Participantes opcionais"
+                          className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-[#0a0a0a]">Observacoes</label>
+                        <textarea
+                          value={meetingForm.notes}
+                          onChange={(event) => setMeetingForm((prev) => ({ ...prev, notes: event.target.value }))}
+                          placeholder="Observacoes da reuniao"
+                          rows={4}
+                          className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
+                        />
+                      </div>
+                      {meetingFeedback?.tone === "error" && (
+                        <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+                          {meetingFeedback.text}
                         </div>
-                        <p className="text-xs text-gray-600 leading-relaxed">
-                          Nenhum resumo de reunião gerado ainda. Quando você gravar uma reunião real, o COS mostrará o conteúdo aqui.
+                      )}
+                      <div className="flex gap-2">
+                        <button onClick={closeModal} className="flex-1 rounded-2xl bg-gray-100 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200">
+                          Cancelar
+                        </button>
+                        <button onClick={submitMeeting} disabled={isCreatingMeeting} className="flex-1 rounded-2xl bg-[#0a0a0a] py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50">
+                          {isCreatingMeeting ? "Salvando..." : "Iniciar gravacao"}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="rounded-2xl border border-green-100 bg-green-50 p-4 text-sm text-green-700">
+                        {meetingFeedback.text}
+                      </div>
+                      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                        <div className="mb-1.5 flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-blue-500" />
+                          <span className="text-sm font-medium text-[#0a0a0a]">Proximo passo</span>
+                        </div>
+                        <p className="text-xs leading-relaxed text-gray-600">
+                          A reuniao ja foi criada no backend real e aparecera em Reunioes e no Historico do workspace.
                         </p>
                       </div>
-                      <div className="p-3 rounded-2xl bg-gray-50">
-                        <div className="flex items-center gap-2 mb-2">
-                          <CheckSquare className="w-4 h-4 text-green-500" />
-                          <span className="text-sm font-medium text-[#0a0a0a]">Tarefas geradas</span>
-                        </div>
-                        <ul className="space-y-1.5">
-                          {["Nenhuma tarefa gerada ainda", "As próximas ações aparecerão aqui", "Grave uma reunião para começar"].map((t) => (
-                            <li key={t} className="flex items-center gap-2 text-xs text-gray-600">
-                              <span className="w-1.5 h-1.5 rounded-full bg-gray-300" /> {t}
-                            </li>
-                          ))}
-                        </ul>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <Link href="/app/conversas/reunioes" onClick={closeModal} className="rounded-2xl bg-[#0a0a0a] py-3 text-center text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">
+                          Abrir reuniao
+                        </Link>
+                        <Link href="/app/conversas/reunioes" onClick={closeModal} className="rounded-2xl bg-gray-100 py-3 text-center text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200">
+                          Ver em Reunioes
+                        </Link>
                       </div>
-                      <button onClick={closeModal} className="w-full py-3 bg-[#0a0a0a] text-white rounded-2xl text-sm font-medium hover:bg-[#1a1a1a] transition-colors">
-                        Concluir
-                      </button>
                     </div>
                   )}
                 </div>
@@ -622,18 +690,18 @@ export default function AppHomePage() {
 
               {modal === "editar" && (
                 <div className="space-y-2">
-                  <p className="text-sm text-gray-500 mb-1">Ative, desative e reorganize os atalhos exibidos:</p>
-                  {shortcuts.map((s) => (
-                    <div key={s.id} className="flex items-center gap-3 p-2.5 rounded-2xl border border-gray-100">
-                      <GripVertical className="w-4 h-4 text-gray-300 flex-shrink-0" />
-                      <s.icon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                      <span className="flex-1 text-sm font-medium text-[#0a0a0a]">{s.label}</span>
-                      <button onClick={() => toggleShortcut(s.id)} className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${s.enabled ? "bg-[#0a0a0a]" : "bg-gray-200"}`} aria-label={`Alternar ${s.label}`}>
-                        <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all ${s.enabled ? "left-[18px]" : "left-0.5"}`} />
+                  <p className="mb-1 text-sm text-gray-500">Ative, desative e reorganize os atalhos exibidos:</p>
+                  {shortcuts.map((shortcut) => (
+                    <div key={shortcut.id} className="flex items-center gap-3 rounded-2xl border border-gray-100 p-2.5">
+                      <GripVertical className="h-4 w-4 flex-shrink-0 text-gray-300" />
+                      <shortcut.icon className="h-4 w-4 flex-shrink-0 text-gray-400" />
+                      <span className="flex-1 text-sm font-medium text-[#0a0a0a]">{shortcut.label}</span>
+                      <button onClick={() => toggleShortcut(shortcut.id)} className={`relative h-6 w-10 flex-shrink-0 rounded-full transition-colors ${shortcut.enabled ? "bg-[#0a0a0a]" : "bg-gray-200"}`} aria-label={`Alternar ${shortcut.label}`}>
+                        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${shortcut.enabled ? "left-[18px]" : "left-0.5"}`} />
                       </button>
                     </div>
                   ))}
-                  <button onClick={closeModal} className="w-full mt-2 py-3 bg-[#0a0a0a] text-white rounded-2xl text-sm font-medium hover:bg-[#1a1a1a] transition-colors">
+                  <button onClick={closeModal} className="mt-2 w-full rounded-2xl bg-[#0a0a0a] py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">
                     Salvar
                   </button>
                 </div>
