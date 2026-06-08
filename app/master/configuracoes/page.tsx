@@ -2,9 +2,10 @@
 
 import { useState } from "react"
 import { motion } from "framer-motion"
-import { Settings2, Sparkles, CreditCard, Plug, ShieldCheck, type LucideIcon } from "lucide-react"
+import { Settings2, Sparkles, CreditCard, Plug, ShieldCheck, LogOut, type LucideIcon } from "lucide-react"
 import { MasterHeader } from "@/components/master/master-header"
 import { MasterPageHeader, BackendNotice } from "@/components/master/master-ui"
+import { useMasterSession } from "@/components/master/master-session"
 
 type Secao = {
   id: string
@@ -25,6 +26,7 @@ const secoes: Secao[] = [
 export default function MasterConfiguracoesPage() {
   const [ativa, setAtiva] = useState(secoes[0].id)
   const secao = secoes.find((s) => s.id === ativa)!
+  const { handleLogout, isPending } = useMasterSession()
 
   return (
     <div className="flex-1 flex flex-col h-full">
@@ -71,6 +73,16 @@ export default function MasterConfiguracoesPage() {
               </div>
               <div className="mt-6">
                 <BackendNotice>{secao.notice}</BackendNotice>
+              </div>
+              <div className="mt-6 pt-6 border-t border-gray-100">
+                <button
+                  onClick={() => handleLogout()}
+                  disabled={isPending}
+                  className="inline-flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <LogOut className="w-4 h-4" />
+                  {isPending ? "Saindo..." : "Sair da conta"}
+                </button>
               </div>
             </motion.div>
           </div>
