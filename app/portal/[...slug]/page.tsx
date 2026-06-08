@@ -1,15 +1,18 @@
 "use client"
 
 import { use } from "react"
-import { PortalModulePage } from "@/components/portal/portal-module-page"
 import { PortalHeader } from "@/components/portal/portal-header"
+import { PortalModulePage } from "@/components/portal/portal-module-page"
 import { ClientsManager } from "@/components/operations/clients-manager"
+import { DocumentsManager } from "@/components/operations/documents-manager"
 import { FinancialManager } from "@/components/operations/financial-manager"
+import { MeetingsManager } from "@/components/operations/meetings-manager"
+import { OperationsManager } from "@/components/operations/operations-manager"
 
 const SECTION_META: Record<string, { title: string; description: string; ctaLabel: string; emptyLabel: string; listHref: string }> = {
   conversas: {
     title: "Conversas",
-    description: "Acompanhe conversas e solicitações do portal em um só lugar.",
+    description: "Acompanhe conversas e solicitacoes do portal em um so lugar.",
     ctaLabel: "Nova conversa",
     emptyLabel: "Nenhuma conversa registrada ainda.",
     listHref: "/portal/conversas",
@@ -18,14 +21,14 @@ const SECTION_META: Record<string, { title: string; description: string; ctaLabe
     title: "Cadastros",
     description: "Gerencie clientes, contatos e relacionamentos.",
     ctaLabel: "Novo cliente",
-    emptyLabel: "Nenhum cadastro disponível ainda.",
+    emptyLabel: "Nenhum cadastro disponivel ainda.",
     listHref: "/portal/cadastros",
   },
   operacoes: {
-    title: "Operações",
+    title: "Operacoes",
     description: "Organize processos, atendimentos e fluxos operacionais.",
-    ctaLabel: "Nova operação",
-    emptyLabel: "Nenhuma operação cadastrada ainda.",
+    ctaLabel: "Nova operacao",
+    emptyLabel: "Nenhuma operacao cadastrada ainda.",
     listHref: "/portal/operacoes",
   },
   vendas: {
@@ -37,23 +40,23 @@ const SECTION_META: Record<string, { title: string; description: string; ctaLabe
   },
   documentos: {
     title: "Documentos",
-    description: "Centralize documentos, termos e contratos da operação.",
+    description: "Centralize documentos, termos e contratos da operacao.",
     ctaLabel: "Novo documento",
-    emptyLabel: "Nenhum documento disponível ainda.",
+    emptyLabel: "Nenhum documento disponivel ainda.",
     listHref: "/portal/documentos",
   },
   reunioes: {
-    title: "Reuniões",
-    description: "Organize reuniões, gravações e resumos do COS Meet.",
-    ctaLabel: "Nova reunião",
-    emptyLabel: "Nenhuma reunião registrada ainda.",
+    title: "Reunioes",
+    description: "Organize reunioes, gravacoes e resumos do COS Meet.",
+    ctaLabel: "Nova reuniao",
+    emptyLabel: "Nenhuma reuniao registrada ainda.",
     listHref: "/portal/reunioes",
   },
   relatorios: {
-    title: "Relatórios",
-    description: "Visualize relatórios e indicadores do seu negócio.",
-    ctaLabel: "Novo relatório",
-    emptyLabel: "Nenhum relatório disponível ainda.",
+    title: "Relatorios",
+    description: "Visualize relatorios e indicadores do seu negocio.",
+    ctaLabel: "Novo relatorio",
+    emptyLabel: "Nenhum relatorio disponivel ainda.",
     listHref: "/portal/relatorios",
   },
   propostas: {
@@ -61,33 +64,61 @@ const SECTION_META: Record<string, { title: string; description: string; ctaLabe
     description: "Gerencie propostas comerciais do portal.",
     ctaLabel: "Nova proposta",
     emptyLabel: "Nenhuma proposta cadastrada ainda.",
-    listHref: "/portal/vendas/propostas",
+    listHref: "/portal/propostas",
   },
   contratos: {
     title: "Contratos",
     description: "Gerencie contratos e documentos formais.",
     ctaLabel: "Novo contrato",
-    emptyLabel: "Nenhum contrato disponível ainda.",
-    listHref: "/portal/documentos/contratos",
+    emptyLabel: "Nenhum contrato disponivel ainda.",
+    listHref: "/portal/contratos",
   },
   atendimentos: {
     title: "Atendimentos",
     description: "Acompanhe atendimentos e demandas operacionais.",
     ctaLabel: "Novo atendimento",
     emptyLabel: "Nenhum atendimento registrado ainda.",
-    listHref: "/portal/operacoes/atendimentos",
+    listHref: "/portal/atendimentos",
   },
   balanco: {
-    title: "Balanço",
-    description: "Visualize o balanço consolidado do período.",
-    ctaLabel: "Novo lançamento",
-    emptyLabel: "Nenhum balanço disponível ainda.",
+    title: "Balanco",
+    description: "Visualize o balanco consolidado do periodo.",
+    ctaLabel: "Novo lancamento",
+    emptyLabel: "Nenhum balanco disponivel ainda.",
     listHref: "/portal/financeiro/balanco",
   },
 }
 
 function titleize(slug: string) {
   return slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ")
+}
+
+function metaForDocumentKey(key: string) {
+  if (key === "contratos") {
+    return {
+      title: "Contratos",
+      description: "Gerencie contratos reais do seu workspace.",
+    }
+  }
+
+  if (key === "propostas") {
+    return {
+      title: "Propostas",
+      description: "Centralize propostas reais e acompanhe seus rascunhos e envios.",
+    }
+  }
+
+  if (key === "relatorios") {
+    return {
+      title: "Relatorios",
+      description: "Acompanhe relatorios reais salvos no seu workspace.",
+    }
+  }
+
+  return {
+    title: "Documentos",
+    description: "Centralize documentos reais do seu workspace.",
+  }
 }
 
 export default function PortalSectionPage({ params }: { params: Promise<{ slug: string[] }> }) {
@@ -112,8 +143,50 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
       <div className="flex-1 flex flex-col h-full">
         <PortalHeader />
         <FinancialManager
-          title="Balanço"
-          description="Visualize o balanço consolidado do seu workspace com dados reais."
+          title="Balanco"
+          description="Visualize o balanco consolidado do seu workspace com dados reais."
+          variant="portal"
+        />
+      </div>
+    )
+  }
+
+  if (key === "operacoes") {
+    return (
+      <div className="flex-1 flex flex-col h-full">
+        <PortalHeader />
+        <OperationsManager
+          title="Operacoes"
+          description="Organize processos, atendimentos e fluxos operacionais com dados reais."
+          variant="portal"
+        />
+      </div>
+    )
+  }
+
+  if (key === "documentos" || key === "contratos" || key === "propostas" || key === "relatorios") {
+    const meta = metaForDocumentKey(key)
+
+    return (
+      <div className="flex-1 flex flex-col h-full">
+        <PortalHeader />
+        <DocumentsManager
+          title={meta.title}
+          description={meta.description}
+          variant="portal"
+          filterType={key}
+        />
+      </div>
+    )
+  }
+
+  if (key === "reunioes") {
+    return (
+      <div className="flex-1 flex flex-col h-full">
+        <PortalHeader />
+        <MeetingsManager
+          title="Reunioes"
+          description="Gerencie gravacoes, resumos e proximos passos reais do COS Meet."
           variant="portal"
         />
       </div>
@@ -122,9 +195,9 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
 
   const meta = SECTION_META[key] ?? {
     title: titleize(key),
-    description: "Gerencie esta área do portal com busca, filtros e ação principal.",
-    ctaLabel: "Nova ação",
-    emptyLabel: "Nenhum registro disponível ainda.",
+    description: "Gerencie esta area do portal com busca, filtros e acao principal.",
+    ctaLabel: "Nova acao",
+    emptyLabel: "Nenhum registro disponivel ainda.",
     listHref: `/portal/${slug.join("/")}`,
   }
 

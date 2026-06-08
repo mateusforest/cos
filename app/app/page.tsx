@@ -28,7 +28,9 @@ import { useSupport } from "@/components/support/support-context"
 import { toast } from "@/hooks/use-toast"
 import { useAuth } from "@/components/auth/auth-provider"
 import { getClientsAction } from "@/actions/clients"
+import { getMeetingsAction } from "@/actions/meetings"
 import { getFinancialSummaryAction } from "@/actions/financial"
+import { getOperationsAction } from "@/actions/operations"
 import { getWorkspaceMembersAction } from "@/actions/workspace"
 
 type ModalType = "sugerir" | "passo" | "meet" | "editar" | null
@@ -107,10 +109,12 @@ export default function AppHomePage() {
 
   useEffect(() => {
     const loadStats = async () => {
-      const [clientsResult, financialResult, membersResult] = await Promise.all([
+      const [clientsResult, financialResult, membersResult, operationsResult, meetingsResult] = await Promise.all([
         getClientsAction(),
         getFinancialSummaryAction(),
         getWorkspaceMembersAction(),
+        getOperationsAction(),
+        getMeetingsAction(),
       ])
 
       setShortcuts((prev) =>
@@ -136,6 +140,21 @@ export default function AppHomePage() {
             return {
               ...shortcut,
               value: String(membersResult.success ? (membersResult.members?.length ?? 0) : 0),
+            }
+          }
+
+          if (shortcut.id === "operacoes") {
+            return {
+              ...shortcut,
+              value: String(operationsResult.success ? (operationsResult.operations?.filter((operation) => operation.status !== "archived").length ?? 0) : 0),
+            }
+          }
+
+          if (shortcut.id === "reunioes") {
+            return {
+              ...shortcut,
+              value: String(meetingsResult.success ? (meetingsResult.meetings?.filter((meeting) => meeting.status !== "archived").length ?? 0) : 0),
+              enabled: true,
             }
           }
 

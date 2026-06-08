@@ -3,21 +3,24 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import {
-  X,
-  UserPlus,
-  FileText,
-  Briefcase,
-  Video,
-  CheckSquare,
   BarChart3,
-  Smartphone,
+  Briefcase,
+  CheckSquare,
+  FileText,
   Monitor,
-  Upload,
-  Trash2,
   SlidersHorizontal,
+  Smartphone,
+  Trash2,
+  Upload,
+  UserPlus,
+  Video,
+  X,
 } from "lucide-react"
-import { toast } from "@/hooks/use-toast"
 import { createClientAction } from "@/actions/clients"
+import { createDocumentAction } from "@/actions/documents"
+import { createMeetingAction } from "@/actions/meetings"
+import { createOperationAction } from "@/actions/operations"
+import { toast } from "@/hooks/use-toast"
 
 type QuickActionType = "cliente" | "documento" | "operacao" | "reuniao" | "tarefa" | "relatorio"
 type PortalModal = "quickActions" | "quickActionForm" | "install" | "meeting" | "delete" | "filters" | null
@@ -51,16 +54,16 @@ const quickActionItems: Array<{
 }> = [
   { type: "cliente", label: "Cliente", icon: UserPlus, color: "#3b82f6", bg: "#dbeafe" },
   { type: "documento", label: "Documento", icon: FileText, color: "#6366f1", bg: "#e0e7ff" },
-  { type: "operacao", label: "Operação", icon: Briefcase, color: "#8b5cf6", bg: "#ede9fe" },
-  { type: "reuniao", label: "Reunião", icon: Video, color: "#ef4444", bg: "#fee2e2" },
+  { type: "operacao", label: "Operacao", icon: Briefcase, color: "#8b5cf6", bg: "#ede9fe" },
+  { type: "reuniao", label: "Reuniao", icon: Video, color: "#ef4444", bg: "#fee2e2" },
   { type: "tarefa", label: "Tarefa", icon: CheckSquare, color: "#22c55e", bg: "#dcfce7" },
-  { type: "relatorio", label: "Relatório", icon: BarChart3, color: "#f97316", bg: "#ffedd5" },
+  { type: "relatorio", label: "Relatorio", icon: BarChart3, color: "#f97316", bg: "#ffedd5" },
 ]
 
 const quickActionConfigs: Record<QuickActionType, QuickActionConfig> = {
   cliente: {
     title: "Novo cliente",
-    description: "Prepare o cadastro do próximo cliente do portal.",
+    description: "Prepare o cadastro do proximo cliente do portal.",
     submit: "Salvar cliente",
     fields: [
       { name: "nome", label: "Nome", placeholder: "Nome do cliente" },
@@ -70,32 +73,32 @@ const quickActionConfigs: Record<QuickActionType, QuickActionConfig> = {
   },
   documento: {
     title: "Novo documento",
-    description: "Organize um novo documento para a operação.",
+    description: "Organize um novo documento para a operacao.",
     submit: "Salvar documento",
     fields: [
-      { name: "titulo", label: "Título", placeholder: "Título do documento" },
-      { name: "tipo", label: "Tipo", placeholder: "Proposta, contrato ou termo" },
-      { name: "descricao", label: "Descrição", placeholder: "Resumo do documento" },
+      { name: "titulo", label: "Titulo", placeholder: "Titulo do documento" },
+      { name: "tipo", label: "Tipo", placeholder: "Contrato, arquivo, proposta ou relatorio" },
+      { name: "descricao", label: "Conteudo", placeholder: "Resumo ou conteudo do documento" },
     ],
   },
   operacao: {
-    title: "Nova operação",
-    description: "Estruture uma nova operação sem depender do backend ainda.",
-    submit: "Salvar operação",
+    title: "Nova operacao",
+    description: "Estruture uma nova operacao com dados reais do workspace.",
+    submit: "Salvar operacao",
     fields: [
-      { name: "titulo", label: "Título", placeholder: "Nome da operação" },
-      { name: "responsavel", label: "Responsável", placeholder: "Responsável" },
-      { name: "status", label: "Status", placeholder: "Aberto, em andamento ou concluído" },
+      { name: "titulo", label: "Titulo", placeholder: "Nome da operacao" },
+      { name: "responsavel", label: "Responsavel", placeholder: "Responsavel" },
+      { name: "status", label: "Status", placeholder: "Aberta, em andamento ou concluida" },
     ],
   },
   reuniao: {
-    title: "Nova reunião",
-    description: "Prepare uma nova reunião no portal.",
-    submit: "Salvar reunião",
+    title: "Nova reuniao",
+    description: "Prepare uma nova reuniao do COS Meet.",
+    submit: "Salvar reuniao",
     fields: [
-      { name: "titulo", label: "Título", placeholder: "Título da reunião" },
+      { name: "titulo", label: "Titulo", placeholder: "Titulo da reuniao" },
       { name: "participantes", label: "Participantes", placeholder: "Participantes" },
-      { name: "observacoes", label: "Observações", placeholder: "Observações" },
+      { name: "observacoes", label: "Observacoes", placeholder: "Observacoes" },
     ],
   },
   tarefa: {
@@ -103,35 +106,35 @@ const quickActionConfigs: Record<QuickActionType, QuickActionConfig> = {
     description: "Crie uma tarefa operacional no portal.",
     submit: "Salvar tarefa",
     fields: [
-      { name: "titulo", label: "Título", placeholder: "Título da tarefa" },
+      { name: "titulo", label: "Titulo", placeholder: "Titulo da tarefa" },
       { name: "prazo", label: "Prazo", placeholder: "Prazo" },
-      { name: "responsavel", label: "Responsável", placeholder: "Responsável" },
+      { name: "responsavel", label: "Responsavel", placeholder: "Responsavel" },
     ],
   },
   relatorio: {
-    title: "Novo relatório",
-    description: "Prepare a estrutura de um relatório futuro.",
-    submit: "Salvar relatório",
+    title: "Novo relatorio",
+    description: "Prepare a estrutura de um relatorio real no portal.",
+    submit: "Salvar relatorio",
     fields: [
-      { name: "titulo", label: "Título", placeholder: "Título do relatório" },
-      { name: "periodo", label: "Período", placeholder: "Período" },
-      { name: "objetivo", label: "Objetivo", placeholder: "Objetivo do relatório" },
+      { name: "titulo", label: "Titulo", placeholder: "Titulo do relatorio" },
+      { name: "periodo", label: "Periodo", placeholder: "Periodo" },
+      { name: "objetivo", label: "Objetivo", placeholder: "Objetivo do relatorio" },
     ],
   },
 }
 
 const defaultFilters: Record<FilterKey, string> = {
-  periodo: "Este mês",
-  tipo: "Operações",
+  periodo: "Este mes",
+  tipo: "Operacoes",
   status: "Todos",
   responsavel: "",
   area: "",
 }
 
 const filterOptions: Record<Exclude<FilterKey, "responsavel" | "area">, string[]> = {
-  periodo: ["Hoje", "Esta semana", "Este mês", "Personalizado"],
-  tipo: ["Clientes", "Operações", "Financeiro", "Equipe", "Documentos", "Reuniões", "Suporte"],
-  status: ["Todos", "Aberto", "Em andamento", "Concluído", "Em preparação"],
+  periodo: ["Hoje", "Esta semana", "Este mes", "Personalizado"],
+  tipo: ["Clientes", "Operacoes", "Financeiro", "Equipe", "Documentos", "Reunioes", "Suporte"],
+  status: ["Todos", "Aberto", "Em andamento", "Concluido", "Em preparacao"],
 }
 
 export function usePortalInteractions() {
@@ -152,8 +155,12 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
     observacoes: "",
   })
   const [filters, setFilters] = useState<Record<FilterKey, string>>(defaultFilters)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const closeModal = () => setModal(null)
+  const closeModal = () => {
+    setModal(null)
+    setIsSubmitting(false)
+  }
 
   const value = useMemo<PortalInteractionsContextValue>(
     () => ({
@@ -173,6 +180,8 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
   )
 
   const submitQuickAction = async () => {
+    setIsSubmitting(true)
+
     if (selectedAction === "cliente") {
       const result = await createClientAction({
         name: formValues.nome ?? "",
@@ -184,34 +193,144 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
       })
 
       if (result.error) {
-        toast({
-          title: "Não foi possível salvar",
-          description: result.error,
-        })
+        setIsSubmitting(false)
+        toast({ title: "Nao foi possivel salvar", description: result.error })
         return
       }
 
-      toast({
-        title: "Cliente criado",
-        description: "O cliente foi salvo com sucesso.",
-      })
+      toast({ title: "Cliente criado", description: "O cliente foi salvo com sucesso." })
+      setIsSubmitting(false)
       setFormValues({})
       closeModal()
       return
     }
 
+    if (selectedAction === "operacao") {
+      const result = await createOperationAction({
+        title: formValues.titulo ?? "",
+        description: [
+          formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+          formValues.status ? `Status desejado: ${formValues.status}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        status: "open",
+        priority: "medium",
+      })
+
+      if (result.error) {
+        setIsSubmitting(false)
+        toast({ title: "Nao foi possivel salvar", description: result.error })
+        return
+      }
+
+      toast({ title: "Operacao criada", description: "A operacao foi salva com sucesso." })
+      setIsSubmitting(false)
+      setFormValues({})
+      closeModal()
+      return
+    }
+
+    if (selectedAction === "documento") {
+      const result = await createDocumentAction({
+        title: formValues.titulo ?? "",
+        type: formValues.tipo ?? "outro",
+        content: formValues.descricao ?? "",
+        status: "draft",
+      })
+
+      if (result.error) {
+        setIsSubmitting(false)
+        toast({ title: "Nao foi possivel salvar", description: result.error })
+        return
+      }
+
+      toast({ title: "Documento criado", description: "O documento foi salvo com sucesso." })
+      setIsSubmitting(false)
+      setFormValues({})
+      closeModal()
+      return
+    }
+
+    if (selectedAction === "reuniao") {
+      const result = await createMeetingAction({
+        title: formValues.titulo ?? "",
+        summary: [
+          formValues.participantes ? `Participantes: ${formValues.participantes}` : "",
+          formValues.observacoes ?? "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        status: "draft",
+      })
+
+      if (result.error) {
+        setIsSubmitting(false)
+        toast({ title: "Nao foi possivel salvar", description: result.error })
+        return
+      }
+
+      toast({ title: "Reuniao criada", description: "A reuniao foi salva com sucesso." })
+      setIsSubmitting(false)
+      setFormValues({})
+      closeModal()
+      return
+    }
+
+    if (selectedAction === "relatorio") {
+      const result = await createDocumentAction({
+        title: formValues.titulo ?? "",
+        type: "relatorio",
+        content: [formValues.periodo ? `Periodo: ${formValues.periodo}` : "", formValues.objetivo ?? ""].filter(Boolean).join("\n"),
+        status: "draft",
+      })
+
+      if (result.error) {
+        setIsSubmitting(false)
+        toast({ title: "Nao foi possivel salvar", description: result.error })
+        return
+      }
+
+      toast({ title: "Relatorio criado", description: "O relatorio foi salvo com sucesso." })
+      setIsSubmitting(false)
+      setFormValues({})
+      closeModal()
+      return
+    }
+
+    setIsSubmitting(false)
     toast({
       title: `${quickActionConfigs[selectedAction].title} preparado`,
-      description: "O cadastro será concluído quando o backend estiver conectado.",
+      description: "Este fluxo ainda sera conectado a uma area operacional futura.",
     })
     setFormValues({})
     closeModal()
   }
 
-  const submitMeetingAction = (mode: "record" | "upload") => {
+  const submitMeetingAction = async (mode: "record" | "upload") => {
+    setIsSubmitting(true)
+
+    const result = await createMeetingAction({
+      title: meetingValues.titulo ?? "",
+      summary: [
+        meetingValues.participantes ? `Participantes: ${meetingValues.participantes}` : "",
+        meetingValues.observacoes ?? "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      status: mode === "record" ? "recorded" : "draft",
+    })
+
+    setIsSubmitting(false)
+
+    if (result.error) {
+      toast({ title: "Nao foi possivel salvar", description: result.error })
+      return
+    }
+
     toast({
-      title: mode === "record" ? "Gravação preparada" : "Upload preparado",
-      description: "COS Meet será conectado ao backend futuramente.",
+      title: mode === "record" ? "Reuniao gravada" : "Reuniao preparada",
+      description: "A reuniao foi salva com sucesso. A transcricao sera ativada quando a IA estiver conectada.",
     })
     setMeetingValues({ titulo: "", participantes: "", observacoes: "" })
     closeModal()
@@ -219,8 +338,8 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
 
   const confirmDelete = () => {
     toast({
-      title: "Remoção pendente",
-      description: "A exclusão será concluída quando o backend estiver conectado.",
+      title: "Remocao pendente",
+      description: "A exclusao sera concluida quando o backend estiver conectado.",
     })
     closeModal()
   }
@@ -232,7 +351,7 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
   const applyFilters = () => {
     toast({
       title: "Filtros atualizados",
-      description: "Filtros aplicados localmente. A busca real será conectada ao backend.",
+      description: "Filtros aplicados localmente. A busca real sera conectada ao backend.",
     })
     closeModal()
   }
@@ -244,31 +363,21 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
       <AnimatePresence>
         {modal && (
           <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[70]"
-              onClick={closeModal}
-            />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm" onClick={closeModal} />
             <motion.div
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 400 }}
-              className="fixed bottom-0 left-0 right-0 z-[80] bg-white rounded-t-3xl p-5 pb-8 max-h-[85vh] overflow-y-auto lg:inset-0 lg:m-auto lg:h-fit lg:max-h-[80vh] lg:max-w-md lg:rounded-3xl"
+              className="fixed bottom-0 left-0 right-0 z-[80] max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 lg:inset-0 lg:m-auto lg:h-fit lg:max-h-[80vh] lg:max-w-md lg:rounded-3xl"
             >
               {modal === "quickActions" && (
-                <ModalShell title="Ações rápidas" onClose={closeModal}>
+                <ModalShell title="Acoes rapidas" onClose={closeModal}>
                   <div className="grid grid-cols-2 gap-3">
                     {quickActionItems.map((item) => (
-                      <button
-                        key={item.type}
-                        onClick={() => value.openQuickActionForm(item.type)}
-                        className="rounded-2xl border border-gray-100 p-4 text-left hover:bg-gray-50 transition-colors"
-                      >
-                        <span className="w-11 h-11 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: item.bg }}>
-                          <item.icon className="w-5 h-5" style={{ color: item.color }} />
+                      <button key={item.type} onClick={() => value.openQuickActionForm(item.type)} className="rounded-2xl border border-gray-100 p-4 text-left transition-colors hover:bg-gray-50">
+                        <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl" style={{ backgroundColor: item.bg }}>
+                          <item.icon className="h-5 w-5" style={{ color: item.color }} />
                         </span>
                         <span className="block text-sm font-medium text-[#0a0a0a]">{item.label}</span>
                       </button>
@@ -286,18 +395,14 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
                         <input
                           type="text"
                           value={formValues[field.name] ?? ""}
-                          onChange={(e) => setFormValues((prev) => ({ ...prev, [field.name]: e.target.value }))}
+                          onChange={(event) => setFormValues((prev) => ({ ...prev, [field.name]: event.target.value }))}
                           placeholder={field.placeholder}
-                          className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:outline-none focus:border-gray-300"
+                          className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
                         />
                       </Field>
                     ))}
-                    <button
-                      type="button"
-                      onClick={submitQuickAction}
-                      className="w-full rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white hover:bg-[#1a1a1a] transition-colors"
-                    >
-                      {quickActionConfigs[selectedAction].submit}
+                    <button type="button" onClick={submitQuickAction} disabled={isSubmitting} className="w-full rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50">
+                      {isSubmitting ? "Salvando..." : quickActionConfigs[selectedAction].submit}
                     </button>
                   </div>
                 </ModalShell>
@@ -306,71 +411,39 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
               {modal === "filters" && (
                 <ModalShell title="Filtros" onClose={closeModal}>
                   <div className="space-y-4">
-                    <Field label="Período">
-                      <select
-                        value={filters.periodo}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, periodo: e.target.value }))}
-                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:outline-none focus:border-gray-300"
-                      >
+                    <Field label="Periodo">
+                      <select value={filters.periodo} onChange={(event) => setFilters((prev) => ({ ...prev, periodo: event.target.value }))} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none">
                         {filterOptions.periodo.map((option) => (
                           <option key={option}>{option}</option>
                         ))}
                       </select>
                     </Field>
                     <Field label="Tipo">
-                      <select
-                        value={filters.tipo}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, tipo: e.target.value }))}
-                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:outline-none focus:border-gray-300"
-                      >
+                      <select value={filters.tipo} onChange={(event) => setFilters((prev) => ({ ...prev, tipo: event.target.value }))} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none">
                         {filterOptions.tipo.map((option) => (
                           <option key={option}>{option}</option>
                         ))}
                       </select>
                     </Field>
                     <Field label="Status">
-                      <select
-                        value={filters.status}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
-                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:outline-none focus:border-gray-300"
-                      >
+                      <select value={filters.status} onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none">
                         {filterOptions.status.map((option) => (
                           <option key={option}>{option}</option>
                         ))}
                       </select>
                     </Field>
-                    <Field label="Responsável">
-                      <input
-                        type="text"
-                        value={filters.responsavel}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, responsavel: e.target.value }))}
-                        placeholder="Responsável"
-                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:outline-none focus:border-gray-300"
-                      />
+                    <Field label="Responsavel">
+                      <input type="text" value={filters.responsavel} onChange={(event) => setFilters((prev) => ({ ...prev, responsavel: event.target.value }))} placeholder="Responsavel" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
                     </Field>
-                    <Field label="Área">
-                      <input
-                        type="text"
-                        value={filters.area}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, area: e.target.value }))}
-                        placeholder="Área"
-                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:outline-none focus:border-gray-300"
-                      />
+                    <Field label="Area">
+                      <input type="text" value={filters.area} onChange={(event) => setFilters((prev) => ({ ...prev, area: event.target.value }))} placeholder="Area" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
                     </Field>
                     <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={clearFilters}
-                        className="flex-1 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors"
-                      >
+                      <button type="button" onClick={clearFilters} className="flex-1 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200">
                         Limpar filtros
                       </button>
-                      <button
-                        type="button"
-                        onClick={applyFilters}
-                        className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white hover:bg-[#1a1a1a] transition-colors"
-                      >
-                        <SlidersHorizontal className="w-4 h-4" />
+                      <button type="button" onClick={applyFilters} className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">
+                        <SlidersHorizontal className="h-4 w-4" />
                         Aplicar filtros
                       </button>
                     </div>
@@ -381,79 +454,37 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
               {modal === "install" && (
                 <ModalShell title="Instalar COS" onClose={closeModal}>
                   <div className="space-y-4">
-                    <InstallCard
-                      icon={Smartphone}
-                      title="iPhone"
-                      steps={[
-                        "Abra o COS no Safari.",
-                        "Toque em compartilhar.",
-                        "Escolha Adicionar à Tela de Início.",
-                      ]}
-                    />
-                    <InstallCard
-                      icon={Smartphone}
-                      title="Android"
-                      steps={[
-                        "Abra o COS no Chrome.",
-                        "Toque no menu do navegador.",
-                        "Escolha Instalar app ou Adicionar à tela inicial.",
-                      ]}
-                    />
-                    <InstallCard
-                      icon={Monitor}
-                      title="Desktop"
-                      steps={[
-                        "Abra o COS no navegador compatível.",
-                        "Use o ícone de instalação na barra de endereço.",
-                        "Confirme para fixar o COS como app.",
-                      ]}
-                    />
+                    <InstallCard icon={Smartphone} title="iPhone" steps={["Abra o COS no Safari.", "Toque em compartilhar.", "Escolha Adicionar a Tela de Inicio."]} />
+                    <InstallCard icon={Smartphone} title="Android" steps={["Abra o COS no Chrome.", "Toque no menu do navegador.", "Escolha Instalar app ou Adicionar a tela inicial."]} />
+                    <InstallCard icon={Monitor} title="Desktop" steps={["Abra o COS no navegador compativel.", "Use o icone de instalacao na barra de endereco.", "Confirme para fixar o COS como app."]} />
                   </div>
                 </ModalShell>
               )}
 
               {modal === "meeting" && (
-                <ModalShell title="Gravar reunião" onClose={closeModal}>
+                <ModalShell title="Gravar reuniao" onClose={closeModal}>
                   <div className="space-y-4">
-                    <Field label="Título">
-                      <input
-                        type="text"
-                        value={meetingValues.titulo}
-                        onChange={(e) => setMeetingValues((prev) => ({ ...prev, titulo: e.target.value }))}
-                        placeholder="Título"
-                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:outline-none focus:border-gray-300"
-                      />
+                    <Field label="Titulo">
+                      <input type="text" value={meetingValues.titulo} onChange={(event) => setMeetingValues((prev) => ({ ...prev, titulo: event.target.value }))} placeholder="Titulo" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
                     </Field>
                     <Field label="Participantes">
-                      <input
-                        type="text"
-                        value={meetingValues.participantes}
-                        onChange={(e) => setMeetingValues((prev) => ({ ...prev, participantes: e.target.value }))}
-                        placeholder="Participantes"
-                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:outline-none focus:border-gray-300"
-                      />
+                      <input type="text" value={meetingValues.participantes} onChange={(event) => setMeetingValues((prev) => ({ ...prev, participantes: event.target.value }))} placeholder="Participantes" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
                     </Field>
-                    <Field label="Observações">
-                      <textarea
-                        value={meetingValues.observacoes}
-                        onChange={(e) => setMeetingValues((prev) => ({ ...prev, observacoes: e.target.value }))}
-                        placeholder="Observações"
-                        rows={3}
-                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:outline-none focus:border-gray-300 resize-none"
-                      />
+                    <Field label="Observacoes">
+                      <textarea value={meetingValues.observacoes} onChange={(event) => setMeetingValues((prev) => ({ ...prev, observacoes: event.target.value }))} placeholder="Observacoes" rows={3} className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
                     </Field>
                     <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                      <p className="text-sm text-gray-500">COS Meet será conectado ao backend futuramente.</p>
+                      <p className="text-sm text-gray-500">A transcricao sera ativada quando a IA estiver conectada.</p>
                     </div>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      <button type="button" onClick={() => submitMeetingAction("record")} className="rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white hover:bg-[#1a1a1a] transition-colors">
-                        Iniciar gravação
+                      <button type="button" onClick={() => submitMeetingAction("record")} disabled={isSubmitting} className="rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50">
+                        {isSubmitting ? "Salvando..." : "Iniciar gravacao"}
                       </button>
-                      <button type="button" onClick={() => submitMeetingAction("upload")} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors">
-                        <Upload className="w-4 h-4" />
-                        Upload de áudio
+                      <button type="button" onClick={() => submitMeetingAction("upload")} disabled={isSubmitting} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50">
+                        <Upload className="h-4 w-4" />
+                        Upload de audio
                       </button>
-                      <button type="button" onClick={closeModal} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                      <button type="button" onClick={closeModal} disabled={isSubmitting} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
                         Cancelar
                       </button>
                     </div>
@@ -466,11 +497,11 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600">Tem certeza que deseja remover este item?</p>
                     <div className="flex gap-2">
-                      <button type="button" onClick={closeModal} className="flex-1 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors">
+                      <button type="button" onClick={closeModal} className="flex-1 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200">
                         Cancelar
                       </button>
-                      <button type="button" onClick={confirmDelete} className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white hover:bg-[#1a1a1a] transition-colors">
-                        <Trash2 className="w-4 h-4" />
+                      <button type="button" onClick={confirmDelete} className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">
+                        <Trash2 className="h-4 w-4" />
                         Remover
                       </button>
                     </div>
@@ -485,21 +516,13 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
   )
 }
 
-function ModalShell({
-  title,
-  onClose,
-  children,
-}: {
-  title: string
-  onClose: () => void
-  children: ReactNode
-}) {
+function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-[#0a0a0a]">{title}</h2>
-        <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 transition-colors" aria-label="Fechar">
-          <X className="w-5 h-5 text-gray-500" />
+        <button onClick={onClose} className="rounded-full p-1.5 transition-colors hover:bg-gray-100" aria-label="Fechar">
+          <X className="h-5 w-5 text-gray-500" />
         </button>
       </div>
       {children}
@@ -516,19 +539,11 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function InstallCard({
-  icon: Icon,
-  title,
-  steps,
-}: {
-  icon: typeof Smartphone
-  title: string
-  steps: string[]
-}) {
+function InstallCard({ icon: Icon, title, steps }: { icon: typeof Smartphone; title: string; steps: string[] }) {
   return (
     <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Icon className="w-4 h-4 text-gray-500" />
+      <div className="mb-3 flex items-center gap-2">
+        <Icon className="h-4 w-4 text-gray-500" />
         <span className="text-sm font-semibold text-[#0a0a0a]">{title}</span>
       </div>
       <div className="space-y-2">

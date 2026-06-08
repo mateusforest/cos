@@ -50,7 +50,7 @@ export const novoConfigs: Record<string, NovoConfig> = {
     fields: [
       { name: "nome", label: "Nome da opera\u00e7\u00e3o", type: "text", placeholder: "Nome da opera\u00e7\u00e3o", required: true },
       { name: "responsavel", label: "Respons\u00e1vel", type: "select", options: ["Definir depois"] },
-      { name: "tipo", label: "Tipo", type: "select", options: ["Projeto", "Pedido", "Processo", "Atendimento"] },
+      { name: "tipo", label: "Tipo", type: "select", options: ["Projeto", "Ordem", "Processo", "Atendimento"] },
       { name: "prazo", label: "Prazo", type: "date" },
       { name: "descricao", label: "Descri\u00e7\u00e3o", type: "textarea", placeholder: "Detalhes da opera\u00e7\u00e3o..." },
     ],
@@ -123,7 +123,7 @@ export const novoConfigs: Record<string, NovoConfig> = {
     cta: "Criar documento",
     fields: [
       { name: "titulo", label: "T\u00edtulo", type: "text", placeholder: "Ex: Proposta comercial", required: true },
-      { name: "tipo", label: "Tipo", type: "select", options: ["Proposta", "Termo", "Relat\u00f3rio", "Carta"] },
+      { name: "tipo", label: "Tipo", type: "select", options: ["Contrato", "Arquivo", "Relat\u00f3rio", "Proposta", "Outro"] },
       { name: "conteudo", label: "Conte\u00fado", type: "textarea", placeholder: "Escreva ou pe\u00e7a ao COS para gerar..." },
     ],
   },
