@@ -1,0 +1,152 @@
+"use client"
+
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { motion } from "framer-motion"
+import { ChevronLeft, Send, Mic, Plus, Sparkles, type LucideIcon } from "lucide-react"
+
+export type ChatMessage = {
+  from: "cos" | "user"
+  text: string
+  time: string
+}
+
+export type QuickAction = {
+  label: string
+  icon?: LucideIcon
+  onClick?: () => void
+}
+
+export function AreaChat({
+  title,
+  subtitle,
+  icon: Icon,
+  color = "#0a0a0a",
+  bg = "#f3f4f6",
+  messages = [],
+  quickActions = [],
+  emptyLabel = "Nenhuma mensagem por aqui ainda.",
+}: {
+  title: string
+  subtitle?: string
+  icon: LucideIcon
+  color?: string
+  bg?: string
+  messages?: ChatMessage[]
+  quickActions?: QuickAction[]
+  emptyLabel?: string
+}) {
+  const router = useRouter()
+  const [input, setInput] = useState("")
+  const [chat, setChat] = useState<ChatMessage[]>(messages)
+
+  const send = () => {
+    if (!input.trim()) return
+    const now = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    setChat((prev) => [...prev, { from: "user", text: input, time: now }])
+    setInput("")
+  }
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-120px)] lg:h-full">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white/95 backdrop-blur-lg sticky top-0 z-10">
+        <button
+          onClick={() => router.back()}
+          className="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 transition-colors"
+          aria-label="Voltar"
+        >
+          <ChevronLeft className="w-5 h-5 text-gray-600" />
+        </button>
+        <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bg }}>
+          <Icon className="w-4.5 h-4.5" style={{ color }} />
+        </span>
+        <div className="min-w-0">
+          <h1 className="text-base font-semibold text-[#0a0a0a] truncate">{title}</h1>
+          {subtitle && <p className="text-xs text-gray-500 truncate">{subtitle}</p>}
+        </div>
+      </div>
+
+      {/* History */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        {chat.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-center h-full py-16">
+            <span className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: bg }}>
+              <Icon className="w-6 h-6" style={{ color }} />
+            </span>
+            <p className="text-sm text-gray-500 max-w-xs">{emptyLabel}</p>
+          </div>
+        ) : (
+          chat.map((m, i) => (
+            <motion.div
+              key={i}
+              initial={{ y: 8, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              className={`flex ${m.from === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 ${m.from === "user" ? "bg-[#0a0a0a] text-white" : "bg-white border border-gray-100 text-[#0a0a0a]"}`}>
+                {m.from === "cos" && (
+                  <span className="flex items-center gap-1 text-[10px] font-medium text-gray-400 mb-0.5">
+                    <Sparkles className="w-3 h-3" /> COS
+                  </span>
+                )}
+                <p className="text-sm leading-snug">{m.text}</p>
+                <span className={`block text-[10px] mt-1 ${m.from === "user" ? "text-gray-300" : "text-gray-400"}`}>{m.time}</span>
+              </div>
+            </motion.div>
+          ))
+        )}
+      </div>
+
+      {/* Quick actions */}
+      {quickActions.length > 0 && (
+        <div className="px-4 pb-2 flex gap-2 overflow-x-auto scrollbar-hide">
+          {quickActions.map((a) => (
+            <button
+              key={a.label}
+              onClick={() => {
+                if (a.onClick) {
+                  a.onClick()
+                  return
+                }
+                setInput(a.label)
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-full border border-gray-200 text-xs font-medium text-gray-700 whitespace-nowrap hover:bg-gray-50 transition-colors"
+            >
+              {a.icon && <a.icon className="w-3.5 h-3.5" />}
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Message input */}
+      <div className="px-4 py-3 border-t border-gray-100 bg-white">
+        <div className="flex items-center gap-2">
+          <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors" aria-label="Adicionar">
+            <Plus className="w-5 h-5" />
+          </button>
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && send()}
+              placeholder="Escreva uma mensagem..."
+              className="w-full px-4 py-2.5 bg-gray-50 rounded-full border border-gray-200 text-sm focus:outline-none focus:border-gray-300"
+            />
+          </div>
+          {input.trim() ? (
+            <button onClick={send} className="p-2.5 bg-[#0a0a0a] text-white rounded-full hover:bg-[#1a1a1a] transition-colors" aria-label="Enviar">
+              <Send className="w-4 h-4" />
+            </button>
+          ) : (
+            <button className="p-2.5 text-gray-400 hover:text-gray-600 transition-colors" aria-label="Falar">
+              <Mic className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,231 @@
+"use client"
+
+import { useState } from "react"
+import Image from "next/image"
+import Link from "next/link"
+import { Search, Bell, X, User, SlidersHorizontal, Shield, LogOut, ExternalLink, Clock } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+
+const notifications: { id: number; title: string; desc: string; time: string; dot: string; unread: boolean }[] = []
+
+const searchSuggestions = [
+  { label: "Clientes", href: "/app/conversas/cadastros" },
+  { label: "Operações em andamento", href: "/app/conversas/operacoes" },
+  { label: "Balanço financeiro", href: "/app/conversas/financeiro" },
+  { label: "Reuniões da semana", href: "/app/conversas/reunioes" },
+  { label: "Documentos recentes", href: "/app/conversas/documentos" },
+]
+
+const avatarMenu = [
+  { icon: User, label: "Perfil", href: "/app/voce" },
+  { icon: SlidersHorizontal, label: "Preferências", href: "/app/voce/preferencias" },
+  { icon: Shield, label: "Segurança", href: "/app/voce/seguranca" },
+  { icon: ExternalLink, label: "Acessar Portal", href: "/portal" },
+]
+
+export function HeaderActions({ variant = "mobile" }: { variant?: "mobile" | "desktop" }) {
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [avatarOpen, setAvatarOpen] = useState(false)
+  const [query, setQuery] = useState("")
+
+  const unreadCount = notifications.filter((n) => n.unread).length
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+          aria-label="Buscar"
+        >
+          <Search className="w-5 h-5 text-gray-500" />
+        </button>
+        <button
+          onClick={() => setNotifOpen(true)}
+          className="relative p-2 rounded-full hover:bg-gray-100 transition-colors"
+          aria-label="Notificações"
+        >
+          <Bell className="w-5 h-5 text-gray-500" />
+          {unreadCount > 0 && (
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-orange-500 rounded-full" />
+          )}
+        </button>
+        <div className="relative">
+          <button
+            onClick={() => setAvatarOpen((v) => !v)}
+            className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 block"
+            aria-label="Menu do perfil"
+          >
+            <Image
+              src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=64&h=64&fit=crop&crop=face"
+              alt="Avatar"
+              width={32}
+              height={32}
+              priority
+              className="w-full h-full object-cover"
+            />
+          </button>
+
+          <AnimatePresence>
+            {avatarOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setAvatarOpen(false)} />
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden"
+                >
+                  <div className="flex items-center gap-3 p-4 border-b border-gray-100">
+                    <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-200">
+                      <Image
+                        src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=64&h=64&fit=crop&crop=face"
+                        alt="Avatar"
+                        width={40}
+                        height={40}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[#0a0a0a] truncate">Seu perfil</p>
+                      <p className="text-xs text-gray-500 truncate">Dados da conta</p>
+                    </div>
+                  </div>
+                  <div className="p-1.5">
+                    {avatarMenu.map((item) => (
+                      <Link
+                        key={item.label}
+                        href={item.href}
+                        onClick={() => setAvatarOpen(false)}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors"
+                      >
+                        <item.icon className="w-4 h-4 text-gray-500" />
+                        <span className="text-sm text-[#0a0a0a]">{item.label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                  <div className="p-1.5 border-t border-gray-100">
+                    <Link
+                      href="/login"
+                      onClick={() => setAvatarOpen(false)}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 transition-colors"
+                    >
+                      <LogOut className="w-4 h-4 text-red-500" />
+                      <span className="text-sm text-red-600">Sair</span>
+                    </Link>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {searchOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]"
+              onClick={() => setSearchOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="fixed top-0 left-0 right-0 z-[70] p-4 sm:flex sm:justify-center"
+            >
+              <div className="bg-white rounded-2xl shadow-2xl w-full sm:max-w-xl overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+                  <Search className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                  <input
+                    autoFocus
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Buscar clientes, operações, documentos..."
+                    className="flex-1 min-w-0 text-base outline-none placeholder:text-gray-400"
+                  />
+                  <button onClick={() => setSearchOpen(false)} className="p-1 rounded-full hover:bg-gray-100" aria-label="Fechar">
+                    <X className="w-5 h-5 text-gray-400" />
+                  </button>
+                </div>
+                <div className="p-2 max-h-[60vh] overflow-y-auto">
+                  <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                    {query ? "Resultados" : "Sugestões"}
+                  </p>
+                  {searchSuggestions
+                    .filter((s) => s.label.toLowerCase().includes(query.toLowerCase()))
+                    .map((s) => (
+                      <Link
+                        key={s.label}
+                        href={s.href}
+                        onClick={() => setSearchOpen(false)}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors"
+                      >
+                        <Search className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-[#0a0a0a]">{s.label}</span>
+                      </Link>
+                    ))}
+                  {query && searchSuggestions.filter((s) => s.label.toLowerCase().includes(query.toLowerCase())).length === 0 && (
+                    <div className="px-3 py-8 text-center text-sm text-gray-400">
+                      Nenhum resultado para &quot;{query}&quot;
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {notifOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]"
+              onClick={() => setNotifOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 40 }}
+              transition={{ type: "spring", damping: 30, stiffness: 350 }}
+              className="fixed top-0 right-0 bottom-0 z-[70] w-full sm:max-w-sm bg-white shadow-2xl flex flex-col"
+            >
+              <div className="flex items-center justify-between px-4 h-16 border-b border-gray-100 flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-gray-500" />
+                  <span className="text-base font-semibold text-[#0a0a0a]">Notificações</span>
+                </div>
+                <button onClick={() => setNotifOpen(false)} className="p-2 rounded-full hover:bg-gray-100" aria-label="Fechar">
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-2">
+                <div className="px-4 py-10 text-center text-sm text-gray-500">
+                  Nenhuma notificação ainda.
+                </div>
+              </div>
+              <div className="p-3 border-t border-gray-100 flex-shrink-0">
+                <Link
+                  href="/app/historico"
+                  onClick={() => setNotifOpen(false)}
+                  className="block w-full py-2.5 text-center text-sm font-medium text-gray-600 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  Ver todo o histórico
+                </Link>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
