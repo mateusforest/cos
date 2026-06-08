@@ -1,33 +1,70 @@
 "use client"
 
-import { useState } from "react"
-import { Plus, Search, MoreVertical } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { Plus, Search, Loader2 } from "lucide-react"
 import { MasterHeader } from "@/components/master/master-header"
 import { MasterPageHeader, TableCard, StatusBadge, PrimaryButton } from "@/components/master/master-ui"
 import { useMaster } from "@/components/master/master-store"
+import { getMasterWorkspacesAction } from "@/actions/master"
 
 type Workspace = {
-  nome: string
-  tipo: "Operações" | "Connect"
-  usuarios: number
+  id: string
+  name: string
+  type: string
+  ownerName: string
+  members: number
+  createdAt: string | null
   status: string
-  plano: string
 }
-
-const workspaces: Workspace[] = []
 
 const filtros = ["Todos", "Operações", "Connect"] as const
 
+function formatDateLabel(value: string | null) {
+  if (!value) return "—"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "—"
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date)
+}
+
 export default function MasterWorkspacesPage() {
-  const { openModal, showToast } = useMaster()
+  const { openModal } = useMaster()
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [filtro, setFiltro] = useState<(typeof filtros)[number]>("Todos")
   const [busca, setBusca] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const filtrados = workspaces.filter((w) => {
-    const matchFiltro = filtro === "Todos" || w.tipo === filtro
-    const matchBusca = w.nome.toLowerCase().includes(busca.toLowerCase())
-    return matchFiltro && matchBusca
-  })
+  useEffect(() => {
+    const load = async () => {
+      setIsLoading(true)
+      setError(null)
+      const result = await getMasterWorkspacesAction()
+
+      if (result.error) {
+        setError(result.error)
+        setWorkspaces([])
+        setIsLoading(false)
+        return
+      }
+
+      setWorkspaces((result.workspaces ?? []) as Workspace[])
+      setIsLoading(false)
+    }
+
+    void load()
+  }, [])
+
+  const filtrados = useMemo(() => {
+    return workspaces.filter((workspace) => {
+      const matchFiltro = filtro === "Todos" || workspace.type === filtro
+      const matchBusca = workspace.name.toLowerCase().includes(busca.toLowerCase())
+      return matchFiltro && matchBusca
+    })
+  }, [workspaces, filtro, busca])
 
   return (
     <div className="flex-1 flex flex-col h-full">
@@ -36,9 +73,15 @@ export default function MasterWorkspacesPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
           <MasterPageHeader
             title="Workspaces"
-            description="Ambientes de trabalho provisionados em cada produto do COS."
+            description="Ambientes reais provisionados em cada produto do COS."
             actions={<PrimaryButton icon={Plus} onClick={() => openModal("workspace")}>Novo workspace</PrimaryButton>}
           />
+
+          {error && (
+            <div className="mb-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
 
           <TableCard
             toolbar={
@@ -48,66 +91,65 @@ export default function MasterWorkspacesPage() {
                   <input
                     type="text"
                     value={busca}
-                    onChange={(e) => setBusca(e.target.value)}
+                    onChange={(event) => setBusca(event.target.value)}
                     placeholder="Buscar workspace..."
                     className="w-full sm:w-56 pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
                   />
                 </div>
                 <div className="flex items-center gap-1 bg-gray-50 rounded-lg p-1">
-                  {filtros.map((f) => (
+                  {filtros.map((item) => (
                     <button
-                      key={f}
-                      onClick={() => setFiltro(f)}
+                      key={item}
+                      onClick={() => setFiltro(item)}
                       className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                        filtro === f ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                        filtro === item ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      {f}
+                      {item}
                     </button>
                   ))}
                 </div>
               </div>
             }
           >
-            <table className="w-full min-w-[720px]">
-              <thead>
-                <tr className="text-left text-xs font-medium text-muted-foreground border-b border-gray-100">
-                  <th className="px-5 py-3">Nome</th>
-                  <th className="px-5 py-3">Tipo</th>
-                  <th className="px-5 py-3">Usuários</th>
-                  <th className="px-5 py-3">Plano</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtrados.map((w) => (
-                  <tr key={w.nome} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60 transition-colors">
-                    <td className="px-5 py-3.5 text-sm font-medium">{w.nome}</td>
-                    <td className="px-5 py-3.5 text-sm text-muted-foreground">{w.tipo}</td>
-                    <td className="px-5 py-3.5 text-sm text-muted-foreground">{w.usuarios}</td>
-                    <td className="px-5 py-3.5 text-sm text-muted-foreground">{w.plano}</td>
-                    <td className="px-5 py-3.5"><StatusBadge status={w.status} /></td>
-                    <td className="px-5 py-3.5 text-right">
-                      <button
-                        onClick={() => showToast("Ações do workspace disponíveis após o backend.")}
-                        aria-label={`Ações de ${w.nome}`}
-                        className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                      >
-                        <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                      </button>
-                    </td>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-14 text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Carregando workspaces...
+              </div>
+            ) : (
+              <table className="w-full min-w-[720px]">
+                <thead>
+                  <tr className="text-left text-xs font-medium text-muted-foreground border-b border-gray-100">
+                    <th className="px-5 py-3">Nome</th>
+                    <th className="px-5 py-3">Tipo</th>
+                    <th className="px-5 py-3">Owner</th>
+                    <th className="px-5 py-3">Membros</th>
+                    <th className="px-5 py-3">Criado em</th>
+                    <th className="px-5 py-3">Status</th>
                   </tr>
-                ))}
-                {filtrados.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-5 py-12 text-center text-sm text-muted-foreground">
-                      {busca || filtro !== "Todos" ? "Nenhum workspace encontrado para os filtros atuais." : "Nenhum workspace encontrado."}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filtrados.map((workspace) => (
+                    <tr key={workspace.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60 transition-colors">
+                      <td className="px-5 py-3.5 text-sm font-medium">{workspace.name}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground">{workspace.type}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground">{workspace.ownerName}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground">{workspace.members}</td>
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground">{formatDateLabel(workspace.createdAt)}</td>
+                      <td className="px-5 py-3.5"><StatusBadge status={workspace.status} /></td>
+                    </tr>
+                  ))}
+                  {filtrados.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-12 text-center text-sm text-muted-foreground">
+                        {busca || filtro !== "Todos" ? "Nenhum workspace encontrado para os filtros atuais." : "Nenhum workspace encontrado."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
           </TableCard>
         </div>
       </div>
