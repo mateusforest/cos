@@ -8,16 +8,16 @@ export type AccessRoutingState = {
 }
 
 export function resolveHomePath(access: AccessRoutingState) {
+  if (access.profile?.global_role === "master") {
+    return "/master"
+  }
+
   if (access.workspace?.type === "operations") {
     return "/app"
   }
 
   if (access.workspace?.type === "connect") {
     return "/connect"
-  }
-
-  if (access.profile?.global_role === "master") {
-    return "/master"
   }
 
   return null
