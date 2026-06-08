@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search,
@@ -18,52 +18,101 @@ import {
   X,
   Clock,
   Tag,
+  LifeBuoy,
+  Loader2,
 } from "lucide-react"
 import { useAppInteractions } from "@/components/app/app-interactions"
+import { getWorkspaceActivityLogsAction } from "@/actions/activity"
 
-type Activity = {
-  time: string
-  icon: typeof Users
-  title: string
+type ActivityItem = {
+  id: string
+  area: string
+  action: string
   description: string
-  color: string
-  bgColor: string
-  category: string
-  hasIndicator: boolean
+  createdAt: string | null
+}
+
+const filters = [
+  { id: "todos", icon: Grid3X3, label: "Todos" },
+  { id: "clients", icon: Users, label: "Clientes" },
+  { id: "financeiro", icon: DollarSign, label: "Financeiro" },
+  { id: "support", icon: LifeBuoy, label: "Suporte" },
+  { id: "operacoes", icon: Briefcase, label: "Operações" },
+  { id: "vendas", icon: TrendingUp, label: "Vendas" },
+  { id: "equipe", icon: UsersRound, label: "Equipe" },
+  { id: "documentos", icon: FolderOpen, label: "Documentos" },
+  { id: "reunioes", icon: Video, label: "Reuniões" },
+  { id: "sistema", icon: Settings, label: "Sistema" },
+] as const
+
+function formatDateTime(value: string | null) {
+  if (!value) return "Agora"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "Agora"
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)
+}
+
+function iconForArea(area: string) {
+  if (area === "clients") return Users
+  if (area === "financial") return DollarSign
+  if (area === "support") return LifeBuoy
+  return Settings
+}
+
+function colorForArea(area: string) {
+  if (area === "clients") return { color: "#3b82f6", bgColor: "#dbeafe" }
+  if (area === "financial") return { color: "#22c55e", bgColor: "#dcfce7" }
+  if (area === "support") return { color: "#6b7280", bgColor: "#f3f4f6" }
+  return { color: "#6b7280", bgColor: "#f3f4f6" }
 }
 
 export default function HistoricoPage() {
   const [activeFilter, setActiveFilter] = useState("todos")
-  const [selected, setSelected] = useState<Activity | null>(null)
+  const [selected, setSelected] = useState<ActivityItem | null>(null)
   const [query, setQuery] = useState("")
+  const [logs, setLogs] = useState<ActivityItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const { openFilters } = useAppInteractions()
 
-  const filters = [
-    { id: "todos", icon: Grid3X3, label: "Todos" },
-    { id: "cadastros", icon: Users, label: "Cadastros" },
-    { id: "operacoes", icon: Briefcase, label: "Operações" },
-    { id: "vendas", icon: TrendingUp, label: "Vendas" },
-    { id: "financeiro", icon: DollarSign, label: "Financeiro" },
-    { id: "equipe", icon: UsersRound, label: "Equipe" },
-    { id: "documentos", icon: FolderOpen, label: "Documentos" },
-    { id: "reunioes", icon: Video, label: "Reuniões" },
-    { id: "sistema", icon: Settings, label: "Sistema" },
-  ]
+  useEffect(() => {
+    const load = async () => {
+      setIsLoading(true)
+      setError(null)
+      const result = await getWorkspaceActivityLogsAction()
 
-  const todayActivities: Activity[] = []
-  const yesterdayActivities: Activity[] = []
+      if (result.error) {
+        setError(result.error)
+        setLogs([])
+        setIsLoading(false)
+        return
+      }
 
-  const filterByCategory = (items: Activity[]) => {
-    let result = activeFilter === "todos" ? items : items.filter((a) => a.category === activeFilter)
-    if (query.trim()) {
-      const q = query.toLowerCase()
-      result = result.filter((a) => a.title.toLowerCase().includes(q) || a.description.toLowerCase().includes(q))
+      setLogs((result.logs ?? []) as ActivityItem[])
+      setIsLoading(false)
     }
-    return result
-  }
 
-  const todayFiltered = filterByCategory(todayActivities)
-  const yesterdayFiltered = filterByCategory(yesterdayActivities)
+    void load()
+  }, [])
+
+  const filteredLogs = useMemo(() => {
+    return logs.filter((log) => {
+      const matchesFilter =
+        activeFilter === "todos" ||
+        (activeFilter === "financeiro" ? log.area === "financial" : log.area === activeFilter)
+
+      const term = query.trim().toLowerCase()
+      const matchesSearch =
+        !term || [log.action, log.description].join(" ").toLowerCase().includes(term)
+
+      return matchesFilter && matchesSearch
+    })
+  }, [logs, activeFilter, query])
 
   return (
     <div className="px-4 py-4">
@@ -78,7 +127,7 @@ export default function HistoricoPage() {
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(event) => setQuery(event.target.value)}
             placeholder="Buscar no histórico..."
             className="w-full pl-10 pr-4 py-2.5 bg-white rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-gray-300"
           />
@@ -104,16 +153,48 @@ export default function HistoricoPage() {
         ))}
       </motion.div>
 
-      {todayFiltered.length === 0 && yesterdayFiltered.length === 0 && (
+      {error && <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16 text-sm text-gray-500">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Carregando histórico...
+        </div>
+      ) : filteredLogs.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-sm text-gray-500">Nenhum registro ainda.</p>
         </div>
+      ) : (
+        <div className="space-y-2">
+          {filteredLogs.map((log) => {
+            const Icon = iconForArea(log.area)
+            const tone = colorForArea(log.area)
+            return (
+              <button
+                key={log.id}
+                onClick={() => setSelected(log)}
+                className="flex w-full items-center gap-3 rounded-2xl border border-gray-100 bg-white p-4 text-left hover:bg-gray-50 transition-colors"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl" style={{ backgroundColor: tone.bgColor }}>
+                  <Icon className="h-5 w-5" style={{ color: tone.color }} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-[#0a0a0a]">{log.action}</p>
+                  <p className="truncate text-sm text-gray-500">{log.description}</p>
+                </div>
+                <span className="text-xs text-gray-400">{formatDateTime(log.createdAt)}</span>
+              </button>
+            )
+          })}
+        </div>
       )}
 
-      <div className="flex items-center justify-center gap-2 w-full py-3 text-gray-400">
-        <RefreshCw className="w-4 h-4" />
-        <span>Nenhum histórico para carregar</span>
-      </div>
+      {!isLoading && filteredLogs.length === 0 && (
+        <div className="flex items-center justify-center gap-2 w-full py-3 text-gray-400">
+          <RefreshCw className="w-4 h-4" />
+          <span>Nenhum histórico para carregar</span>
+        </div>
+      )}
 
       <AnimatePresence>
         {selected && (
@@ -123,16 +204,19 @@ export default function HistoricoPage() {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              onClick={(e) => e.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
               className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5"
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <span className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ backgroundColor: selected.bgColor }}>
-                    <selected.icon className="w-5 h-5" style={{ color: selected.color }} />
+                  <span className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ backgroundColor: colorForArea(selected.area).bgColor }}>
+                    {(() => {
+                      const Icon = iconForArea(selected.area)
+                      return <Icon className="w-5 h-5" style={{ color: colorForArea(selected.area).color }} />
+                    })()}
                   </span>
                   <div>
-                    <h3 className="font-semibold text-[#0a0a0a]">{selected.title}</h3>
+                    <h3 className="font-semibold text-[#0a0a0a]">{selected.action}</h3>
                     <p className="text-sm text-gray-500">{selected.description}</p>
                   </div>
                 </div>
@@ -144,17 +228,12 @@ export default function HistoricoPage() {
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="w-4 h-4 text-gray-400" />
                   <span className="text-gray-500">Horário:</span>
-                  <span className="text-[#0a0a0a] font-medium">{selected.time}</span>
+                  <span className="text-[#0a0a0a] font-medium">{formatDateTime(selected.createdAt)}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Tag className="w-4 h-4 text-gray-400" />
                   <span className="text-gray-500">Categoria:</span>
-                  <span className="text-[#0a0a0a] font-medium capitalize">{selected.category}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className={`w-2 h-2 rounded-full ${selected.hasIndicator ? "bg-green-500" : "bg-gray-300"}`} />
-                  <span className="text-gray-500">Status:</span>
-                  <span className="text-[#0a0a0a] font-medium">{selected.hasIndicator ? "Novo" : "Registrado"}</span>
+                  <span className="text-[#0a0a0a] font-medium capitalize">{selected.area}</span>
                 </div>
               </div>
               <button onClick={() => setSelected(null)} className="w-full mt-5 py-3 bg-[#0a0a0a] text-white rounded-xl text-sm font-medium hover:bg-[#1a1a1a] transition-colors">

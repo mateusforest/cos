@@ -2,6 +2,9 @@
 
 import { use } from "react"
 import { PortalModulePage } from "@/components/portal/portal-module-page"
+import { PortalHeader } from "@/components/portal/portal-header"
+import { ClientsManager } from "@/components/operations/clients-manager"
+import { FinancialManager } from "@/components/operations/financial-manager"
 
 const SECTION_META: Record<string, { title: string; description: string; ctaLabel: string; emptyLabel: string; listHref: string }> = {
   conversas: {
@@ -90,6 +93,33 @@ function titleize(slug: string) {
 export default function PortalSectionPage({ params }: { params: Promise<{ slug: string[] }> }) {
   const { slug } = use(params)
   const key = slug[slug.length - 1]
+
+  if (key === "cadastros") {
+    return (
+      <div className="flex-1 flex flex-col h-full">
+        <PortalHeader />
+        <ClientsManager
+          title="Clientes"
+          description="Gerencie clientes e relacionamentos reais do seu workspace."
+          variant="portal"
+        />
+      </div>
+    )
+  }
+
+  if (key === "balanco") {
+    return (
+      <div className="flex-1 flex flex-col h-full">
+        <PortalHeader />
+        <FinancialManager
+          title="Balanço"
+          description="Visualize o balanço consolidado do seu workspace com dados reais."
+          variant="portal"
+        />
+      </div>
+    )
+  }
+
   const meta = SECTION_META[key] ?? {
     title: titleize(key),
     description: "Gerencie esta área do portal com busca, filtros e ação principal.",

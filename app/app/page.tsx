@@ -27,6 +27,9 @@ import {
 import { useSupport } from "@/components/support/support-context"
 import { toast } from "@/hooks/use-toast"
 import { useAuth } from "@/components/auth/auth-provider"
+import { getClientsAction } from "@/actions/clients"
+import { getFinancialSummaryAction } from "@/actions/financial"
+import { getWorkspaceMembersAction } from "@/actions/workspace"
 
 type ModalType = "sugerir" | "passo" | "meet" | "editar" | null
 type MicState = "idle" | "listening" | "processing" | "unsupported" | "error"
@@ -89,6 +92,7 @@ export default function AppHomePage() {
   const [seconds, setSeconds] = useState(0)
   const [micState, setMicState] = useState<MicState>("idle")
   const [micPreview, setMicPreview] = useState("")
+  const [balance, setBalance] = useState({ anterior: 0, ganhos: 0, gastos: 0 })
   const { openSupport } = useSupport()
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
@@ -101,6 +105,56 @@ export default function AppHomePage() {
     }
   }, [])
 
+  useEffect(() => {
+    const loadStats = async () => {
+      const [clientsResult, financialResult, membersResult] = await Promise.all([
+        getClientsAction(),
+        getFinancialSummaryAction(),
+        getWorkspaceMembersAction(),
+      ])
+
+      setShortcuts((prev) =>
+        prev.map((shortcut) => {
+          if (shortcut.id === "clientes") {
+            return {
+              ...shortcut,
+              value: String(clientsResult.success ? (clientsResult.clients?.filter((client) => client.status === "active").length ?? 0) : 0),
+            }
+          }
+
+          if (shortcut.id === "balanco") {
+            return {
+              ...shortcut,
+              value:
+                financialResult.success && financialResult.summary
+                  ? formatCurrency(financialResult.summary.balance)
+                  : "R$ 0,00",
+            }
+          }
+
+          if (shortcut.id === "equipe") {
+            return {
+              ...shortcut,
+              value: String(membersResult.success ? (membersResult.members?.length ?? 0) : 0),
+            }
+          }
+
+          return shortcut
+        }),
+      )
+
+      if (financialResult.success && financialResult.summary) {
+        setBalance({
+          anterior: 0,
+          ganhos: financialResult.summary.totalIncome,
+          gastos: financialResult.summary.totalExpense,
+        })
+      }
+    }
+
+    void loadStats()
+  }, [])
+
   const quickActions = [
     { icon: Sparkles, label: "Sugerir ação", onClick: () => setModal("sugerir") },
     { icon: ArrowRight, label: "Próximo passo", onClick: () => setModal("passo") },
@@ -108,7 +162,6 @@ export default function AppHomePage() {
     { icon: LifeBuoy, label: "Suporte", onClick: openSupport },
   ]
 
-  const balance = { anterior: 0, ganhos: 0, gastos: 0 }
   const saldoFinal = balance.anterior + balance.ganhos - balance.gastos
   const enabledShortcuts = shortcuts.filter((s) => s.enabled)
   const displayName = profile?.full_name || user?.email?.split("@")[0] || "sua equipe"

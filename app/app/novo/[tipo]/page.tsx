@@ -1,20 +1,23 @@
 "use client"
 
-import { useState, use } from "react"
+import { use, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { motion } from "framer-motion"
 import { ChevronLeft, Check, Camera, Upload, FileQuestion } from "lucide-react"
+import { createClientAction } from "@/actions/clients"
+import { createFinancialEntryAction } from "@/actions/financial"
 import { novoConfigs, fotoConfig, type NovoConfig } from "@/lib/novo-configs"
 
 export default function NovoPage({ params }: { params: Promise<{ tipo: string }> }) {
   const { tipo } = use(params)
-  const router = useRouter()
   const [submitted, setSubmitted] = useState(false)
+  const [formValues, setFormValues] = useState<Record<string, string>>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState("")
 
   const config: NovoConfig | undefined = tipo === "foto" ? fotoConfig : novoConfigs[tipo]
 
-  // Unknown type — honest fallback, never a 404
   if (!config) {
     return (
       <div className="px-4 py-4 max-w-lg mx-auto">
@@ -37,6 +40,32 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
 
   const Icon = config.icon
 
+  const submitForm = async () => {
+    if (tipo === "cliente") {
+      return createClientAction({
+        name: formValues.nome ?? "",
+        email: formValues.email ?? "",
+        phone: formValues.telefone ?? "",
+        company: formValues.empresa ?? "",
+        notes: formValues.observacoes ?? "",
+        status: (formValues.status ?? "Ativo").toLowerCase() === "arquivado" ? "archived" : "active",
+      })
+    }
+
+    if (tipo === "financeiro") {
+      return createFinancialEntryAction({
+        type: formValues.tipo ?? "Ganho",
+        title: formValues.titulo ?? "",
+        amount: formValues.valor ?? "",
+        category: formValues.categoria ?? "",
+        dueDate: formValues.data ?? "",
+        notes: formValues.observacoes ?? "",
+      })
+    }
+
+    return { success: true }
+  }
+
   if (submitted) {
     return (
       <div className="px-4 py-4 max-w-lg mx-auto">
@@ -52,7 +81,10 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
           <p className="text-sm text-gray-500 mb-6">{config.title} salvo com sucesso.</p>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setSubmitted(false)}
+              onClick={() => {
+                setSubmitted(false)
+                setFormValues({})
+              }}
               className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
             >
               Criar outro
@@ -70,7 +102,6 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
     <div className="px-4 py-4 max-w-lg mx-auto">
       <BackButton />
 
-      {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <span className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: config.bg }}>
           <Icon className="w-6 h-6" style={{ color: config.color }} />
@@ -81,8 +112,25 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
         </div>
       </div>
 
+      {error && <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+
       <form
-        onSubmit={(e) => { e.preventDefault(); setSubmitted(true) }}
+        onSubmit={async (event) => {
+          event.preventDefault()
+          setIsSubmitting(true)
+          setError("")
+
+          const result = await submitForm()
+
+          setIsSubmitting(false)
+
+          if ("error" in result && result.error) {
+            setError(result.error)
+            return
+          }
+
+          setSubmitted(true)
+        }}
         className="space-y-4"
       >
         {tipo === "foto" ? (
@@ -96,6 +144,8 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
               {field.type === "textarea" ? (
                 <textarea
                   required={field.required}
+                  value={formValues[field.name] ?? ""}
+                  onChange={(event) => setFormValues((prev) => ({ ...prev, [field.name]: event.target.value }))}
                   placeholder={field.placeholder}
                   rows={3}
                   className="w-full px-3.5 py-2.5 bg-white rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-gray-400 resize-none"
@@ -103,12 +153,13 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
               ) : field.type === "select" ? (
                 <select
                   required={field.required}
-                  defaultValue=""
+                  value={formValues[field.name] ?? ""}
+                  onChange={(event) => setFormValues((prev) => ({ ...prev, [field.name]: event.target.value }))}
                   className="w-full px-3.5 py-2.5 bg-white rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-gray-400 appearance-none"
                 >
                   <option value="" disabled>Selecione...</option>
-                  {field.options?.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
+                  {field.options?.map((option) => (
+                    <option key={option} value={option}>{option}</option>
                   ))}
                 </select>
               ) : field.type === "file" ? (
@@ -121,6 +172,8 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
                 <input
                   type={field.type}
                   required={field.required}
+                  value={formValues[field.name] ?? ""}
+                  onChange={(event) => setFormValues((prev) => ({ ...prev, [field.name]: event.target.value }))}
                   placeholder={field.placeholder}
                   className="w-full px-3.5 py-2.5 bg-white rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-gray-400"
                 />
@@ -131,9 +184,10 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
 
         <button
           type="submit"
-          className="w-full py-3 bg-[#0a0a0a] text-white rounded-xl text-sm font-medium hover:bg-[#1a1a1a] transition-colors mt-2"
+          disabled={isSubmitting}
+          className="w-full py-3 bg-[#0a0a0a] text-white rounded-xl text-sm font-medium hover:bg-[#1a1a1a] transition-colors mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {config.cta}
+          {isSubmitting ? "Salvando..." : config.cta}
         </button>
       </form>
     </div>
@@ -155,8 +209,8 @@ function BackButton() {
 function PhotoCapture() {
   const [preview, setPreview] = useState<string | null>(null)
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (file) setPreview(URL.createObjectURL(file))
   }
 

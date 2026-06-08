@@ -17,6 +17,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
+import { createClientAction } from "@/actions/clients"
 
 type QuickActionType = "cliente" | "documento" | "operacao" | "reuniao" | "tarefa" | "relatorio"
 type PortalModal = "quickActions" | "quickActionForm" | "install" | "meeting" | "delete" | "filters" | null
@@ -171,7 +172,34 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
     [],
   )
 
-  const submitQuickAction = () => {
+  const submitQuickAction = async () => {
+    if (selectedAction === "cliente") {
+      const result = await createClientAction({
+        name: formValues.nome ?? "",
+        email: formValues.email ?? "",
+        phone: formValues.telefone ?? "",
+        company: "",
+        notes: "",
+        status: "active",
+      })
+
+      if (result.error) {
+        toast({
+          title: "Não foi possível salvar",
+          description: result.error,
+        })
+        return
+      }
+
+      toast({
+        title: "Cliente criado",
+        description: "O cliente foi salvo com sucesso.",
+      })
+      setFormValues({})
+      closeModal()
+      return
+    }
+
     toast({
       title: `${quickActionConfigs[selectedAction].title} preparado`,
       description: "O cadastro será concluído quando o backend estiver conectado.",

@@ -26,6 +26,8 @@ import Link from "next/link"
 import { PortalHeader } from "@/components/portal/portal-header"
 import { usePortalInteractions } from "@/components/portal/portal-interactions"
 import { toast } from "@/hooks/use-toast"
+import { getFinancialSummaryAction } from "@/actions/financial"
+import { getWorkspaceActivityLogsAction } from "@/actions/activity"
 
 type Insight = {
   id: string
@@ -69,7 +71,7 @@ type SpeechRecognitionLike = {
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
 
-const stats = [
+const defaultStats = [
   {
     label: "Tarefas de hoje",
     value: "0",
@@ -150,6 +152,8 @@ export default function PortalHomePage() {
   const [audioPlaying, setAudioPlaying] = useState(false)
   const [micState, setMicState] = useState<MicState>("idle")
   const [micPreview, setMicPreview] = useState("")
+  const [stats, setStats] = useState(defaultStats)
+  const [recentActivities, setRecentActivities] = useState<Array<{ id: string; action: string; description: string }>>([])
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
@@ -159,6 +163,36 @@ export default function PortalHomePage() {
     return () => {
       recognitionRef.current?.stop()
     }
+  }, [])
+
+  useEffect(() => {
+    const loadPortalData = async () => {
+      const [financialResult, activityResult] = await Promise.all([
+        getFinancialSummaryAction(),
+        getWorkspaceActivityLogsAction(),
+      ])
+
+      if (financialResult.success && financialResult.summary) {
+        setStats((prev) =>
+          prev.map((stat) => {
+            if (stat.label === "Ganhos do mês") {
+              return {
+                ...stat,
+                value: financialResult.summary.monthIncome.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+                sublabel: financialResult.summary.monthIncome > 0 ? "Entradas reais registradas" : "Nenhum faturamento registrado",
+              }
+            }
+            return stat
+          }),
+        )
+      }
+
+      if (activityResult.success) {
+        setRecentActivities((activityResult.logs ?? []).slice(0, 5) as Array<{ id: string; action: string; description: string }>)
+      }
+    }
+
+    void loadPortalData()
   }, [])
 
   const getGreeting = () => {
@@ -504,7 +538,18 @@ export default function PortalHomePage() {
                   <h2 className="font-semibold">Atividades recentes</h2>
                   <Link href="/portal/operacoes" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Ver todas</Link>
                 </div>
-                <div className="py-10 text-center text-sm text-muted-foreground">Nenhum registro ainda.</div>
+                {recentActivities.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">Nenhum registro ainda.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {recentActivities.map((activity) => (
+                      <div key={activity.id} className="rounded-xl border border-gray-100 px-4 py-3">
+                        <p className="text-sm font-medium text-[#0a0a0a]">{activity.action}</p>
+                        <p className="text-sm text-muted-foreground">{activity.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </motion.div>
             </div>
           </div>
