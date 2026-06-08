@@ -20,6 +20,7 @@ type AuthState = {
   profile: ProfileRecord | null
   workspace: WorkspaceRecord | null
   membershipRole: string | null
+  canManageWorkspace: boolean
   isLoading: boolean
   refresh: () => Promise<void>
 }
@@ -80,6 +81,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       workspace,
       membershipRole,
+      canManageWorkspace:
+        profile?.global_role === "master" ||
+        membershipRole === "owner" ||
+        membershipRole === "admin",
       isLoading,
       refresh,
     }),

@@ -27,6 +27,7 @@ import {
   Headphones,
   Star,
 } from "lucide-react"
+import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
 import { PortalUIProvider, usePortalUI } from "@/components/portal/portal-ui-context"
 import { PortalInteractionsProvider, usePortalInteractions } from "@/components/portal/portal-interactions"
 import { Toaster } from "@/components/ui/toaster"
@@ -55,12 +56,14 @@ const favoriteItems = [
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   return (
-    <PortalUIProvider>
-      <PortalInteractionsProvider>
-        <PortalShell>{children}</PortalShell>
-        <Toaster />
-      </PortalInteractionsProvider>
-    </PortalUIProvider>
+    <ProtectedRouteGuard>
+      <PortalUIProvider>
+        <PortalInteractionsProvider>
+          <PortalShell>{children}</PortalShell>
+          <Toaster />
+        </PortalInteractionsProvider>
+      </PortalUIProvider>
+    </ProtectedRouteGuard>
   )
 }
 

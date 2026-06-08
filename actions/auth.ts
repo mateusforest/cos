@@ -4,16 +4,18 @@ import { createSupabaseServerClient } from "@/lib/supabase/server"
 import {
   bootstrapWorkspaceForUser,
   getUserAccessForUser,
-  resolveHomePath,
+  resolvePostAuthPath,
   type WorkspaceType,
 } from "@/lib/auth"
 
 export async function loginAction({
   email,
   password,
+  nextPath,
 }: {
   email: string
   password: string
+  nextPath?: string | null
 }) {
   const supabase = await createSupabaseServerClient()
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -32,7 +34,7 @@ export async function loginAction({
   const access = await getUserAccessForUser(data.user, supabase)
 
   return {
-    redirectTo: resolveHomePath(access),
+    redirectTo: resolvePostAuthPath(access, nextPath),
   }
 }
 

@@ -36,7 +36,7 @@ export function HeaderActions() {
   const [isPending, startTransition] = useTransition()
 
   const unreadCount = notifications.filter((item) => item.unread).length
-  const displayName = profile?.name || user?.email || "Seu perfil"
+  const displayName = profile?.full_name || user?.email || "Seu perfil"
   const displayEmail = profile?.email || user?.email || "Nenhum e-mail cadastrado"
   const displayAvatar =
     profile?.avatar_url ||

@@ -70,6 +70,8 @@ export function ConnectProvider({ children }: { children: ReactNode }) {
       const result = await updatePrimarySystemAction({
         primarySystemName: system.name,
         primarySystemUrl: system.url,
+        primarySystemType: system.type,
+        primarySystemNotes: system.notes ?? "",
       })
 
       if (result.error) {
@@ -95,8 +97,9 @@ export function ConnectProvider({ children }: { children: ReactNode }) {
     workspace?.primary_system_name || workspace?.primary_system_url
       ? {
           name: workspace?.primary_system_name ?? "Sistema principal",
-          type: workspace?.type === "connect" ? "Connect" : "Sistema",
+          type: workspace?.metadata?.primary_system_type || "Sistema",
           url: workspace?.primary_system_url ?? "",
+          notes: workspace?.metadata?.primary_system_notes || "",
         }
       : null
 

@@ -21,8 +21,8 @@ export function PortalHeader({ placeholder = "Pergunte ao COS..." }: { placehold
   const [isPending, startTransition] = useTransition()
 
   const unreadCount = notifications.filter((item) => item.unread && !reads.includes(item.id)).length
-  const initials = (profile?.name || user?.email || "C").trim().charAt(0).toUpperCase()
-  const displayName = profile?.name || user?.email || "Sua conta"
+  const initials = (profile?.full_name || user?.email || "C").trim().charAt(0).toUpperCase()
+  const displayName = profile?.full_name || user?.email || "Sua conta"
   const displayRole = profile?.global_role === "master" ? "Master" : "Administrador"
 
   const submitSearch = (e: React.FormEvent) => {

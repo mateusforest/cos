@@ -7,6 +7,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { AuthLayout } from "@/components/cos/auth-layout"
 import { loginAction } from "@/actions/auth"
+import { PublicAuthRouteGuard } from "@/components/auth/auth-route-guard"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -21,22 +22,30 @@ export default function LoginPage() {
     setError("")
 
     startTransition(async () => {
-      const result = await loginAction({ email, password })
+      const result = await loginAction({
+        email,
+        password,
+        nextPath:
+          typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null,
+      })
 
       if (result.error) {
         setError(result.error)
         return
       }
 
-      const nextPath =
-        typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null
-      router.replace(nextPath || result.redirectTo || "/app")
+      if (result.redirectTo) {
+        router.replace(result.redirectTo)
+      } else {
+        router.refresh()
+      }
       router.refresh()
     })
   }
 
   return (
-    <AuthLayout>
+    <PublicAuthRouteGuard>
+      <AuthLayout>
       <div className="flex justify-center mb-8">
         <Image
           src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/COS%20LOGO%20%281%29-mBU7xqdIZoWP3indGVxJrDFLu8urZH.png"
@@ -124,6 +133,7 @@ export default function LoginPage() {
           Criar conta
         </Link>
       </p>
-    </AuthLayout>
+      </AuthLayout>
+    </PublicAuthRouteGuard>
   )
 }

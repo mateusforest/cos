@@ -9,6 +9,7 @@ import { Layers, Plug, ArrowLeft, Check, ChevronRight } from "lucide-react"
 import { AuthLayout } from "@/components/cos/auth-layout"
 import { signupAction } from "@/actions/auth"
 import type { WorkspaceType } from "@/lib/auth"
+import { PublicAuthRouteGuard } from "@/components/auth/auth-route-guard"
 
 type ProductType = WorkspaceType
 type Step = "produto" | "conta"
@@ -101,7 +102,8 @@ export default function CadastroPage() {
   }
 
   return (
-    <AuthLayout>
+    <PublicAuthRouteGuard>
+      <AuthLayout>
       <div className="flex justify-center mb-8">
         <Image
           src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/COS%20LOGO%20%281%29-mBU7xqdIZoWP3indGVxJrDFLu8urZH.png"
@@ -333,6 +335,7 @@ export default function CadastroPage() {
           </motion.div>
         )}
       </AnimatePresence>
-    </AuthLayout>
+      </AuthLayout>
+    </PublicAuthRouteGuard>
   )
 }

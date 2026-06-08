@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { ConnectProvider, useConnect } from "@/components/connect/connect-store"
 import { ConnectModals } from "@/components/connect/connect-modals"
 import { ConnectHeaderActions } from "@/components/connect/connect-header-actions"
+import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
 import { useState, createContext, useContext } from "react"
 import { SupportProvider, useSupport } from "@/components/support/support-context"
 
@@ -358,8 +359,10 @@ function ConnectProviders({ children }: { children: React.ReactNode }) {
 
 export default function ConnectLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ConnectProviders>
-      <ConnectShell>{children}</ConnectShell>
-    </ConnectProviders>
+    <ProtectedRouteGuard>
+      <ConnectProviders>
+        <ConnectShell>{children}</ConnectShell>
+      </ConnectProviders>
+    </ProtectedRouteGuard>
   )
 }

@@ -21,6 +21,7 @@ import {
   ChevronRight,
   ShieldCheck,
 } from "lucide-react"
+import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
 import { MasterProvider, useMaster } from "@/components/master/master-store"
 import { MasterModals, MasterToast } from "@/components/master/master-modals"
 
@@ -144,8 +145,10 @@ function MasterShell({ children }: { children: React.ReactNode }) {
 
 export default function MasterLayout({ children }: { children: React.ReactNode }) {
   return (
-    <MasterProvider>
-      <MasterShell>{children}</MasterShell>
-    </MasterProvider>
+    <ProtectedRouteGuard>
+      <MasterProvider>
+        <MasterShell>{children}</MasterShell>
+      </MasterProvider>
+    </ProtectedRouteGuard>
   )
 }

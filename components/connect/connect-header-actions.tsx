@@ -26,7 +26,7 @@ export function ConnectHeaderActions() {
   const [query, setQuery] = useState("")
   const [isPending, startTransition] = useTransition()
 
-  const displayName = profile?.name || user?.email || "Seu perfil"
+  const displayName = profile?.full_name || user?.email || "Seu perfil"
   const displayEmail = profile?.email || user?.email || "Nenhum e-mail cadastrado"
   const displayAvatar =
     profile?.avatar_url ||

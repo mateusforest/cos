@@ -1,12 +1,30 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js"
 import { createSupabaseAdminClient } from "@/lib/supabase/server"
+import {
+  canAccessPath,
+  resolveHomePath,
+  resolvePostAuthPath,
+} from "@/lib/auth-routing"
 
 export type WorkspaceType = "operations" | "connect"
 export type GlobalRole = "master" | string | null
+export type WorkspaceRole = "owner" | "admin" | "member" | string | null
+
+export type WorkspaceMetadata = {
+  segment?: string
+  cnpj?: string
+  phone?: string
+  email?: string
+  site?: string
+  address?: string
+  primary_system_type?: string
+  primary_system_notes?: string
+  [key: string]: unknown
+}
 
 export type ProfileRecord = {
   id: string
-  name: string | null
+  full_name: string | null
   email: string | null
   phone: string | null
   avatar_url: string | null
@@ -20,19 +38,24 @@ export type WorkspaceRecord = {
   owner_id: string | null
   primary_system_name: string | null
   primary_system_url: string | null
+  metadata: WorkspaceMetadata | null
 }
 
 export type UserAccess = {
   user: User
   profile: ProfileRecord | null
   workspace: WorkspaceRecord | null
-  membershipRole: string | null
+  membershipRole: WorkspaceRole
 }
 
 type QueryClient = Pick<SupabaseClient, "from">
 
 function getQueryClient(queryClient?: QueryClient) {
   return queryClient ?? createSupabaseAdminClient()
+}
+
+export function canManageWorkspace(access: Pick<UserAccess, "profile" | "membershipRole">) {
+  return access.profile?.global_role === "master" || access.membershipRole === "owner" || access.membershipRole === "admin"
 }
 
 export async function getUserAccessForUser(user: User, queryClient?: QueryClient): Promise<UserAccess> {
@@ -50,26 +73,20 @@ export async function getUserAccessForUser(user: User, queryClient?: QueryClient
   const [{ data: profile }, { data: memberships }] = await Promise.all([
     client
       .from("profiles")
-      .select("id, name, email, phone, avatar_url, global_role")
+      .select("id, full_name, email, phone, avatar_url, global_role")
       .eq("id", user.id)
       .maybeSingle<ProfileRecord>(),
-    client
-      .from("workspace_members")
-      .select("workspace_id, role")
-      .eq("user_id", user.id),
+    client.from("workspace_members").select("workspace_id, role").eq("user_id", user.id),
   ])
 
-  const preferredMembership =
-    memberships?.find((membership) => membership.role === "owner") ??
-    memberships?.[0] ??
-    null
+  const preferredMembership = memberships?.find((membership) => membership.role === "owner") ?? memberships?.[0] ?? null
 
   let workspace: WorkspaceRecord | null = null
 
   if (preferredMembership?.workspace_id) {
     const { data } = await client
       .from("workspaces")
-      .select("id, name, type, owner_id, primary_system_name, primary_system_url")
+      .select("id, name, type, owner_id, primary_system_name, primary_system_url, metadata")
       .eq("id", preferredMembership.workspace_id)
       .maybeSingle<WorkspaceRecord>()
 
@@ -84,41 +101,7 @@ export async function getUserAccessForUser(user: User, queryClient?: QueryClient
   }
 }
 
-export function resolveHomePath(access: Pick<UserAccess, "profile" | "workspace">) {
-  if (access.workspace?.type === "operations") {
-    return "/app"
-  }
-
-  if (access.workspace?.type === "connect") {
-    return "/connect"
-  }
-
-  if (access.profile?.global_role === "master") {
-    return "/master"
-  }
-
-  return "/login"
-}
-
-export function canAccessPath(pathname: string, access: Pick<UserAccess, "profile" | "workspace">) {
-  if (pathname.startsWith("/master")) {
-    return access.profile?.global_role === "master"
-  }
-
-  if (pathname.startsWith("/connect")) {
-    return access.workspace?.type === "connect"
-  }
-
-  if (pathname.startsWith("/portal")) {
-    return access.workspace?.type === "operations"
-  }
-
-  if (pathname.startsWith("/app")) {
-    return access.workspace?.type === "operations"
-  }
-
-  return true
-}
+export { canAccessPath, resolveHomePath, resolvePostAuthPath }
 
 export async function bootstrapWorkspaceForUser({
   userId,
@@ -146,7 +129,7 @@ export async function bootstrapWorkspaceForUser({
   const { error: profileError } = await client.from("profiles").upsert(
     {
       id: userId,
-      name: normalizedName,
+      full_name: normalizedName,
       email,
     },
     {
@@ -171,7 +154,7 @@ export async function bootstrapWorkspaceForUser({
     const workspaceId = existingMemberships[0].workspace_id
     const { data: existingWorkspace, error: existingWorkspaceError } = await client
       .from("workspaces")
-      .select("id, name, type, owner_id, primary_system_name, primary_system_url")
+      .select("id, name, type, owner_id, primary_system_name, primary_system_url, metadata")
       .eq("id", workspaceId)
       .maybeSingle<WorkspaceRecord>()
 
@@ -190,8 +173,9 @@ export async function bootstrapWorkspaceForUser({
       name: normalizedName,
       type: productType,
       owner_id: userId,
+      metadata: {},
     })
-    .select("id, name, type, owner_id, primary_system_name, primary_system_url")
+    .select("id, name, type, owner_id, primary_system_name, primary_system_url, metadata")
     .single<WorkspaceRecord>()
 
   if (workspaceError || !workspace) {

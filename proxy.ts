@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { createServerClient } from "@supabase/ssr"
-import { canAccessPath, getUserAccessForUser, resolveHomePath } from "@/lib/auth"
 
 function getPublicSupabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -15,16 +14,7 @@ function getPublicSupabaseEnv() {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
-  const isProtectedRoute =
-    pathname.startsWith("/app") ||
-    pathname.startsWith("/connect") ||
-    pathname.startsWith("/portal") ||
-    pathname.startsWith("/master")
-  const isAuthRoute = pathname === "/login" || pathname === "/cadastro"
-
-  if (!isProtectedRoute && !isAuthRoute) {
-    return NextResponse.next()
-  }
+  const appOrigin = process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin
 
   const response = NextResponse.next({
     request: {
@@ -52,28 +42,14 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   if (!user) {
-    if (isProtectedRoute) {
-      const loginUrl = new URL("/login", request.url)
-      loginUrl.searchParams.set("next", pathname)
-      return NextResponse.redirect(loginUrl)
-    }
-
-    return response
-  }
-
-  const access = await getUserAccessForUser(user, supabase)
-
-  if (isAuthRoute) {
-    return NextResponse.redirect(new URL(resolveHomePath(access), request.url))
-  }
-
-  if (!canAccessPath(pathname, access)) {
-    return NextResponse.redirect(new URL(resolveHomePath(access), request.url))
+    const loginUrl = new URL("/login", appOrigin)
+    loginUrl.searchParams.set("next", pathname)
+    return NextResponse.redirect(loginUrl)
   }
 
   return response
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/connect/:path*", "/portal/:path*", "/master/:path*", "/login", "/cadastro"],
+  matcher: ["/app/:path*", "/connect/:path*", "/portal/:path*", "/master/:path*"],
 }

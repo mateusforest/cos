@@ -42,6 +42,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion"
 import { HeaderActions } from "@/components/app/header-actions"
 import { AppInteractionsProvider } from "@/components/app/app-interactions"
+import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
 import { SupportProvider, useSupport } from "@/components/support/support-context"
 import { Toaster } from "@/components/ui/toaster"
 
@@ -532,11 +533,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <SupportProvider>
-      <AppInteractionsProvider>
-        <AppShell>{children}</AppShell>
-        <Toaster />
-      </AppInteractionsProvider>
-    </SupportProvider>
+    <ProtectedRouteGuard>
+      <SupportProvider>
+        <AppInteractionsProvider>
+          <AppShell>{children}</AppShell>
+          <Toaster />
+        </AppInteractionsProvider>
+      </SupportProvider>
+    </ProtectedRouteGuard>
   )
 }
