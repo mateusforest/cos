@@ -2,8 +2,8 @@
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Headset, LifeBuoy, CreditCard, Plug, HelpCircle, X, Send } from "lucide-react"
-import { toast } from "@/hooks/use-toast"
+import { Headset, LifeBuoy, CreditCard, Plug, HelpCircle, Loader2, X, Send } from "lucide-react"
+import { createSupportTicketAction } from "@/actions/support"
 
 export type SupportCategory =
   | "Dúvida sobre o COS"
@@ -15,6 +15,7 @@ export type SupportCategory =
 type SupportContextValue = {
   openSupport: (category?: SupportCategory) => void
   closeSupport: () => void
+  refreshKey: number
 }
 
 type SupportOption = {
@@ -48,16 +49,22 @@ export function SupportProvider({ children }: { children: ReactNode }) {
   const [subject, setSubject] = useState("")
   const [description, setDescription] = useState("")
   const [priority, setPriority] = useState<(typeof priorities)[number]>("Média")
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
   const reset = () => {
     setCategory("Dúvida sobre o COS")
     setSubject("")
     setDescription("")
     setPriority("Média")
+    setFeedback(null)
+    setIsSubmitting(false)
   }
 
   const closeSupport = () => {
     setOpen(false)
+    reset()
   }
 
   const openSupport = (nextCategory?: SupportCategory) => {
@@ -65,6 +72,7 @@ export function SupportProvider({ children }: { children: ReactNode }) {
     setSubject("")
     setDescription("")
     setPriority("Média")
+    setFeedback(null)
     setOpen(true)
   }
 
@@ -72,17 +80,34 @@ export function SupportProvider({ children }: { children: ReactNode }) {
     () => ({
       openSupport,
       closeSupport,
+      refreshKey,
     }),
-    [],
+    [refreshKey],
   )
 
-  const submit = () => {
-    toast({
-      title: "Solicitação registrada",
-      description: "Solicitação registrada localmente. O envio real será ativado com o backend.",
+  const submit = async () => {
+    setIsSubmitting(true)
+    setFeedback(null)
+
+    const result = await createSupportTicketAction({
+      category,
+      subject,
+      description,
+      priority,
     })
-    reset()
-    closeSupport()
+
+    if (result.error) {
+      setFeedback({ type: "error", message: result.error })
+      setIsSubmitting(false)
+      return
+    }
+
+    setFeedback({ type: "success", message: result.message ?? "Chamado criado com sucesso." })
+    setRefreshKey((current) => current + 1)
+    setSubject("")
+    setDescription("")
+    setPriority("Média")
+    setIsSubmitting(false)
   }
 
   return (
@@ -114,6 +139,18 @@ export function SupportProvider({ children }: { children: ReactNode }) {
               </div>
 
               <div className="space-y-4">
+                {feedback && (
+                  <div
+                    className={`rounded-2xl border p-4 text-sm leading-relaxed ${
+                      feedback.type === "success"
+                        ? "border-green-100 bg-green-50 text-green-700"
+                        : "border-red-100 bg-red-50 text-red-700"
+                    }`}
+                  >
+                    {feedback.message}
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   {supportOptions.map((option) => (
                     <button
@@ -135,7 +172,7 @@ export function SupportProvider({ children }: { children: ReactNode }) {
                   <Field label="Categoria">
                     <select
                       value={category}
-                      onChange={(e) => setCategory(e.target.value as SupportCategory)}
+                      onChange={(event) => setCategory(event.target.value as SupportCategory)}
                       className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-[#0a0a0a] focus:outline-none focus:border-gray-300"
                     >
                       {supportOptions.map((option) => (
@@ -150,7 +187,7 @@ export function SupportProvider({ children }: { children: ReactNode }) {
                     <input
                       type="text"
                       value={subject}
-                      onChange={(e) => setSubject(e.target.value)}
+                      onChange={(event) => setSubject(event.target.value)}
                       placeholder="Descreva o assunto"
                       className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-[#0a0a0a] focus:outline-none focus:border-gray-300"
                     />
@@ -159,7 +196,7 @@ export function SupportProvider({ children }: { children: ReactNode }) {
                   <Field label="Descrição">
                     <textarea
                       value={description}
-                      onChange={(e) => setDescription(e.target.value)}
+                      onChange={(event) => setDescription(event.target.value)}
                       placeholder="Conte um pouco mais sobre o que você precisa."
                       rows={4}
                       className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-[#0a0a0a] focus:outline-none focus:border-gray-300 resize-none"
@@ -186,7 +223,7 @@ export function SupportProvider({ children }: { children: ReactNode }) {
 
                 <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
                   <p className="text-sm text-gray-500 leading-relaxed">
-                    Seu chamado será registrado quando o backend estiver conectado.
+                    Seu chamado será salvo no suporte real do COS e ficará disponível nesta conversa.
                   </p>
                 </div>
 
@@ -194,16 +231,18 @@ export function SupportProvider({ children }: { children: ReactNode }) {
                   <button
                     type="button"
                     onClick={closeSupport}
-                    className="flex-1 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors"
+                    disabled={isSubmitting}
+                    className="flex-1 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-60"
                   >
                     Cancelar
                   </button>
                   <button
                     type="button"
                     onClick={submit}
-                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white hover:bg-[#1a1a1a] transition-colors"
+                    disabled={isSubmitting}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white hover:bg-[#1a1a1a] transition-colors disabled:opacity-60"
                   >
-                    <Send className="w-4 h-4" />
+                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     Enviar solicitação
                   </button>
                 </div>

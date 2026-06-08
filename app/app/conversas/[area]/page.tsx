@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, MessageSquare } from "lucide-react"
 import { AreaChat } from "@/components/app/area-chat"
+import { SupportWorkspaceCenter } from "@/components/support/support-workspace-center"
 import { useSupport } from "@/components/support/support-context"
 import { areaConfigs, slug } from "@/lib/area-configs"
 
@@ -32,6 +33,10 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
   }
 
   const Icon = config.icon
+
+  if (area === "suporte") {
+    return <SupportWorkspaceCenter backHref="/app/conversas" compact />
+  }
 
   if (config.subsections.length === 0) {
     return (

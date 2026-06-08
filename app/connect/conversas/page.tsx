@@ -1,13 +1,22 @@
 "use client"
 
+import Link from "next/link"
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  Search, SlidersHorizontal, ChevronRight, ChevronDown, Plug,
-  Database, FileSpreadsheet, Mail, MessageCircle, Users, LifeBuoy,
+  Search,
+  SlidersHorizontal,
+  ChevronRight,
+  ChevronDown,
+  Plug,
+  Database,
+  FileSpreadsheet,
+  Mail,
+  MessageCircle,
+  Users,
+  LifeBuoy,
 } from "lucide-react"
 import { useConnect } from "@/components/connect/connect-store"
-import { useSupport } from "@/components/support/support-context"
 
 const sourceTypeIcon: Record<string, typeof Database> = {
   ERP: Database,
@@ -20,7 +29,6 @@ const sourceTypeIcon: Record<string, typeof Database> = {
 
 export default function ConnectConversasPage() {
   const { sources, hasSources, openModal, toast } = useConnect()
-  const { openSupport } = useSupport()
   const [searchQuery, setSearchQuery] = useState("")
   const [expanded, setExpanded] = useState<string | null>(null)
 
@@ -35,19 +43,19 @@ export default function ConnectConversasPage() {
     ...(hasSources
       ? [
           { id: "geral", label: "Geral", type: "Geral", subsections: [] as string[], description: "Visão geral das fontes conectadas." },
-          ...sources.map((s) => ({
-            id: s.id,
-            label: s.name,
-            type: s.type,
-            subsections: s.sections,
-            description: s.sections.length > 0 ? `${s.sections.length} seções disponíveis` : "Toque para conversar",
+          ...sources.map((source) => ({
+            id: source.id,
+            label: source.name,
+            type: source.type,
+            subsections: source.sections,
+            description: source.sections.length > 0 ? `${source.sections.length} seções disponíveis` : "Toque para conversar",
           })),
         ]
       : []),
   ]
 
-  const filtered = connectSections.filter((c) =>
-    c.label.toLowerCase().includes(searchQuery.toLowerCase()),
+  const filtered = connectSections.filter((conversation) =>
+    conversation.label.toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
   return (
@@ -63,7 +71,7 @@ export default function ConnectConversasPage() {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Buscar conversas..."
             className="w-full pl-10 pr-4 py-2.5 bg-white rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-gray-300"
           />
@@ -75,52 +83,64 @@ export default function ConnectConversasPage() {
       </motion.div>
 
       <div className="space-y-1">
-        {filtered.map((conv, index) => {
-          const isOpen = expanded === conv.id
-          const Icon = conv.id === "support" ? LifeBuoy : sourceTypeIcon[conv.type] ?? Plug
-          const isSupport = conv.id === "support"
+        {filtered.map((conversation, index) => {
+          const isOpen = expanded === conversation.id
+          const isSupport = conversation.id === "support"
+          const Icon = isSupport ? LifeBuoy : sourceTypeIcon[conversation.type] ?? Plug
 
           return (
             <motion.div
-              key={conv.id}
+              key={conversation.id}
               initial={{ x: -10, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.05 + index * 0.03 }}
               className="bg-white rounded-xl border border-gray-100 overflow-hidden"
             >
-              <button
-                onClick={() => {
-                  if (isSupport) {
-                    openSupport()
-                    return
-                  }
-                  if (conv.subsections.length > 0) {
-                    setExpanded(isOpen ? null : conv.id)
-                    return
-                  }
-                  toast(`Conversa de ${conv.label} em preparação.`)
-                }}
-                className="flex items-center gap-3 p-3 w-full hover:bg-gray-50 active:bg-gray-100 transition-colors"
-              >
-                <div className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-                  <Icon className="w-5 h-5 text-gray-600" />
-                </div>
-                <div className="flex-1 min-w-0 text-left">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="font-semibold text-[#0a0a0a] text-sm">{conv.label}</span>
-                    <span className="text-xs text-gray-400">{conv.type}</span>
+              {isSupport ? (
+                <Link href="/connect/conversas/suporte" className="flex items-center gap-3 p-3 w-full hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                  <div className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-5 h-5 text-gray-600" />
                   </div>
-                  <span className="text-xs text-gray-500 truncate block">{conv.description}</span>
-                </div>
-                {conv.subsections.length > 0 ? (
-                  <ChevronDown className={`w-4 h-4 text-gray-300 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                ) : (
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="font-semibold text-[#0a0a0a] text-sm">{conversation.label}</span>
+                      <span className="text-xs text-gray-400">{conversation.type}</span>
+                    </div>
+                    <span className="text-xs text-gray-500 truncate block">{conversation.description}</span>
+                  </div>
                   <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
-                )}
-              </button>
+                </Link>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (conversation.subsections.length > 0) {
+                      setExpanded(isOpen ? null : conversation.id)
+                      return
+                    }
+                    toast(`Conversa de ${conversation.label} em preparação.`)
+                  }}
+                  className="flex items-center gap-3 p-3 w-full hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                >
+                  <div className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-5 h-5 text-gray-600" />
+                  </div>
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="font-semibold text-[#0a0a0a] text-sm">{conversation.label}</span>
+                      <span className="text-xs text-gray-400">{conversation.type}</span>
+                    </div>
+                    <span className="text-xs text-gray-500 truncate block">{conversation.description}</span>
+                  </div>
+                  {conversation.subsections.length > 0 ? (
+                    <ChevronDown className={`w-4 h-4 text-gray-300 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                  )}
+                </button>
+              )}
 
               <AnimatePresence initial={false}>
-                {isOpen && conv.subsections.length > 0 && (
+                {!isSupport && isOpen && conversation.subsections.length > 0 && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
@@ -129,13 +149,13 @@ export default function ConnectConversasPage() {
                     className="overflow-hidden border-t border-gray-50"
                   >
                     <div className="p-2 pl-4">
-                      {conv.subsections.map((sub) => (
+                      {conversation.subsections.map((subsection) => (
                         <button
-                          key={sub}
-                          onClick={() => toast(`${sub} (${conv.label}) em preparação.`)}
+                          key={subsection}
+                          onClick={() => toast(`${subsection} (${conversation.label}) em preparação.`)}
                           className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-50 active:bg-gray-100 transition-colors w-full"
                         >
-                          <span className="text-sm text-gray-700">{sub}</span>
+                          <span className="text-sm text-gray-700">{subsection}</span>
                           <ChevronRight className="w-4 h-4 text-gray-300" />
                         </button>
                       ))}
