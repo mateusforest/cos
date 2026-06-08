@@ -1,30 +1,19 @@
 "use client"
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  type ReactNode,
-} from "react"
+import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { CheckCircle2 } from "lucide-react"
+import { useAuth } from "@/components/auth/auth-provider"
+import { updatePrimarySystemAction } from "@/actions/workspace"
 
-/**
- * Estrutura de uma fonte conectada no COS Connect.
- * Preparada para futuramente receber dados reais de
- * Supabase / APIs externas / planilhas / WhatsApp / e-mail.
- */
 export type ConnectSource = {
   id: string
   name: string
-  type: string // ERP, CRM, Planilha, E-mail, WhatsApp, Banco de dados, Outro
+  type: string
   status: "connected" | "preparing"
-  /** Seções que a fonte expõe (Clientes, Pedidos, Financeiro...) */
   sections: string[]
 }
 
-/** Sistema principal que a empresa já utiliza. */
 export type MainSystem = {
   name: string
   type: string
@@ -44,21 +33,14 @@ export type ConnectModal =
   | null
 
 type ConnectContextValue = {
-  /** Fontes conectadas. Por padrão vazio -> mostra onboarding. */
   sources: ConnectSource[]
   hasSources: boolean
   addSource: (source: ConnectSource) => void
-
-  /** Sistema principal (CTA "Acessar Sistema" na tela Você). */
   mainSystem: MainSystem | null
-  setMainSystem: (system: MainSystem) => void
-
-  /** Controle de modais reutilizáveis. */
+  setMainSystem: (system: MainSystem) => Promise<{ error?: string }>
   modal: ConnectModal
   openModal: (modal: ConnectModal) => void
   closeModal: () => void
-
-  /** Toast honesto para CTAs ainda sem backend. */
   toast: (message: string) => void
 }
 
@@ -71,34 +53,52 @@ export function useConnect() {
 }
 
 export function ConnectProvider({ children }: { children: ReactNode }) {
-  // Estado inicial limpo: nenhuma integração ativa -> onboarding.
+  const { workspace, refresh } = useAuth()
   const [sources, setSources] = useState<ConnectSource[]>([])
-  const [mainSystem, setMainSystemState] = useState<MainSystem | null>(null)
   const [modal, setModal] = useState<ConnectModal>(null)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
 
   const addSource = useCallback((source: ConnectSource) => {
     setSources((prev) => {
-      if (prev.some((s) => s.id === source.id)) return prev
+      if (prev.some((item) => item.id === source.id)) return prev
       return [...prev, source]
     })
   }, [])
 
-  const setMainSystem = useCallback((system: MainSystem) => {
-    setMainSystemState(system)
-  }, [])
+  const setMainSystem = useCallback(
+    async (system: MainSystem) => {
+      const result = await updatePrimarySystemAction({
+        primarySystemName: system.name,
+        primarySystemUrl: system.url,
+      })
 
-  const openModal = useCallback((m: ConnectModal) => setModal(m), [])
+      if (result.error) {
+        return { error: result.error }
+      }
+
+      await refresh()
+      return {}
+    },
+    [refresh],
+  )
+
+  const openModal = useCallback((value: ConnectModal) => setModal(value), [])
   const closeModal = useCallback(() => setModal(null), [])
 
   const toast = useCallback((message: string) => {
     setToastMsg(message)
     window.clearTimeout((toast as unknown as { _t?: number })._t)
-    ;(toast as unknown as { _t?: number })._t = window.setTimeout(
-      () => setToastMsg(null),
-      2800,
-    )
+    ;(toast as unknown as { _t?: number })._t = window.setTimeout(() => setToastMsg(null), 2800)
   }, [])
+
+  const mainSystem =
+    workspace?.primary_system_name || workspace?.primary_system_url
+      ? {
+          name: workspace?.primary_system_name ?? "Sistema principal",
+          type: workspace?.type === "connect" ? "Connect" : "Sistema",
+          url: workspace?.primary_system_url ?? "",
+        }
+      : null
 
   return (
     <ConnectContext.Provider
@@ -116,7 +116,6 @@ export function ConnectProvider({ children }: { children: ReactNode }) {
     >
       {children}
 
-      {/* Toast honesto */}
       <AnimatePresence>
         {toastMsg && (
           <motion.div

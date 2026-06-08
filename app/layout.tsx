@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { AuthProvider } from '@/components/auth/auth-provider'
 import './globals.css'
 
 const geist = Geist({ 
@@ -38,7 +39,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={`${geist.variable} bg-[#f5f5f3]`}>
       <body className="font-sans antialiased bg-[#f5f5f3]">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

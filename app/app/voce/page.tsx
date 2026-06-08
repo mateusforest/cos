@@ -31,17 +31,11 @@ import {
   ShieldCheck,
 } from "lucide-react"
 import { useAppInteractions } from "@/components/app/app-interactions"
+import { useAuth } from "@/components/auth/auth-provider"
 
 type SheetType = "idioma" | "aparencia" | "faturamento" | "pacotes" | "pin" | "biometria" | null
 
 export default function VocePage() {
-  const [user] = useState({
-    name: "Mateus Maraschin",
-    email: "mateus@conta.com",
-    phone: "+55 (54) 99999-9999",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&h=120&fit=crop&crop=face",
-  })
-
   const [sheet, setSheet] = useState<SheetType>(null)
   const [language, setLanguage] = useState("Português")
   const [appearance, setAppearance] = useState("Sistema")
@@ -50,6 +44,7 @@ export default function VocePage() {
     email: true,
     resumos: false,
   })
+  const { user, profile, workspace } = useAuth()
   const {
     openCompany,
     openTeam,
@@ -59,6 +54,15 @@ export default function VocePage() {
     openPayment,
   } = useAppInteractions()
 
+  const displayUser = {
+    name: profile?.name || user?.email || "Seu perfil",
+    email: profile?.email || user?.email || "Nenhum e-mail cadastrado ainda.",
+    phone: profile?.phone || "Nenhum telefone cadastrado ainda.",
+    avatar:
+      profile?.avatar_url ||
+      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&h=120&fit=crop&crop=face",
+  }
+
   const languages = ["Português", "Inglês", "Espanhol"]
   const appearances = [
     { label: "Claro", icon: Sun },
@@ -67,7 +71,7 @@ export default function VocePage() {
   ]
 
   const companyItems = [
-    { icon: Building2, label: "Minha empresa", sublabel: "Nenhuma empresa cadastrada ainda", onClick: openCompany },
+    { icon: Building2, label: "Minha empresa", sublabel: workspace?.name || "Nenhuma empresa cadastrada ainda", onClick: openCompany },
     { icon: Users, label: "Equipe", sublabel: "Nenhum usuário cadastrado ainda", onClick: openTeam },
     { icon: CreditCard, label: "Assinatura e plano", sublabel: "Nenhuma assinatura ativa ainda", onClick: openSubscription },
   ]
@@ -137,7 +141,7 @@ export default function VocePage() {
         <div className="flex items-center gap-4 w-full">
           <div className="relative">
             <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-gray-200">
-              <Image src={user.avatar} alt={user.name} width={64} height={64} className="w-full h-full object-cover" />
+              <Image src={displayUser.avatar} alt={displayUser.name} width={64} height={64} className="w-full h-full object-cover" />
             </div>
             <button type="button" aria-label="Alterar foto de perfil" className="absolute bottom-0 right-0 w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center border-2 border-white">
               <Camera className="w-3.5 h-3.5 text-gray-600" />
@@ -145,9 +149,9 @@ export default function VocePage() {
           </div>
           <button type="button" className="flex items-center gap-4 flex-1 text-left min-w-0">
             <div className="flex-1 min-w-0">
-              <div className="text-lg font-semibold text-[#0a0a0a]">{user.name}</div>
-              <div className="text-sm text-gray-500 truncate">{user.email}</div>
-              <div className="text-sm text-gray-500">{user.phone}</div>
+              <div className="text-lg font-semibold text-[#0a0a0a]">{displayUser.name}</div>
+              <div className="text-sm text-gray-500 truncate">{displayUser.email}</div>
+              <div className="text-sm text-gray-500">{displayUser.phone}</div>
             </div>
             <ChevronRight className="w-5 h-5 text-gray-300 flex-shrink-0" />
           </button>
@@ -209,7 +213,7 @@ export default function VocePage() {
               <div key={opt.key} className="flex items-center justify-between">
                 <span className="text-sm text-gray-700">{opt.label}</span>
                 <button
-                  onClick={() => setNotifications((n) => ({ ...n, [opt.key]: !n[opt.key] }))}
+                  onClick={() => setNotifications((current) => ({ ...current, [opt.key]: !current[opt.key] }))}
                   className={`w-11 h-6 rounded-full transition-colors relative ${notifications[opt.key] ? "bg-[#0a0a0a]" : "bg-gray-200"}`}
                   aria-label={opt.label}
                 >
@@ -269,18 +273,18 @@ export default function VocePage() {
                 <>
                   <SheetHeader title="Aparência" onClose={closeSheet} />
                   <div className="space-y-1">
-                    {appearances.map((opt) => (
+                    {appearances.map((option) => (
                       <button
-                        key={opt.label}
+                        key={option.label}
                         onClick={() => {
-                          setAppearance(opt.label)
+                          setAppearance(option.label)
                           closeSheet()
                         }}
                         className="flex items-center gap-3 w-full py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors"
                       >
-                        <opt.icon className="w-5 h-5 text-gray-600" />
-                        <span className="flex-1 text-left text-sm font-medium text-[#0a0a0a]">{opt.label}</span>
-                        {appearance === opt.label && <Check className="w-5 h-5 text-[#0a0a0a]" />}
+                        <option.icon className="w-5 h-5 text-gray-600" />
+                        <span className="flex-1 text-left text-sm font-medium text-[#0a0a0a]">{option.label}</span>
+                        {appearance === option.label && <Check className="w-5 h-5 text-[#0a0a0a]" />}
                       </button>
                     ))}
                   </div>

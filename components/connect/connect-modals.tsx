@@ -122,6 +122,7 @@ export function ConnectModals() {
   const [sysType, setSysType] = useState(sourceTypes[0])
   const [sysUrl, setSysUrl] = useState("")
   const [sysNotes, setSysNotes] = useState("")
+  const [systemError, setSystemError] = useState("")
 
   const cameraRef = useRef<HTMLInputElement>(null)
   const uploadRef = useRef<HTMLInputElement>(null)
@@ -132,6 +133,7 @@ export function ConnectModals() {
     setEmailProvider(emailProviders[0]); setEmailAddress("")
     setWaNumber(""); setWaChannel("")
     setSysName(""); setSysType(sourceTypes[0]); setSysUrl(""); setSysNotes("")
+    setSystemError("")
   }
 
   const finish = (source: Omit<ConnectSource, "status">, message: string) => {
@@ -284,11 +286,18 @@ export function ConnectModals() {
             <ModalShell title="Configurar sistema principal" onClose={closeModal}>
               <form
                 className="space-y-4"
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault()
+                  setSystemError("")
                   let url = sysUrl.trim()
                   if (url && !/^https?:\/\//i.test(url)) url = "https://" + url
-                  setMainSystem({ name: sysName, type: sysType, url, notes: sysNotes })
+                  const result = await setMainSystem({ name: sysName, type: sysType, url, notes: sysNotes })
+
+                  if (result.error) {
+                    setSystemError(result.error)
+                    return
+                  }
+
                   reset()
                   closeModal()
                   toast("Sistema principal configurado.")
@@ -313,6 +322,7 @@ export function ConnectModals() {
                 <Field label="Observações">
                   <textarea className={inputClass + " resize-none"} rows={2} value={sysNotes} onChange={(e) => setSysNotes(e.target.value)} placeholder="Opcional" />
                 </Field>
+                {systemError && <p className="text-sm text-red-600">{systemError}</p>}
                 <SubmitButton label="Salvar sistema" disabled={!sysName || !sysUrl} />
               </form>
             </ModalShell>

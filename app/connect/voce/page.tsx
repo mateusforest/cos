@@ -32,6 +32,7 @@ import {
   UserPlus,
 } from "lucide-react"
 import { useConnect } from "@/components/connect/connect-store"
+import { useAuth } from "@/components/auth/auth-provider"
 
 type SheetType =
   | "idioma"
@@ -47,21 +48,23 @@ type SheetType =
 
 export default function ConnectVocePage() {
   const { sources, mainSystem, openModal } = useConnect()
+  const { user, profile, workspace } = useAuth()
   const connected = sources
-
-  const [user] = useState({
-    name: "Mateus Maraschin",
-    email: "mateus@conta.com",
-    phone: "+55 (54) 99999-9999",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&h=120&fit=crop&crop=face",
-  })
-
   const [sheet, setSheet] = useState<SheetType>(null)
-  const [language, setLanguage] = useState("Portugu\u00eas")
+  const [language, setLanguage] = useState("Português")
   const [appearance, setAppearance] = useState("Sistema")
   const [notifications, setNotifications] = useState({ push: true, email: true, resumos: false })
 
-  const languages = ["Portugu\u00eas", "Ingl\u00eas", "Espanhol"]
+  const displayUser = {
+    name: profile?.name || user?.email || "Seu perfil",
+    email: profile?.email || user?.email || "Nenhum e-mail cadastrado ainda.",
+    phone: profile?.phone || "Nenhum telefone cadastrado ainda.",
+    avatar:
+      profile?.avatar_url ||
+      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&h=120&fit=crop&crop=face",
+  }
+
+  const languages = ["Português", "Inglês", "Espanhol"]
   const appearances = [
     { label: "Claro", icon: Sun },
     { label: "Escuro", icon: Moon },
@@ -120,8 +123,8 @@ export default function ConnectVocePage() {
   return (
     <div className="px-4 py-6 pb-32">
       <motion.div initial={{ y: -10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mb-4">
-        <h1 className="text-2xl font-bold text-[#0a0a0a] mb-0.5">{"Voc\u00ea"}</h1>
-        <p className="text-sm text-gray-500">{"Gerencie seu perfil, fontes e prefer\u00eancias."}</p>
+        <h1 className="text-2xl font-bold text-[#0a0a0a] mb-0.5">Você</h1>
+        <p className="text-sm text-gray-500">Gerencie seu perfil, fontes e preferências.</p>
       </motion.div>
 
       <motion.div
@@ -133,7 +136,7 @@ export default function ConnectVocePage() {
         <div className="flex items-center gap-4 w-full">
           <div className="relative">
             <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-gray-200">
-              <Image src={user.avatar} alt={user.name} width={64} height={64} className="w-full h-full object-cover" />
+              <Image src={displayUser.avatar} alt={displayUser.name} width={64} height={64} className="w-full h-full object-cover" />
             </div>
             <button type="button" aria-label="Alterar foto de perfil" className="absolute bottom-0 right-0 w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center border-2 border-white">
               <Camera className="w-3.5 h-3.5 text-gray-600" />
@@ -141,9 +144,9 @@ export default function ConnectVocePage() {
           </div>
           <button type="button" className="flex items-center gap-4 flex-1 text-left min-w-0">
             <div className="flex-1 min-w-0">
-              <div className="text-lg font-semibold text-[#0a0a0a]">{user.name}</div>
-              <div className="text-sm text-gray-500 truncate">{user.email}</div>
-              <div className="text-sm text-gray-500">{user.phone}</div>
+              <div className="text-lg font-semibold text-[#0a0a0a]">{displayUser.name}</div>
+              <div className="text-sm text-gray-500 truncate">{displayUser.email}</div>
+              <div className="text-sm text-gray-500">{displayUser.phone}</div>
             </div>
             <ChevronRight className="w-5 h-5 text-gray-300 flex-shrink-0" />
           </button>
@@ -164,8 +167,8 @@ export default function ConnectVocePage() {
         </h3>
         <p className="text-sm text-gray-500 mb-3">
           {mainSystem
-            ? `O COS est\u00e1 conectado ao ${mainSystem.name}. Abra-o quando precisar trabalhar diretamente no sistema.`
-            : "Defina o sistema que voc\u00ea mais usa para acess\u00e1-lo rapidamente pelo COS."}
+            ? `O COS está conectado ao ${mainSystem.name}. Abra-o quando precisar trabalhar diretamente no sistema.`
+            : "Defina o sistema que você mais usa para acessá-lo rapidamente pelo COS."}
         </p>
         {mainSystem ? (
           <div className="flex items-center gap-2">
@@ -198,7 +201,7 @@ export default function ConnectVocePage() {
       </motion.div>
 
       <Section title="Minha empresa" delay={0.18}>
-        <MenuItem icon={Building2} label="Dados da empresa" sublabel={"Raz\u00e3o social, CNPJ e endere\u00e7o"} onClick={() => setSheet("empresa")} />
+        <MenuItem icon={Building2} label="Dados da empresa" sublabel={workspace?.name || "Nenhuma empresa cadastrada ainda"} onClick={() => setSheet("empresa")} />
         <MenuItem
           icon={Layers}
           label="Sistema principal conectado"
@@ -206,27 +209,24 @@ export default function ConnectVocePage() {
           sublabelColor={mainSystem ? "#22c55e" : "#9ca3af"}
           onClick={() => openModal("mainSystem")}
         />
-        <MenuItem icon={Settings2} label={"Prefer\u00eancias da empresa"} sublabel={"Configura\u00e7\u00f5es gerais do espa\u00e7o"} onClick={() => setSheet("empresa")} />
+        <MenuItem icon={Settings2} label="Preferências da empresa" sublabel="Configurações gerais do espaço" onClick={() => setSheet("empresa")} />
       </Section>
 
       <Section title="Equipe" delay={0.2}>
-        <MenuItem icon={Users} label="Membros" sublabel={"Pessoas com acesso ao espa\u00e7o"} onClick={() => setSheet("equipe")} />
+        <MenuItem icon={Users} label="Membros" sublabel="Pessoas com acesso ao espaço" onClick={() => setSheet("equipe")} />
         <MenuItem icon={UserPlus} label="Convites" sublabel="Convide novos membros" onClick={() => setSheet("equipe")} />
-        <MenuItem icon={ShieldCheck} label={"Permiss\u00f5es"} sublabel={"Defina pap\u00e9is e acessos"} onClick={() => setSheet("equipe")} />
+        <MenuItem icon={ShieldCheck} label="Permissões" sublabel="Defina papéis e acessos" onClick={() => setSheet("equipe")} />
       </Section>
 
       <Section title="Assinatura e plano" delay={0.22}>
         <MenuItem icon={CreditCard} label="Plano atual" sublabel="Nenhum plano ativo" onClick={() => setSheet("assinatura")} />
-        <MenuItem icon={Users} label={"Usu\u00e1rios inclu\u00eddos"} sublabel="Limites e uso do plano" onClick={() => setSheet("assinatura")} />
-        <MenuItem icon={Check} label="Status da assinatura" sublabel={"N\u00e3o configurado"} onClick={() => setSheet("assinatura")} />
+        <MenuItem icon={Users} label="Usuários incluídos" sublabel="Limites e uso do plano" onClick={() => setSheet("assinatura")} />
+        <MenuItem icon={Check} label="Status da assinatura" sublabel="Não configurado" onClick={() => setSheet("assinatura")} />
       </Section>
 
       <Section title="Fontes conectadas" delay={0.2}>
         {connected.length === 0 ? (
-          <button
-            onClick={() => openModal("system")}
-            className="flex items-center gap-4 w-full p-4 hover:bg-gray-50 transition-colors"
-          >
+          <button onClick={() => openModal("system")} className="flex items-center gap-4 w-full p-4 hover:bg-gray-50 transition-colors">
             <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
               <Plug className="w-5 h-5 text-gray-600" />
             </div>
@@ -238,20 +238,17 @@ export default function ConnectVocePage() {
           </button>
         ) : (
           <>
-            {connected.map((s) => (
+            {connected.map((source) => (
               <MenuItem
-                key={s.id}
+                key={source.id}
                 icon={Plug}
-                label={s.name}
-                sublabel={"Em prepara\u00e7\u00e3o"}
+                label={source.name}
+                sublabel="Em preparação"
                 sublabelColor="#9ca3af"
                 onClick={() => openModal("mainSystem")}
               />
             ))}
-            <button
-              onClick={() => openModal("system")}
-              className="flex items-center gap-4 w-full p-4 hover:bg-gray-50 transition-colors"
-            >
+            <button onClick={() => openModal("system")} className="flex items-center gap-4 w-full p-4 hover:bg-gray-50 transition-colors">
               <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
                 <Plug className="w-5 h-5 text-gray-600" />
               </div>
@@ -266,33 +263,33 @@ export default function ConnectVocePage() {
       </Section>
 
       <Section title="Faturamento COS" delay={0.26}>
-        <MenuItem icon={Receipt} label="Faturamento do COS" sublabel={"Hist\u00f3rico, notas fiscais e cobran\u00e7as"} onClick={() => setSheet("faturamento")} />
-        <MenuItem icon={Package} label="Pacotes extras" sublabel={"Cr\u00e9ditos IA, armazenamento e usu\u00e1rios"} onClick={() => setSheet("pacotes")} />
+        <MenuItem icon={Receipt} label="Faturamento do COS" sublabel="Histórico, notas fiscais e cobranças" onClick={() => setSheet("faturamento")} />
+        <MenuItem icon={Package} label="Pacotes extras" sublabel="Créditos IA, armazenamento e usuários" onClick={() => setSheet("pacotes")} />
       </Section>
 
-      <Section title={"Prefer\u00eancias"} delay={0.3}>
-        <MenuItem icon={Globe} label={"Idioma e regi\u00e3o"} sublabel={language} onClick={() => setSheet("idioma")} />
-        <MenuItem icon={Moon} label={"Apar\u00eancia"} sublabel={appearance} onClick={() => setSheet("aparencia")} />
+      <Section title="Preferências" delay={0.3}>
+        <MenuItem icon={Globe} label="Idioma e região" sublabel={language} onClick={() => setSheet("idioma")} />
+        <MenuItem icon={Moon} label="Aparência" sublabel={appearance} onClick={() => setSheet("aparencia")} />
         <div className="p-4">
           <div className="flex items-center gap-4 mb-3">
             <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
               <Bell className="w-5 h-5 text-gray-600" />
             </div>
             <div className="flex-1">
-              <div className="font-medium text-[#0a0a0a]">{"Notifica\u00e7\u00f5es"}</div>
-              <div className="text-sm text-gray-500">{"Gerencie como voc\u00ea recebe alertas"}</div>
+              <div className="font-medium text-[#0a0a0a]">Notificações</div>
+              <div className="text-sm text-gray-500">Gerencie como você recebe alertas</div>
             </div>
           </div>
           <div className="space-y-2 pl-14">
             {[
-              { key: "push" as const, label: "Notifica\u00e7\u00f5es push" },
+              { key: "push" as const, label: "Notificações push" },
               { key: "email" as const, label: "Alertas por e-mail" },
-              { key: "resumos" as const, label: "Resumos di\u00e1rios" },
+              { key: "resumos" as const, label: "Resumos diários" },
             ].map((opt) => (
               <div key={opt.key} className="flex items-center justify-between">
                 <span className="text-sm text-gray-700">{opt.label}</span>
                 <button
-                  onClick={() => setNotifications((n) => ({ ...n, [opt.key]: !n[opt.key] }))}
+                  onClick={() => setNotifications((current) => ({ ...current, [opt.key]: !current[opt.key] }))}
                   className={`w-11 h-6 rounded-full transition-colors relative ${notifications[opt.key] ? "bg-[#0a0a0a]" : "bg-gray-200"}`}
                   aria-label={opt.label}
                 >
@@ -304,10 +301,10 @@ export default function ConnectVocePage() {
         </div>
       </Section>
 
-      <Section title={"Seguran\u00e7a"} delay={0.35}>
+      <Section title="Segurança" delay={0.35}>
         <MenuItem icon={Smartphone} label="PIN de acesso" sublabel="Ativado" sublabelColor="#22c55e" onClick={() => setSheet("pin")} />
         <MenuItem icon={Scan} label="Face ID / Biometria" sublabel="Ativado neste dispositivo" sublabelColor="#22c55e" onClick={() => setSheet("biometria")} />
-        <MenuItem icon={Lock} label={"Senha e sess\u00f5es"} sublabel="Gerencie acessos e dispositivos" href="/connect/voce/seguranca" />
+        <MenuItem icon={Lock} label="Senha e sessões" sublabel="Gerencie acessos e dispositivos" href="/connect/voce/seguranca" />
       </Section>
 
       <AnimatePresence>
@@ -329,7 +326,7 @@ export default function ConnectVocePage() {
             >
               {sheet === "idioma" && (
                 <>
-                  <SheetHeader title={"Idioma e regi\u00e3o"} onClose={closeSheet} />
+                  <SheetHeader title="Idioma e região" onClose={closeSheet} />
                   <div className="space-y-1">
                     {languages.map((lang) => (
                       <button
@@ -350,20 +347,20 @@ export default function ConnectVocePage() {
 
               {sheet === "aparencia" && (
                 <>
-                  <SheetHeader title={"Apar\u00eancia"} onClose={closeSheet} />
+                  <SheetHeader title="Aparência" onClose={closeSheet} />
                   <div className="space-y-1">
-                    {appearances.map((opt) => (
+                    {appearances.map((option) => (
                       <button
-                        key={opt.label}
+                        key={option.label}
                         onClick={() => {
-                          setAppearance(opt.label)
+                          setAppearance(option.label)
                           closeSheet()
                         }}
                         className="flex items-center gap-3 w-full py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors"
                       >
-                        <opt.icon className="w-5 h-5 text-gray-600" />
-                        <span className="flex-1 text-left text-sm font-medium text-[#0a0a0a]">{opt.label}</span>
-                        {appearance === opt.label && <Check className="w-5 h-5 text-[#0a0a0a]" />}
+                        <option.icon className="w-5 h-5 text-gray-600" />
+                        <span className="flex-1 text-left text-sm font-medium text-[#0a0a0a]">{option.label}</span>
+                        {appearance === option.label && <Check className="w-5 h-5 text-[#0a0a0a]" />}
                       </button>
                     ))}
                   </div>
@@ -376,7 +373,7 @@ export default function ConnectVocePage() {
                   <div className="flex items-start gap-3 p-4 rounded-xl bg-gray-50 border border-gray-100 mb-4">
                     <span className="mt-0.5 w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
                     <p className="text-sm text-gray-500 leading-relaxed">
-                      {"Nenhum faturamento registrado ainda. Os dados de assinatura e cobran\u00e7a aparecer\u00e3o aqui ap\u00f3s a integra\u00e7\u00e3o do backend."}
+                      Nenhum faturamento registrado ainda. Os dados de assinatura e cobrança aparecerão aqui após a integração do backend.
                     </p>
                   </div>
                   <div className="space-y-1">
@@ -400,28 +397,24 @@ export default function ConnectVocePage() {
                   <SheetHeader title="Minha empresa" onClose={closeSheet} />
                   <div className="bg-gray-50 rounded-xl p-4 mb-4">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-gray-500">{"Raz\u00e3o social"}</span>
-                      <span className="text-sm font-medium text-gray-400">{"N\u00e3o informada"}</span>
-                    </div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-gray-500">CNPJ</span>
-                      <span className="text-sm font-medium text-gray-400">{"N\u00e3o informado"}</span>
+                      <span className="text-sm text-gray-500">Empresa</span>
+                      <span className="text-sm font-medium text-gray-400">{workspace?.name || "Não informada"}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-500">Sistema principal</span>
-                      <span className="text-sm font-medium text-[#0a0a0a]">{mainSystem ? mainSystem.name : "N\u00e3o definido"}</span>
+                      <span className="text-sm font-medium text-[#0a0a0a]">{mainSystem ? mainSystem.name : "Não definido"}</span>
                     </div>
                   </div>
                   <div className="space-y-1">
                     {[
                       { icon: Building2, label: "Editar dados da empresa" },
                       { icon: Layers, label: "Gerenciar sistema principal" },
-                      { icon: Settings2, label: "Prefer\u00eancias da empresa" },
+                      { icon: Settings2, label: "Preferências da empresa" },
                     ].map((item) => (
                       <button key={item.label} className="flex items-center gap-3 w-full py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors">
                         <item.icon className="w-5 h-5 text-gray-600" />
                         <span className="flex-1 text-left text-sm font-medium text-[#0a0a0a]">{item.label}</span>
-                        <span className="text-xs text-gray-400">{"Em prepara\u00e7\u00e3o"}</span>
+                        <span className="text-xs text-gray-400">Em preparação</span>
                       </button>
                     ))}
                   </div>
@@ -433,9 +426,9 @@ export default function ConnectVocePage() {
                   <SheetHeader title="Equipe" onClose={closeSheet} />
                   <div className="space-y-1">
                     {[
-                      { icon: Users, label: "Membros", desc: "Pessoas com acesso ao espa\u00e7o" },
+                      { icon: Users, label: "Membros", desc: "Pessoas com acesso ao espaço" },
                       { icon: UserPlus, label: "Convites", desc: "Convide novos membros" },
-                      { icon: ShieldCheck, label: "Permiss\u00f5es", desc: "Defina pap\u00e9is e acessos" },
+                      { icon: ShieldCheck, label: "Permissões", desc: "Defina papéis e acessos" },
                     ].map((item) => (
                       <button key={item.label} className="flex items-center gap-3 w-full py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors">
                         <item.icon className="w-5 h-5 text-gray-600" />
@@ -443,7 +436,7 @@ export default function ConnectVocePage() {
                           <div className="text-sm font-medium text-[#0a0a0a]">{item.label}</div>
                           <div className="text-xs text-gray-500">{item.desc}</div>
                         </div>
-                        <span className="text-xs text-gray-400">{"Em prepara\u00e7\u00e3o"}</span>
+                        <span className="text-xs text-gray-400">Em preparação</span>
                       </button>
                     ))}
                   </div>
@@ -459,18 +452,18 @@ export default function ConnectVocePage() {
                       <span className="text-sm font-medium text-gray-400">Nenhum plano ativo</span>
                     </div>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-gray-500">{"Usu\u00e1rios inclu\u00eddos"}</span>
-                      <span className="text-sm font-medium text-gray-400">{"\u2014"}</span>
+                      <span className="text-sm text-gray-500">Usuários incluídos</span>
+                      <span className="text-sm font-medium text-gray-400">—</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-500">Status</span>
-                      <span className="text-sm font-medium text-gray-400">{"N\u00e3o configurado"}</span>
+                      <span className="text-sm font-medium text-gray-400">Não configurado</span>
                     </div>
                   </div>
                   <button className="flex items-center gap-3 w-full py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors">
                     <Sparkles className="w-5 h-5 text-gray-600" />
                     <span className="flex-1 text-left text-sm font-medium text-[#0a0a0a]">Gerenciar plano</span>
-                    <span className="text-xs text-gray-400">{"Em prepara\u00e7\u00e3o"}</span>
+                    <span className="text-xs text-gray-400">Em preparação</span>
                   </button>
                 </>
               )}
@@ -480,9 +473,9 @@ export default function ConnectVocePage() {
                   <SheetHeader title="Pacotes extras" onClose={closeSheet} />
                   <div className="space-y-2">
                     {[
-                      { icon: Sparkles, label: "Cr\u00e9ditos IA", description: "Mais respostas e automa\u00e7\u00f5es", detail: "Dispon\u00edvel ap\u00f3s configura\u00e7\u00e3o comercial" },
-                      { icon: HardDrive, label: "Armazenamento", description: "Mais espa\u00e7o para arquivos e documentos", detail: "Dispon\u00edvel ap\u00f3s configura\u00e7\u00e3o comercial" },
-                      { icon: UserPlus, label: "Usu\u00e1rios adicionais", description: "Adicione mais membros \u00e0 equipe", detail: "Dispon\u00edvel ap\u00f3s configura\u00e7\u00e3o comercial" },
+                      { icon: Sparkles, label: "Créditos IA", description: "Mais respostas e automações", detail: "Disponível após configuração comercial" },
+                      { icon: HardDrive, label: "Armazenamento", description: "Mais espaço para arquivos e documentos", detail: "Disponível após configuração comercial" },
+                      { icon: UserPlus, label: "Usuários adicionais", description: "Adicione mais membros à equipe", detail: "Disponível após configuração comercial" },
                     ].map((item) => (
                       <div key={item.label} className="flex items-center gap-3 p-3 border border-gray-100 rounded-xl">
                         <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
