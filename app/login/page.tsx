@@ -6,20 +6,29 @@ import { motion } from "framer-motion"
 import Link from "next/link"
 import Image from "next/image"
 import { AuthLayout } from "@/components/cos/auth-layout"
-import { loginAction } from "@/actions/auth"
+import { ensureWorkspaceForCurrentUserAction, loginAction } from "@/actions/auth"
 import { PublicAuthRouteGuard } from "@/components/auth/auth-route-guard"
+import { useAuth } from "@/components/auth/auth-provider"
+import type { WorkspaceType } from "@/lib/auth"
 
 export default function LoginPage() {
   const router = useRouter()
+  const { user: authenticatedUser, workspace, isLoading } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState("")
+  const [needsWorkspaceSetup, setNeedsWorkspaceSetup] = useState(
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("workspace") === "missing",
+  )
   const [isPending, startTransition] = useTransition()
+  const [isWorkspacePending, startWorkspaceTransition] = useTransition()
+  const canRecoverWorkspace = Boolean(authenticatedUser && !workspace && !isLoading)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setNeedsWorkspaceSetup(false)
 
     startTransition(async () => {
       const result = await loginAction({
@@ -31,6 +40,7 @@ export default function LoginPage() {
 
       if (result.error) {
         setError(result.error)
+        setNeedsWorkspaceSetup(Boolean(result.needsWorkspaceSetup))
         return
       }
 
@@ -40,6 +50,25 @@ export default function LoginPage() {
         router.refresh()
       }
       router.refresh()
+    })
+  }
+
+  const handleCreateWorkspace = (productType: WorkspaceType) => {
+    setError("")
+
+    startWorkspaceTransition(async () => {
+      const result = await ensureWorkspaceForCurrentUserAction({ productType })
+
+      if (result.error) {
+        setError(result.error)
+        setNeedsWorkspaceSetup(true)
+        return
+      }
+
+      if (result.redirectTo) {
+        router.replace(result.redirectTo)
+        router.refresh()
+      }
     })
   }
 
@@ -68,6 +97,37 @@ export default function LoginPage() {
           className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600"
         >
           {error}
+        </motion.div>
+      )}
+
+      {(needsWorkspaceSetup || canRecoverWorkspace) && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4"
+        >
+          <p className="text-sm font-medium text-[#0a0a0a]">Criar workspace agora</p>
+          <p className="mt-1 text-sm text-[#737373]">
+            Sua conta foi autenticada, mas ainda não possui workspace. Escolha como deseja operar.
+          </p>
+          <div className="mt-4 grid gap-2">
+            <button
+              type="button"
+              onClick={() => handleCreateWorkspace("operations")}
+              disabled={isWorkspacePending}
+              className="w-full rounded-xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isWorkspacePending ? "Criando..." : "Criar workspace COS Operações"}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCreateWorkspace("connect")}
+              disabled={isWorkspacePending}
+              className="w-full rounded-xl border border-[#e5e5e5] bg-white px-4 py-3 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-[#fafafa] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isWorkspacePending ? "Criando..." : "Criar workspace COS Connect"}
+            </button>
+          </div>
         </motion.div>
       )}
 

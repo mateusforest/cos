@@ -54,6 +54,10 @@ function getQueryClient(queryClient?: QueryClient) {
   return queryClient ?? createSupabaseAdminClient()
 }
 
+function logWorkspaceBootstrapError(step: string, details: string) {
+  console.error(`[auth-bootstrap] ${step}: ${details}`)
+}
+
 export function canManageWorkspace(access: Pick<UserAccess, "profile" | "membershipRole">) {
   return access.profile?.global_role === "master" || access.membershipRole === "owner" || access.membershipRole === "admin"
 }
@@ -103,20 +107,18 @@ export async function getUserAccessForUser(user: User, queryClient?: QueryClient
 
 export { canAccessPath, resolveHomePath, resolvePostAuthPath }
 
-export async function bootstrapWorkspaceForUser({
+async function ensureWorkspaceForIdentity({
   userId,
   email,
   displayName,
   productType,
-  queryClient,
 }: {
   userId: string
   email: string
   displayName: string
   productType: WorkspaceType
-  queryClient?: QueryClient
 }) {
-  const client = getQueryClient(queryClient)
+  const client = createSupabaseAdminClient()
 
   if (!client) {
     return {
@@ -124,13 +126,14 @@ export async function bootstrapWorkspaceForUser({
     }
   }
 
-  const normalizedName = displayName.trim() || email.split("@")[0]
+  const normalizedEmail = email.trim().toLowerCase()
+  const normalizedName = displayName.trim() || normalizedEmail.split("@")[0] || "Workspace"
 
   const { error: profileError } = await client.from("profiles").upsert(
     {
       id: userId,
       full_name: normalizedName,
-      email,
+      email: normalizedEmail || null,
     },
     {
       onConflict: "id",
@@ -138,6 +141,7 @@ export async function bootstrapWorkspaceForUser({
   )
 
   if (profileError) {
+    logWorkspaceBootstrapError("profile-upsert", profileError.message)
     return { error: profileError.message }
   }
 
@@ -147,24 +151,58 @@ export async function bootstrapWorkspaceForUser({
     .eq("user_id", userId)
 
   if (membershipLookupError) {
+    logWorkspaceBootstrapError("membership-lookup", membershipLookupError.message)
     return { error: membershipLookupError.message }
   }
 
   if (existingMemberships && existingMemberships.length > 0) {
-    const workspaceId = existingMemberships[0].workspace_id
-    const { data: existingWorkspace, error: existingWorkspaceError } = await client
-      .from("workspaces")
-      .select("id, name, type, owner_id, primary_system_name, primary_system_url, metadata")
-      .eq("id", workspaceId)
-      .maybeSingle<WorkspaceRecord>()
+    for (const membership of existingMemberships) {
+      const { data: existingWorkspace, error: existingWorkspaceError } = await client
+        .from("workspaces")
+        .select("id, name, type, owner_id, primary_system_name, primary_system_url, metadata")
+        .eq("id", membership.workspace_id)
+        .maybeSingle<WorkspaceRecord>()
 
-    if (existingWorkspaceError) {
-      return { error: existingWorkspaceError.message }
+      if (existingWorkspaceError) {
+        logWorkspaceBootstrapError("workspace-lookup", existingWorkspaceError.message)
+        return { error: existingWorkspaceError.message }
+      }
+
+      if (existingWorkspace) {
+        return { workspace: existingWorkspace }
+      }
+    }
+  }
+
+  const { data: ownedWorkspace, error: ownedWorkspaceError } = await client
+    .from("workspaces")
+    .select("id, name, type, owner_id, primary_system_name, primary_system_url, metadata")
+    .eq("owner_id", userId)
+    .maybeSingle<WorkspaceRecord>()
+
+  if (ownedWorkspaceError) {
+    logWorkspaceBootstrapError("owned-workspace-lookup", ownedWorkspaceError.message)
+    return { error: ownedWorkspaceError.message }
+  }
+
+  if (ownedWorkspace) {
+    const { error: membershipRepairError } = await client.from("workspace_members").upsert(
+      {
+        workspace_id: ownedWorkspace.id,
+        user_id: userId,
+        role: "owner",
+      },
+      {
+        onConflict: "workspace_id,user_id",
+      },
+    )
+
+    if (membershipRepairError) {
+      logWorkspaceBootstrapError("membership-repair", membershipRepairError.message)
+      return { error: membershipRepairError.message }
     }
 
-    if (existingWorkspace) {
-      return { workspace: existingWorkspace }
-    }
+    return { workspace: ownedWorkspace }
   }
 
   const { data: workspace, error: workspaceError } = await client
@@ -179,6 +217,7 @@ export async function bootstrapWorkspaceForUser({
     .single<WorkspaceRecord>()
 
   if (workspaceError || !workspace) {
+    logWorkspaceBootstrapError("workspace-insert", workspaceError?.message ?? "workspace vazio")
     return { error: workspaceError?.message ?? "Não foi possível criar o workspace." }
   }
 
@@ -194,8 +233,52 @@ export async function bootstrapWorkspaceForUser({
   )
 
   if (memberError) {
+    logWorkspaceBootstrapError("membership-insert", memberError.message)
     return { error: memberError.message }
   }
 
   return { workspace }
+}
+
+export async function bootstrapWorkspaceForUser({
+  userId,
+  email,
+  displayName,
+  productType,
+}: {
+  userId: string
+  email: string
+  displayName: string
+  productType: WorkspaceType
+}) {
+  return ensureWorkspaceForIdentity({
+    userId,
+    email,
+    displayName,
+    productType,
+  })
+}
+
+export async function ensureWorkspaceForUser({
+  user,
+  access,
+  productType,
+}: {
+  user: User
+  access?: Pick<UserAccess, "profile" | "workspace" | "membershipRole">
+  productType: WorkspaceType
+}) {
+  if (access?.workspace?.id && access.membershipRole) {
+    return { workspace: access.workspace }
+  }
+
+  const metadataName = typeof user.user_metadata?.name === "string" ? user.user_metadata.name : ""
+  const displayName = access?.profile?.full_name || metadataName || user.email || "Workspace"
+
+  return ensureWorkspaceForIdentity({
+    userId: user.id,
+    email: user.email ?? access?.profile?.email ?? "",
+    displayName,
+    productType,
+  })
 }

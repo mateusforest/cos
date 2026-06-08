@@ -51,6 +51,12 @@ export function ProtectedRouteGuard({ children }: { children: ReactNode }) {
       return
     }
 
+    if (!target) {
+      setIsRedirecting(true)
+      router.replace("/login?workspace=missing")
+      return
+    }
+
     setIsRedirecting(false)
   }, [isLoading, user, pathname, profile, workspace, router, loginHref])
 

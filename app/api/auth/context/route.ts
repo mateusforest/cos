@@ -15,7 +15,7 @@ export async function GET() {
     })
   }
 
-  const access = await getUserAccessForUser(data.user, supabase)
+  const access = await getUserAccessForUser(data.user)
 
   return NextResponse.json({
     user: {
