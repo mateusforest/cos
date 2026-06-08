@@ -6,6 +6,7 @@ import { motion } from "framer-motion"
 import { Mic, Send, Database, FileSpreadsheet, Mail, MessageCircle, Plug, ChevronRight, LifeBuoy } from "lucide-react"
 import { useConnect } from "@/components/connect/connect-store"
 import { useSupport } from "@/components/support/support-context"
+import { useAuth } from "@/components/auth/auth-provider"
 
 const COS_LOGO =
   "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/COS%20LOGO%20%281%29-mBU7xqdIZoWP3indGVxJrDFLu8urZH.png"
@@ -20,6 +21,7 @@ const sourceTypeIcon: Record<string, typeof Database> = {
 }
 
 export default function ConnectHomePage() {
+  const { user, profile } = useAuth()
   const [message, setMessage] = useState("")
   const { sources, hasSources, openModal, toast } = useConnect()
   const { openSupport } = useSupport()
@@ -41,6 +43,7 @@ export default function ConnectHomePage() {
     )
     setMessage("")
   }
+  const displayName = profile?.full_name || user?.email?.split("@")[0] || "sua equipe"
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-120px)] lg:min-h-full lg:h-full">
@@ -52,7 +55,7 @@ export default function ConnectHomePage() {
         </motion.div>
 
         <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05, duration: 0.3 }} className="text-center mb-5">
-          <h1 className="text-2xl font-semibold text-[#0a0a0a] mb-1">Olá, Mateus 👋</h1>
+          <h1 className="text-2xl font-semibold text-[#0a0a0a] mb-1">{`Olá, ${displayName} 👋`}</h1>
           <p className="text-gray-500 text-sm">O que deseja consultar hoje?</p>
         </motion.div>
 

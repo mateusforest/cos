@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useConnect } from "./connect-store"
 import { useAuth } from "@/components/auth/auth-provider"
 import { logoutAction } from "@/actions/auth"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 
 const avatarMenu = [
   { icon: User, label: "Perfil", href: "/connect/voce" },
@@ -19,7 +20,7 @@ const avatarMenu = [
 export function ConnectHeaderActions() {
   const router = useRouter()
   const { sources, mainSystem, openModal, toast } = useConnect()
-  const { user, profile } = useAuth()
+  const { user, profile, clearAuth } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
@@ -42,6 +43,8 @@ export function ConnectHeaderActions() {
 
   const handleLogout = () => {
     startTransition(async () => {
+      clearAuth()
+      await createSupabaseBrowserClient().auth.signOut()
       const result = await logoutAction()
       setAvatarOpen(false)
       router.replace(result.redirectTo || "/login")

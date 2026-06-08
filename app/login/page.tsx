@@ -13,7 +13,7 @@ import type { WorkspaceType } from "@/lib/auth"
 
 export default function LoginPage() {
   const router = useRouter()
-  const { user: authenticatedUser, workspace, isLoading } = useAuth()
+  const { user: authenticatedUser, workspace, isLoading, syncAuth } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
@@ -45,6 +45,7 @@ export default function LoginPage() {
       }
 
       if (result.redirectTo) {
+        await syncAuth()
         router.replace(result.redirectTo)
       } else {
         router.refresh()
@@ -66,6 +67,7 @@ export default function LoginPage() {
       }
 
       if (result.redirectTo) {
+        await syncAuth()
         router.replace(result.redirectTo)
         router.refresh()
       }

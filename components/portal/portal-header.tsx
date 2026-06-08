@@ -8,13 +8,14 @@ import { Search, Bell, Command, Menu, User, Settings, ExternalLink, LogOut } fro
 import { usePortalUI } from "./portal-ui-context"
 import { useAuth } from "@/components/auth/auth-provider"
 import { logoutAction } from "@/actions/auth"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 
 const notifications: { id: number; title: string; desc: string; time: string; unread: boolean }[] = []
 
 export function PortalHeader({ placeholder = "Pergunte ao COS..." }: { placeholder?: string }) {
   const router = useRouter()
   const { toggleMobileMenu } = usePortalUI()
-  const { user, profile } = useAuth()
+  const { user, profile, clearAuth } = useAuth()
   const [query, setQuery] = useState("")
   const [openMenu, setOpenMenu] = useState<"notif" | "profile" | null>(null)
   const [reads, setReads] = useState<number[]>([])
@@ -34,6 +35,8 @@ export function PortalHeader({ placeholder = "Pergunte ao COS..." }: { placehold
 
   const handleLogout = () => {
     startTransition(async () => {
+      clearAuth()
+      await createSupabaseBrowserClient().auth.signOut()
       const result = await logoutAction()
       setOpenMenu(null)
       router.replace(result.redirectTo || "/login")

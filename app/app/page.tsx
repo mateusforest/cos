@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { useSupport } from "@/components/support/support-context"
 import { toast } from "@/hooks/use-toast"
+import { useAuth } from "@/components/auth/auth-provider"
 
 type ModalType = "sugerir" | "passo" | "meet" | "editar" | null
 type MicState = "idle" | "listening" | "processing" | "unsupported" | "error"
@@ -79,6 +80,7 @@ const defaultShortcuts = [
 ]
 
 export default function AppHomePage() {
+  const { user, profile } = useAuth()
   const [message, setMessage] = useState("")
   const [balanceOpen, setBalanceOpen] = useState(false)
   const [modal, setModal] = useState<ModalType>(null)
@@ -109,6 +111,7 @@ export default function AppHomePage() {
   const balance = { anterior: 0, ganhos: 0, gastos: 0 }
   const saldoFinal = balance.anterior + balance.ganhos - balance.gastos
   const enabledShortcuts = shortcuts.filter((s) => s.enabled)
+  const displayName = profile?.full_name || user?.email?.split("@")[0] || "sua equipe"
 
   const formatCurrency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
   const formatTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
@@ -270,7 +273,7 @@ export default function AppHomePage() {
         </motion.div>
 
         <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05, duration: 0.3 }} className="text-center mb-5">
-          <h1 className="text-2xl font-semibold text-[#0a0a0a] mb-1">Olá, Mateus</h1>
+          <h1 className="text-2xl font-semibold text-[#0a0a0a] mb-1">{`Olá, ${displayName}`}</h1>
           <p className="text-gray-500 text-sm">O que você deseja fazer hoje?</p>
         </motion.div>
 

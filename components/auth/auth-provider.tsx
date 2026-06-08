@@ -23,30 +23,49 @@ type AuthState = {
   canManageWorkspace: boolean
   isLoading: boolean
   refresh: () => Promise<void>
+  syncAuth: () => Promise<void>
+  clearAuth: () => void
 }
 
 const AuthContext = createContext<AuthState | null>(null)
 
+function emptyAuthState() {
+  return {
+    user: null,
+    profile: null,
+    workspace: null,
+    membershipRole: null,
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [user, setUser] = useState<AuthState["user"]>(null)
   const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [workspace, setWorkspace] = useState<WorkspaceRecord | null>(null)
   const [membershipRole, setMembershipRole] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  const clearAuth = useCallback(() => {
+    const emptyState = emptyAuthState()
+    setUser(emptyState.user)
+    setProfile(emptyState.profile)
+    setWorkspace(emptyState.workspace)
+    setMembershipRole(emptyState.membershipRole)
+    setIsLoading(false)
+  }, [])
+
   const refresh = useCallback(async () => {
+    setIsLoading(true)
+
     try {
-      setIsLoading(true)
       const response = await fetch("/api/auth/context", {
         method: "GET",
         cache: "no-store",
       })
 
       if (!response.ok) {
-        setUser(null)
-        setProfile(null)
-        setWorkspace(null)
-        setMembershipRole(null)
+        clearAuth()
         return
       }
 
@@ -55,25 +74,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(data.profile)
       setWorkspace(data.workspace)
       setMembershipRole(data.membershipRole)
-    } finally {
       setIsLoading(false)
+    } catch {
+      clearAuth()
     }
-  }, [])
+  }, [clearAuth])
+
+  const syncAuth = useCallback(async () => {
+    await refresh()
+  }, [refresh])
 
   useEffect(() => {
-    const supabase = createSupabaseBrowserClient()
-    void refresh()
+    let isMounted = true
+
+    const bootstrap = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!isMounted) {
+        return
+      }
+
+      if (!session?.user) {
+        clearAuth()
+        return
+      }
+
+      await refresh()
+    }
+
+    void bootstrap()
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) {
+        return
+      }
+
+      if (event === "SIGNED_OUT" || !session?.user) {
+        clearAuth()
+        return
+      }
+
+      setUser({
+        id: session.user.id,
+        email: session.user.email ?? null,
+      })
+      setIsLoading(true)
       void refresh()
     })
 
     return () => {
+      isMounted = false
       subscription.unsubscribe()
     }
-  }, [refresh])
+  }, [clearAuth, refresh, supabase])
 
   const value = useMemo<AuthState>(
     () => ({
@@ -87,8 +144,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         membershipRole === "admin",
       isLoading,
       refresh,
+      syncAuth,
+      clearAuth,
     }),
-    [user, profile, workspace, membershipRole, isLoading, refresh],
+    [user, profile, workspace, membershipRole, isLoading, refresh, syncAuth, clearAuth],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

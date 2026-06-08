@@ -8,6 +8,7 @@ import { Search, Bell, X, User, SlidersHorizontal, Shield, LogOut, ExternalLink 
 import { motion, AnimatePresence } from "framer-motion"
 import { logoutAction } from "@/actions/auth"
 import { useAuth } from "@/components/auth/auth-provider"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 
 const notifications: { id: number; title: string; desc: string; time: string; dot: string; unread: boolean }[] = []
 
@@ -28,7 +29,7 @@ const avatarMenu = [
 
 export function HeaderActions() {
   const router = useRouter()
-  const { user, profile } = useAuth()
+  const { user, profile, clearAuth } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
@@ -44,6 +45,8 @@ export function HeaderActions() {
 
   const handleLogout = () => {
     startTransition(async () => {
+      clearAuth()
+      await createSupabaseBrowserClient().auth.signOut()
       const result = await logoutAction()
       setAvatarOpen(false)
       router.replace(result.redirectTo || "/login")
