@@ -7,6 +7,21 @@ import { useAuth } from "@/components/auth/auth-provider"
 import { updatePrimarySystemAction } from "@/actions/workspace"
 import { getConnectWorkspaceOverviewAction } from "@/actions/connect"
 
+type ConnectOverviewCache = {
+  sources: ConnectSource[]
+  sections: ConnectSection[]
+  actions: ConnectAction[]
+  summary: {
+    configuredSources: number
+    totalSources: number
+    totalSections: number
+    totalActions: number
+  }
+  canManage: boolean
+}
+
+const connectOverviewCache = new Map<string, ConnectOverviewCache>()
+
 export type ConnectSection = {
   id: string
   sourceId: string
@@ -101,32 +116,37 @@ export function useConnect() {
 }
 
 export function ConnectProvider({ children }: { children: ReactNode }) {
-  const { workspace, refresh } = useAuth()
-  const [sources, setSources] = useState<ConnectSource[]>([])
-  const [sections, setSections] = useState<ConnectSection[]>([])
-  const [actions, setActions] = useState<ConnectAction[]>([])
+  const { workspace } = useAuth()
+  const cachedOverview = workspace?.id ? connectOverviewCache.get(workspace.id) ?? null : null
+  const [sources, setSources] = useState<ConnectSource[]>(cachedOverview?.sources ?? [])
+  const [sections, setSections] = useState<ConnectSection[]>(cachedOverview?.sections ?? [])
+  const [actions, setActions] = useState<ConnectAction[]>(cachedOverview?.actions ?? [])
   const [summary, setSummary] = useState({
-    configuredSources: 0,
-    totalSources: 0,
-    totalSections: 0,
-    totalActions: 0,
+    configuredSources: cachedOverview?.summary.configuredSources ?? 0,
+    totalSources: cachedOverview?.summary.totalSources ?? 0,
+    totalSections: cachedOverview?.summary.totalSections ?? 0,
+    totalActions: cachedOverview?.summary.totalActions ?? 0,
   })
-  const [canManage, setCanManage] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [canManage, setCanManage] = useState(cachedOverview?.canManage ?? false)
+  const [isLoading, setIsLoading] = useState(!cachedOverview)
   const [modal, setModal] = useState<ConnectModalState | null>(null)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const [mainSystemOverride, setMainSystemOverride] = useState<MainSystem | null>(null)
 
   const refreshData = useCallback(
     async (options?: { silent?: boolean }) => {
       const silent = options?.silent ?? false
 
-      if (!silent) {
+      if (!silent && !cachedOverview) {
         setIsLoading(true)
       }
 
       const result = await getConnectWorkspaceOverviewAction()
 
       if (result.success && result.overview) {
+        if (workspace?.id) {
+          connectOverviewCache.set(workspace.id, result.overview)
+        }
         setSources(result.overview.sources ?? [])
         setSections(result.overview.sections ?? [])
         setActions(result.overview.actions ?? [])
@@ -149,7 +169,7 @@ export function ConnectProvider({ children }: { children: ReactNode }) {
         setIsLoading(false)
       }
     },
-    [],
+    [cachedOverview, workspace?.id],
   )
 
   useEffect(() => {
@@ -169,10 +189,16 @@ export function ConnectProvider({ children }: { children: ReactNode }) {
         return { error: result.error }
       }
 
-      await refresh()
+      const normalizedUrl = /^https?:\/\//i.test(system.url.trim()) ? system.url.trim() : `https://${system.url.trim()}`
+      setMainSystemOverride({
+        name: system.name,
+        type: system.type,
+        url: normalizedUrl,
+        notes: system.notes ?? "",
+      })
       return {}
     },
-    [refresh],
+    [],
   )
 
   const openModal = useCallback((type: ConnectModal, payload?: { sourceId?: string; actionId?: string }) => {
@@ -191,15 +217,15 @@ export function ConnectProvider({ children }: { children: ReactNode }) {
     ;(toast as unknown as { _t?: number })._t = window.setTimeout(() => setToastMsg(null), 2800)
   }, [])
 
-  const mainSystem =
-    workspace?.primary_system_name || workspace?.primary_system_url
+  const mainSystem = mainSystemOverride ??
+    (workspace?.primary_system_name || workspace?.primary_system_url
       ? {
           name: workspace?.primary_system_name ?? "Sistema principal",
           type: workspace?.metadata?.primary_system_type || "Sistema",
           url: workspace?.primary_system_url ?? "",
           notes: workspace?.metadata?.primary_system_notes || "",
         }
-      : null
+      : null)
 
   const selectedSource = useMemo(
     () => sources.find((source) => source.id === modal?.sourceId) ?? null,

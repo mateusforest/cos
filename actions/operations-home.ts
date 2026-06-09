@@ -33,7 +33,7 @@ export async function getOperationsHomeContextAction() {
     return { error: "Sessao invalida. Faca login novamente." }
   }
 
-  const access = await getUserAccessForUser(authData.user)
+  const access = await getUserAccessForUser(authData.user, supabase)
 
   if (!access.workspace?.id) {
     return { error: "Nenhum workspace encontrado para esta conta." }

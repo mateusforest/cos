@@ -111,7 +111,7 @@ async function getConnectActor() {
     return { error: "Sessao invalida. Faca login novamente." as const }
   }
 
-  const access = await getUserAccessForUser(authData.user)
+  const access = await getUserAccessForUser(authData.user, supabase)
   const adminClient = createSupabaseAdminClient()
 
   if (!adminClient) {

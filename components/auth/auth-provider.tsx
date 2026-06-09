@@ -29,6 +29,7 @@ type AuthState = {
 }
 
 const AuthContext = createContext<AuthState | null>(null)
+const AUTH_CACHE_KEY = "cos:auth-context"
 
 function emptyAuthState() {
   return {
@@ -39,62 +40,113 @@ function emptyAuthState() {
   }
 }
 
+function readCachedAuthState() {
+  if (typeof window === "undefined") {
+    return null
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(AUTH_CACHE_KEY)
+
+    if (!raw) {
+      return null
+    }
+
+    return JSON.parse(raw) as ReturnType<typeof emptyAuthState>
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
-  const [user, setUser] = useState<AuthState["user"]>(null)
-  const [profile, setProfile] = useState<ProfileRecord | null>(null)
-  const [workspace, setWorkspace] = useState<WorkspaceRecord | null>(null)
-  const [membershipRole, setMembershipRole] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const cachedAuth = useMemo(() => readCachedAuthState(), [])
+  const [user, setUser] = useState<AuthState["user"]>(cachedAuth?.user ?? null)
+  const [profile, setProfile] = useState<ProfileRecord | null>(cachedAuth?.profile ?? null)
+  const [workspace, setWorkspace] = useState<WorkspaceRecord | null>(cachedAuth?.workspace ?? null)
+  const [membershipRole, setMembershipRole] = useState<string | null>(cachedAuth?.membershipRole ?? null)
+  const [isLoading, setIsLoading] = useState(!cachedAuth)
   const isMountedRef = useRef(true)
+  const hydratePromiseRef = useRef<Promise<void> | null>(null)
+
+  const applyAuthState = useCallback((nextState: ReturnType<typeof emptyAuthState>) => {
+    setUser(nextState.user)
+    setProfile(nextState.profile)
+    setWorkspace(nextState.workspace)
+    setMembershipRole(nextState.membershipRole)
+  }, [])
 
   const clearAuth = useCallback(() => {
     const emptyState = emptyAuthState()
-    setUser(emptyState.user)
-    setProfile(emptyState.profile)
-    setWorkspace(emptyState.workspace)
-    setMembershipRole(emptyState.membershipRole)
+    applyAuthState(emptyState)
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(AUTH_CACHE_KEY)
+    }
     setIsLoading(false)
-  }, [])
+  }, [applyAuthState])
 
   const hydrateAuth = useCallback(async ({ silent }: { silent: boolean }) => {
+    if (hydratePromiseRef.current) {
+      return hydratePromiseRef.current
+    }
+
     if (!silent) {
       setIsLoading(true)
     }
-    try {
-      const response = await fetch("/api/auth/context", {
-        method: "GET",
-        cache: "no-store",
-      })
 
-      if (!response.ok) {
+    const task = (async () => {
+      try {
+        const response = await fetch("/api/auth/context", {
+          method: "GET",
+          cache: "no-store",
+        })
+
+        if (!response.ok) {
+          if (!silent && isMountedRef.current) {
+            clearAuth()
+          }
+          return
+        }
+
+        const data = await response.json()
+        if (!isMountedRef.current) {
+          return
+        }
+
+        if (!data.user) {
+          clearAuth()
+          return
+        }
+
+        const nextState = {
+          user: data.user,
+          profile: data.profile,
+          workspace: data.workspace,
+          membershipRole: data.membershipRole,
+        }
+
+        applyAuthState(nextState)
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(AUTH_CACHE_KEY, JSON.stringify(nextState))
+        }
+        setIsLoading(false)
+      } catch {
         if (!silent && isMountedRef.current) {
           clearAuth()
         }
-        return
       }
+    })()
 
-      const data = await response.json()
-      if (!isMountedRef.current) {
-        return
-      }
+    hydratePromiseRef.current = task
 
-      if (!data.user) {
-        clearAuth()
-        return
-      }
-
-      setUser(data.user)
-      setProfile(data.profile)
-      setWorkspace(data.workspace)
-      setMembershipRole(data.membershipRole)
-      setIsLoading(false)
-    } catch {
-      if (!silent && isMountedRef.current) {
-        clearAuth()
+    try {
+      await task
+    } finally {
+      if (hydratePromiseRef.current === task) {
+        hydratePromiseRef.current = null
       }
     }
-  }, [clearAuth])
+  }, [applyAuthState, clearAuth])
 
   const refresh = useCallback(async () => {
     await hydrateAuth({ silent: true })
@@ -121,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      await hydrateAuth({ silent: false })
+      await hydrateAuth({ silent: Boolean(cachedAuth) })
     }
 
     void bootstrap()
@@ -149,7 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isMountedRef.current = false
       subscription.unsubscribe()
     }
-  }, [clearAuth, hydrateAuth, supabase])
+  }, [cachedAuth, clearAuth, hydrateAuth, supabase])
 
   const value = useMemo<AuthState>(
     () => ({

@@ -35,7 +35,7 @@ async function getFinancialActor() {
     return { error: "Sessão inválida. Faça login novamente." as const }
   }
 
-  const access = await getUserAccessForUser(authData.user)
+  const access = await getUserAccessForUser(authData.user, supabase)
 
   if (!access.workspace?.id) {
     return { error: "Nenhum workspace encontrado para esta conta." as const }

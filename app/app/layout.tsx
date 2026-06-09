@@ -40,8 +40,8 @@ import {
   PanelRightOpen,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import { getOperationsHomeContextAction } from "@/actions/operations-home"
 import { HeaderActions } from "@/components/app/header-actions"
+import { OperationsDashboardProvider, useOperationsDashboard } from "@/components/app/operations-dashboard-store"
 import { AppInteractionsProvider } from "@/components/app/app-interactions"
 import { useAuth } from "@/components/auth/auth-provider"
 import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
@@ -369,17 +369,84 @@ function GlobalHeader() {
 function DesktopSidebar() {
   const pathname = usePathname()
   const { setIsOpen, setLevel } = useFAB()
-  const [sessionsData, setSessionsData] = useState<SessionItem[]>([
-    { icon: Users, label: "Cadastros", time: "Sem registros", count: 0, color: "#ec4899", bg: "#fce7f3", href: "/app/conversas/cadastros" },
-    { icon: Briefcase, label: "Operações", time: "Sem registros", count: 0, color: "#8b5cf6", bg: "#ede9fe", href: "/app/conversas/operacoes" },
+  const { summary } = useOperationsDashboard()
+  const sessionsData: SessionItem[] = [
+    {
+      icon: Users,
+      label: "Cadastros",
+      time:
+        summary?.clientsCount === 1 ? "1 cliente" : (summary?.clientsCount ?? 0) > 1 ? `${summary?.clientsCount ?? 0} clientes` : "Sem registros",
+      count: summary?.clientsCount ?? 0,
+      color: "#ec4899",
+      bg: "#fce7f3",
+      href: "/app/conversas/cadastros",
+    },
+    {
+      icon: Briefcase,
+      label: "Operações",
+      time:
+        summary?.operationsCount === 1 ? "1 operação" : (summary?.operationsCount ?? 0) > 1 ? `${summary?.operationsCount ?? 0} operações` : "Sem registros",
+      count: summary?.operationsCount ?? 0,
+      color: "#8b5cf6",
+      bg: "#ede9fe",
+      href: "/app/conversas/operacoes",
+    },
     { icon: TrendingUp, label: "Vendas", time: "Chat contextual", count: 0, color: "#3b82f6", bg: "#dbeafe", href: "/app/conversas/vendas" },
-    { icon: DollarSign, label: "Financeiro", time: "Sem registros", count: 0, color: "#22c55e", bg: "#dcfce7", href: "/app/conversas/financeiro" },
-    { icon: UsersRound, label: "Equipe", time: "Sem registros", count: 0, color: "#0ea5e9", bg: "#e0f2fe", href: "/app/conversas/equipe" },
-    { icon: FolderOpen, label: "Documentos", time: "Sem registros", count: 0, color: "#f97316", bg: "#ffedd5", href: "/app/conversas/documentos" },
-    { icon: Video, label: "Reuniões", time: "Sem registros", count: 0, color: "#ef4444", bg: "#fee2e2", href: "/app/conversas/reunioes" },
-    { icon: LifeBuoy, label: "Suporte", time: "Sem registros", count: 0, color: "#6b7280", bg: "#f3f4f6", href: "/app/conversas/suporte" },
+    {
+      icon: DollarSign,
+      label: "Financeiro",
+      time:
+        summary?.financial.entriesCount === 1
+          ? "1 lançamento"
+          : (summary?.financial.entriesCount ?? 0) > 1
+            ? `${summary?.financial.entriesCount ?? 0} lançamentos`
+            : "Sem registros",
+      count: summary?.financial.entriesCount ?? 0,
+      color: "#22c55e",
+      bg: "#dcfce7",
+      href: "/app/conversas/financeiro",
+    },
+    {
+      icon: UsersRound,
+      label: "Equipe",
+      time: summary?.teamCount === 1 ? "1 membro" : (summary?.teamCount ?? 0) > 1 ? `${summary?.teamCount ?? 0} membros` : "Sem registros",
+      count: summary?.teamCount ?? 0,
+      color: "#0ea5e9",
+      bg: "#e0f2fe",
+      href: "/app/conversas/equipe",
+    },
+    {
+      icon: FolderOpen,
+      label: "Documentos",
+      time:
+        summary?.documentsCount === 1 ? "1 documento" : (summary?.documentsCount ?? 0) > 1 ? `${summary?.documentsCount ?? 0} documentos` : "Sem registros",
+      count: summary?.documentsCount ?? 0,
+      color: "#f97316",
+      bg: "#ffedd5",
+      href: "/app/conversas/documentos",
+    },
+    {
+      icon: Video,
+      label: "Reuniões",
+      time:
+        summary?.meetingsCount === 1 ? "1 reunião" : (summary?.meetingsCount ?? 0) > 1 ? `${summary?.meetingsCount ?? 0} reuniões` : "Sem registros",
+      count: summary?.meetingsCount ?? 0,
+      color: "#ef4444",
+      bg: "#fee2e2",
+      href: "/app/conversas/reunioes",
+    },
+    {
+      icon: LifeBuoy,
+      label: "Suporte",
+      time:
+        summary?.supportCount === 1 ? "1 chamado" : (summary?.supportCount ?? 0) > 1 ? `${summary?.supportCount ?? 0} chamados` : "Sem registros",
+      count: summary?.supportCount ?? 0,
+      color: "#6b7280",
+      bg: "#f3f4f6",
+      href: "/app/conversas/suporte",
+    },
     { icon: Settings, label: "Sistema", time: "Configurações e logs", count: 0, color: "#6b7280", bg: "#f3f4f6", href: "/app/conversas/sistema" },
-  ])
+  ]
 
   const navItems = [
     { icon: Home, label: "Início", href: "/app", exact: true },
@@ -389,59 +456,6 @@ function DesktopSidebar() {
   ]
 
   const isActive = (href: string, exact?: boolean) => (exact ? pathname === href : pathname.startsWith(href))
-
-  useEffect(() => {
-    let isMounted = true
-
-    const loadSidebarData = async () => {
-      const contextResult = await getOperationsHomeContextAction()
-
-      if (!isMounted) {
-        return
-      }
-
-      const activeClients = contextResult.success ? contextResult.summary.clientsCount : 0
-      const entriesCount = contextResult.success ? contextResult.summary.financial.entriesCount : 0
-      const membersCount = contextResult.success ? contextResult.summary.teamCount : 0
-      const operationsCount = contextResult.success ? contextResult.summary.operationsCount : 0
-      const documentsCount = contextResult.success ? contextResult.summary.documentsCount : 0
-      const meetingsCount = contextResult.success ? contextResult.summary.meetingsCount : 0
-      const supportCount = contextResult.success ? contextResult.summary.supportCount : 0
-
-      setSessionsData((current) =>
-        current.map((session) => {
-          if (session.label === "Cadastros") {
-            return { ...session, count: activeClients, time: activeClients === 1 ? "1 cliente" : activeClients > 1 ? `${activeClients} clientes` : "Sem registros" }
-          }
-          if (session.label === "Operações") {
-            return { ...session, count: operationsCount, time: operationsCount === 1 ? "1 operação" : operationsCount > 1 ? `${operationsCount} operações` : "Sem registros" }
-          }
-          if (session.label === "Financeiro") {
-            return { ...session, count: entriesCount, time: entriesCount === 1 ? "1 lançamento" : entriesCount > 1 ? `${entriesCount} lançamentos` : "Sem registros" }
-          }
-          if (session.label === "Equipe") {
-            return { ...session, count: membersCount, time: membersCount === 1 ? "1 membro" : membersCount > 1 ? `${membersCount} membros` : "Sem registros" }
-          }
-          if (session.label === "Documentos") {
-            return { ...session, count: documentsCount, time: documentsCount === 1 ? "1 documento" : documentsCount > 1 ? `${documentsCount} documentos` : "Sem registros" }
-          }
-          if (session.label === "Reuniões") {
-            return { ...session, count: meetingsCount, time: meetingsCount === 1 ? "1 reunião" : meetingsCount > 1 ? `${meetingsCount} reuniões` : "Sem registros" }
-          }
-          if (session.label === "Suporte") {
-            return { ...session, count: supportCount, time: supportCount === 1 ? "1 chamado" : supportCount > 1 ? `${supportCount} chamados` : "Sem registros" }
-          }
-          return session
-        }),
-      )
-    }
-
-    void loadSidebarData()
-
-    return () => {
-      isMounted = false
-    }
-  }, [pathname])
 
   return (
     <aside className="hidden lg:flex lg:flex-col w-[280px] flex-shrink-0 border-r border-gray-200 bg-white h-screen">
@@ -516,135 +530,22 @@ function DesktopSidebar() {
 
 function DesktopContextPanel() {
   const [collapsed, setCollapsed] = useState(false)
-  const pathname = usePathname()
-  const { workspace } = useAuth()
-  const hasHydratedRouteRef = useRef(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [financialSummary, setFinancialSummary] = useState<{
-    totalIncome: number
-    totalExpense: number
-    balance: number
-    monthBalance: number
-    entriesCount: number
-  } | null>(null)
-  const [activities, setActivities] = useState<Array<{ id: string; dot: string; text: string; time: string }>>([])
-
-  useEffect(() => {
-    let isMounted = true
-
-    const loadContext = async (silent: boolean) => {
-      if (!silent) {
-        setIsLoading(true)
-      }
-
-      const contextResult = await getOperationsHomeContextAction()
-
-      if (!isMounted) {
-        return
-      }
-
-      if (contextResult.success && contextResult.summary) {
-        setFinancialSummary({
-          totalIncome: contextResult.summary.financial.totalIncome,
-          totalExpense: contextResult.summary.financial.totalExpense,
-          balance: contextResult.summary.financial.balance,
-          monthBalance: contextResult.summary.financial.monthBalance,
-          entriesCount: contextResult.summary.financial.entriesCount,
-        })
-      } else {
-        setFinancialSummary(null)
-      }
-
-      if (contextResult.success) {
-        setActivities(
-          contextResult.summary.activities.map((log) => ({
-            id: log.id,
-            dot:
-              log.area === "financial"
-                ? "#22c55e"
-                : log.area === "meetings"
-                  ? "#ef4444"
-                  : log.area === "support"
-                    ? "#6b7280"
-                    : "#3b82f6",
-            text: log.description,
-            time: formatContextTimestamp(log.createdAt),
-          })),
-        )
-      } else {
-        setActivities([])
-      }
-
-      if (!silent) {
-        setIsLoading(false)
-      }
-    }
-
-    void loadContext(false)
-
-    return () => {
-      isMounted = false
-    }
-  }, [workspace?.id])
-
-  useEffect(() => {
-    if (!workspace?.id) {
-      return
-    }
-
-    if (!hasHydratedRouteRef.current) {
-      hasHydratedRouteRef.current = true
-      return
-    }
-
-    let cancelled = false
-
-    const refreshContext = async () => {
-      const contextResult = await getOperationsHomeContextAction()
-
-      if (cancelled) {
-        return
-      }
-
-      if (contextResult.success && contextResult.summary) {
-        setFinancialSummary({
-          totalIncome: contextResult.summary.financial.totalIncome,
-          totalExpense: contextResult.summary.financial.totalExpense,
-          balance: contextResult.summary.financial.balance,
-          monthBalance: contextResult.summary.financial.monthBalance,
-          entriesCount: contextResult.summary.financial.entriesCount,
-        })
-      } else {
-        setFinancialSummary(null)
-      }
-
-      if (contextResult.success) {
-        setActivities(
-          contextResult.summary.activities.map((log) => ({
-            id: log.id,
-            dot:
-              log.area === "financial"
-                ? "#22c55e"
-                : log.area === "meetings"
-                  ? "#ef4444"
-                  : log.area === "support"
-                    ? "#6b7280"
-                    : "#3b82f6",
-            text: log.description,
-            time: formatContextTimestamp(log.createdAt),
-          })),
-        )
-      } else {
-        setActivities([])
-      }
-    }
-
-    void refreshContext()
-
-    return () => {
-      cancelled = true
-    }
-  }, [pathname, workspace?.id])
+  const { summary, isLoading } = useOperationsDashboard()
+  const financialSummary = summary?.financial ?? null
+  const activities =
+    summary?.activities.map((log) => ({
+      id: log.id,
+      dot:
+        log.area === "financial"
+          ? "#22c55e"
+          : log.area === "meetings"
+            ? "#ef4444"
+            : log.area === "support"
+              ? "#6b7280"
+              : "#3b82f6",
+      text: log.description,
+      time: formatContextTimestamp(log.createdAt),
+    })) ?? []
 
   const previousBalance = financialSummary ? financialSummary.balance - financialSummary.monthBalance : 0
 
@@ -787,12 +688,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const { workspace } = useAuth()
+
   return (
     <ProtectedRouteGuard>
       <SupportProvider>
         <AppInteractionsProvider>
-          <AppShell>{children}</AppShell>
-          <Toaster />
+          <OperationsDashboardProvider workspaceId={workspace?.id}>
+            <AppShell>{children}</AppShell>
+            <Toaster />
+          </OperationsDashboardProvider>
         </AppInteractionsProvider>
       </SupportProvider>
     </ProtectedRouteGuard>

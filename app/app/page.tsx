@@ -22,12 +22,12 @@ import {
   Wallet,
   X,
 } from "lucide-react"
-import { getOperationsHomeContextAction } from "@/actions/operations-home"
 import { createMeetingAction } from "@/actions/meetings"
 import {
   getOperationsConversationMessagesAction,
   runOperationsEngineAction,
 } from "@/actions/operations-engine"
+import { useOperationsDashboard } from "@/components/app/operations-dashboard-store"
 import { useAuth } from "@/components/auth/auth-provider"
 import type { ChatMessage } from "@/components/app/area-chat"
 import { useSupport } from "@/components/support/support-context"
@@ -98,6 +98,7 @@ const defaultMeetingForm: MeetingFormState = {
 
 export default function AppHomePage() {
   const { user, profile, workspace } = useAuth()
+  const { summary, isLoading: isStatsLoading, refreshSummary } = useOperationsDashboard()
   const { openSupport } = useSupport()
   const [message, setMessage] = useState("")
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
@@ -112,18 +113,6 @@ export default function AppHomePage() {
   const [micState, setMicState] = useState<MicState>("idle")
   const [micPreview, setMicPreview] = useState("")
   const [isEngineRunning, setIsEngineRunning] = useState(false)
-  const [stats, setStats] = useState<{
-    clientes: number
-    operacoes: number
-    balanco: number
-    anterior: number
-    ganhos: number
-    gastos: number
-    equipe: number
-    reunioes: number
-  } | null>(null)
-  const [isStatsLoading, setIsStatsLoading] = useState(true)
-
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
   const micActionRef = useRef<"finalize" | "cancel">("finalize")
@@ -190,47 +179,19 @@ export default function AppHomePage() {
     window.localStorage.setItem(shortcutsStorageKey, JSON.stringify(shortcutPreferences))
   }, [isShortcutsReady, shortcutPreferences, shortcutsStorageKey])
 
-  const loadStats = useCallback(async (options?: { silent?: boolean }) => {
-    const silent = options?.silent ?? false
-
-    if (!silent) {
-      setIsStatsLoading(true)
-    }
-
-    const contextResult = await getOperationsHomeContextAction()
-
-    if (contextResult.success && contextResult.summary) {
-      setStats({
-        clientes: contextResult.summary.clientsCount,
-        operacoes: contextResult.summary.operationsCount,
-        balanco: contextResult.summary.financial.balance,
-        anterior: contextResult.summary.financial.balance - contextResult.summary.financial.monthBalance,
-        ganhos: contextResult.summary.financial.totalIncome,
-        gastos: contextResult.summary.financial.totalExpense,
-        equipe: contextResult.summary.teamCount,
-        reunioes: contextResult.summary.meetingsCount,
-      })
-    } else {
-      setStats({
-        clientes: 0,
-        operacoes: 0,
-        balanco: 0,
-        anterior: 0,
-        ganhos: 0,
-        gastos: 0,
-        equipe: 0,
-        reunioes: 0,
-      })
-    }
-
-    if (!silent) {
-      setIsStatsLoading(false)
-    }
-  }, [workspace?.id])
-
-  useEffect(() => {
-    void loadStats()
-  }, [loadStats, workspace?.id])
+  const stats = useMemo(
+    () => ({
+      clientes: summary?.clientsCount ?? 0,
+      operacoes: summary?.operationsCount ?? 0,
+      balanco: summary?.financial.balance ?? 0,
+      anterior: (summary?.financial.balance ?? 0) - (summary?.financial.monthBalance ?? 0),
+      ganhos: summary?.financial.totalIncome ?? 0,
+      gastos: summary?.financial.totalExpense ?? 0,
+      equipe: summary?.teamCount ?? 0,
+      reunioes: summary?.meetingsCount ?? 0,
+    }),
+    [summary],
+  )
 
   useEffect(() => {
     let isMounted = true
@@ -362,7 +323,7 @@ export default function AppHomePage() {
       ])
 
       if (result.ok) {
-        await loadStats({ silent: true })
+        await refreshSummary({ silent: true, force: true })
       }
 
       if (conversationArea !== "general" && typeof window !== "undefined") {
@@ -547,7 +508,7 @@ export default function AppHomePage() {
     }
 
     setMeetingFeedback({ tone: "success", text: "Reuniao criada com sucesso." })
-    await loadStats({ silent: true })
+    await refreshSummary({ silent: true, force: true })
 
     toast({
       title: "Reuniao criada com sucesso.",

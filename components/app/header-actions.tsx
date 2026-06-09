@@ -43,11 +43,12 @@ export function HeaderActions() {
   const handleLogout = () => {
     startTransition(async () => {
       clearAuth()
-      await createSupabaseBrowserClient().auth.signOut()
-      const result = await logoutAction()
+      const [result] = await Promise.all([
+        logoutAction(),
+        createSupabaseBrowserClient().auth.signOut(),
+      ])
       setAvatarOpen(false)
       router.replace(result.redirectTo || "/login")
-      router.refresh()
     })
   }
 

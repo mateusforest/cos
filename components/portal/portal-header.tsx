@@ -36,11 +36,12 @@ export function PortalHeader({ placeholder = "Pergunte ao COS..." }: { placehold
   const handleLogout = () => {
     startTransition(async () => {
       clearAuth()
-      await createSupabaseBrowserClient().auth.signOut()
-      const result = await logoutAction()
+      const [result] = await Promise.all([
+        logoutAction(),
+        createSupabaseBrowserClient().auth.signOut(),
+      ])
       setOpenMenu(null)
       router.replace(result.redirectTo || "/login")
-      router.refresh()
     })
   }
 

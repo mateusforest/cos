@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
@@ -19,7 +19,7 @@ import {
   Settings,
   LifeBuoy,
 } from "lucide-react"
-import { getOperationsHomeContextAction } from "@/actions/operations-home"
+import { useOperationsDashboard } from "@/components/app/operations-dashboard-store"
 import { useAppInteractions } from "@/components/app/app-interactions"
 import { areaConfigs, slug } from "@/lib/area-configs"
 
@@ -49,97 +49,52 @@ const baseConversations: Conversation[] = [
 export default function ConversasPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [conversations, setConversations] = useState<Conversation[]>(baseConversations)
+  const { summary } = useOperationsDashboard()
   const router = useRouter()
   const { openFilters } = useAppInteractions()
 
-  useEffect(() => {
-    let isMounted = true
+  const conversations = useMemo(
+    () =>
+      baseConversations.map((conversation) => {
+        if (conversation.label === "Cadastros") {
+          const count = summary?.clientsCount ?? 0
+          return { ...conversation, count, lastMessage: count === 1 ? "1 cliente" : count > 1 ? `${count} clientes` : "Sem registros" }
+        }
 
-    const loadConversationSummary = async () => {
-      const contextResult = await getOperationsHomeContextAction()
+        if (conversation.label === "Operações") {
+          const count = summary?.operationsCount ?? 0
+          return { ...conversation, count, lastMessage: count === 1 ? "1 operação" : count > 1 ? `${count} operações` : "Sem registros" }
+        }
 
-      if (!isMounted) {
-        return
-      }
+        if (conversation.label === "Financeiro") {
+          const count = summary?.financial.entriesCount ?? 0
+          return { ...conversation, count, lastMessage: count === 1 ? "1 lançamento" : count > 1 ? `${count} lançamentos` : "Sem registros" }
+        }
 
-      const activeClients = contextResult.success ? contextResult.summary.clientsCount : 0
-      const operationsCount = contextResult.success ? contextResult.summary.operationsCount : 0
-      const entriesCount = contextResult.success ? contextResult.summary.financial.entriesCount : 0
-      const membersCount = contextResult.success ? contextResult.summary.teamCount : 0
-      const documentsCount = contextResult.success ? contextResult.summary.documentsCount : 0
-      const meetingsCount = contextResult.success ? contextResult.summary.meetingsCount : 0
-      const supportCount = contextResult.success ? contextResult.summary.supportCount : 0
+        if (conversation.label === "Equipe") {
+          const count = summary?.teamCount ?? 0
+          return { ...conversation, count, lastMessage: count === 1 ? "1 membro" : count > 1 ? `${count} membros` : "Sem registros" }
+        }
 
-      setConversations((current) =>
-        current.map((conversation) => {
-          if (conversation.label === "Cadastros") {
-            return {
-              ...conversation,
-              count: activeClients,
-              lastMessage: activeClients === 1 ? "1 cliente" : activeClients > 1 ? `${activeClients} clientes` : "Sem registros",
-            }
-          }
+        if (conversation.label === "Documentos") {
+          const count = summary?.documentsCount ?? 0
+          return { ...conversation, count, lastMessage: count === 1 ? "1 documento" : count > 1 ? `${count} documentos` : "Sem registros" }
+        }
 
-          if (conversation.label === "Operações") {
-            return {
-              ...conversation,
-              count: operationsCount,
-              lastMessage: operationsCount === 1 ? "1 operação" : operationsCount > 1 ? `${operationsCount} operações` : "Sem registros",
-            }
-          }
+        if (conversation.label === "Reuniões") {
+          const count = summary?.meetingsCount ?? 0
+          return { ...conversation, count, lastMessage: count === 1 ? "1 reunião" : count > 1 ? `${count} reuniões` : "Sem registros" }
+        }
 
-          if (conversation.label === "Financeiro") {
-            return {
-              ...conversation,
-              count: entriesCount,
-              lastMessage: entriesCount === 1 ? "1 lançamento" : entriesCount > 1 ? `${entriesCount} lançamentos` : "Sem registros",
-            }
-          }
+        if (conversation.label === "Suporte") {
+          const count = summary?.supportCount ?? 0
+          return { ...conversation, count, lastMessage: count === 1 ? "1 chamado" : count > 1 ? `${count} chamados` : "Sem registros" }
+        }
 
-          if (conversation.label === "Equipe") {
-            return {
-              ...conversation,
-              count: membersCount,
-              lastMessage: membersCount === 1 ? "1 membro" : membersCount > 1 ? `${membersCount} membros` : "Sem registros",
-            }
-          }
-
-          if (conversation.label === "Documentos") {
-            return {
-              ...conversation,
-              count: documentsCount,
-              lastMessage: documentsCount === 1 ? "1 documento" : documentsCount > 1 ? `${documentsCount} documentos` : "Sem registros",
-            }
-          }
-
-          if (conversation.label === "Reuniões") {
-            return {
-              ...conversation,
-              count: meetingsCount,
-              lastMessage: meetingsCount === 1 ? "1 reunião" : meetingsCount > 1 ? `${meetingsCount} reuniões` : "Sem registros",
-            }
-          }
-
-          if (conversation.label === "Suporte") {
-            return {
-              ...conversation,
-              count: supportCount,
-              lastMessage: supportCount === 1 ? "1 chamado" : supportCount > 1 ? `${supportCount} chamados` : "Sem registros",
-            }
-          }
-
-          return conversation
-        }),
-      )
-    }
-
-    void loadConversationSummary()
-
-    return () => {
-      isMounted = false
-    }
-  }, [])
+        return conversation
+      }),
+    [summary],
+  )
 
   const filtered = useMemo(
     () =>

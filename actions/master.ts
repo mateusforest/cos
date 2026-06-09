@@ -72,7 +72,7 @@ async function requireMasterActor() {
     return { error: "Sessao invalida. Faca login novamente." as const }
   }
 
-  const access = await getUserAccessForUser(authData.user)
+  const access = await getUserAccessForUser(authData.user, supabase)
 
   if (access.profile?.global_role !== "master") {
     return { error: "Acesso restrito a equipe master." as const }
@@ -245,15 +245,15 @@ export async function getMasterDashboardStatsAction() {
       .from("support_tickets")
       .select("id", { count: "exact", head: true })
       .in("status", ["open", "in_progress", "waiting"]),
-    actor.adminClient.from("ai_usage_logs").select("*"),
-    actor.adminClient.from("connect_sources").select("*").eq("status", "connected"),
-    actor.adminClient.from("invoices").select("*"),
+    actor.adminClient.from("ai_usage_logs").select("total_tokens"),
+    actor.adminClient.from("connect_sources").select("id", { count: "exact", head: true }).eq("status", "connected"),
+    actor.adminClient.from("invoices").select("status, paid_at, created_at, amount, amount_paid, total"),
   ])
 
   const workspaceCount = workspacesResult.count ?? 0
   const usersCount = profilesResult.count ?? 0
   const openTicketsCount = openTicketsResult.count ?? 0
-  const connectedSourcesCount = Array.isArray(connectSourcesResult.data) ? connectSourcesResult.data.length : 0
+  const connectedSourcesCount = connectSourcesResult.count ?? 0
 
   const monthlyInvoices = (Array.isArray(invoicesResult.data) ? invoicesResult.data : []).filter((invoice) => {
     const status = typeof invoice.status === "string" ? invoice.status.toLowerCase() : ""
@@ -351,7 +351,7 @@ export async function getMasterOverviewAction() {
       .in("status", ["open", "in_progress", "waiting"]),
     actor.adminClient.from("ai_usage_logs").select("total_tokens"),
     actor.adminClient.from("connect_sources").select("id").eq("status", "connected"),
-    actor.adminClient.from("invoices").select("*"),
+    actor.adminClient.from("invoices").select("status, paid_at, created_at, amount, amount_paid, total"),
     loadMasterActivityRows(actor, 8),
     actor.adminClient.from("workspace_members").select("workspace_id, user_id, role").returns<WorkspaceMemberRow[]>(),
   ])

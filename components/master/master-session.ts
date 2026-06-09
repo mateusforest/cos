@@ -19,11 +19,12 @@ export function useMasterSession() {
   const handleLogout = (onAfter?: () => void) => {
     startTransition(async () => {
       clearAuth()
-      await createSupabaseBrowserClient().auth.signOut()
-      const result = await logoutAction()
+      const [result] = await Promise.all([
+        logoutAction(),
+        createSupabaseBrowserClient().auth.signOut(),
+      ])
       onAfter?.()
       router.replace(result.redirectTo || "/login")
-      router.refresh()
     })
   }
 

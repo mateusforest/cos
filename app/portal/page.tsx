@@ -26,8 +26,7 @@ import Link from "next/link"
 import { PortalHeader } from "@/components/portal/portal-header"
 import { usePortalInteractions } from "@/components/portal/portal-interactions"
 import { toast } from "@/hooks/use-toast"
-import { getFinancialSummaryAction } from "@/actions/financial"
-import { getWorkspaceActivityLogsAction } from "@/actions/activity"
+import { getPortalHomeOverviewAction } from "@/actions/activity"
 
 type Insight = {
   id: string
@@ -167,28 +166,25 @@ export default function PortalHomePage() {
 
   useEffect(() => {
     const loadPortalData = async () => {
-      const [financialResult, activityResult] = await Promise.all([
-        getFinancialSummaryAction(),
-        getWorkspaceActivityLogsAction(),
-      ])
+      const overviewResult = await getPortalHomeOverviewAction()
 
-      if (financialResult.success && financialResult.summary) {
+      if (overviewResult.success && overviewResult.overview) {
         setStats((prev) =>
           prev.map((stat) => {
             if (stat.label === "Ganhos do mês") {
               return {
                 ...stat,
-                value: financialResult.summary.monthIncome.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
-                sublabel: financialResult.summary.monthIncome > 0 ? "Entradas reais registradas" : "Nenhum faturamento registrado",
+                value: overviewResult.overview.financial.monthIncome.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+                sublabel:
+                  overviewResult.overview.financial.monthIncome > 0 ? "Entradas reais registradas" : "Nenhum faturamento registrado",
               }
             }
             return stat
           }),
         )
-      }
-
-      if (activityResult.success) {
-        setRecentActivities((activityResult.logs ?? []).slice(0, 5) as Array<{ id: string; action: string; description: string }>)
+        setRecentActivities(
+          overviewResult.overview.logs as Array<{ id: string; action: string; description: string }>,
+        )
       }
     }
 

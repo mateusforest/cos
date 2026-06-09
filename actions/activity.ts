@@ -20,7 +20,7 @@ async function getActivityActor() {
     return { error: "Sessão inválida. Faça login novamente." as const }
   }
 
-  const access = await getUserAccessForUser(authData.user)
+  const access = await getUserAccessForUser(authData.user, supabase)
 
   if (!access.workspace?.id) {
     return { error: "Nenhum workspace encontrado para esta conta." as const }
@@ -66,5 +66,88 @@ export async function getWorkspaceActivityLogsAction() {
       description: log.description || "Atividade registrada.",
       createdAt: log.created_at,
     })),
+  }
+}
+
+export async function getPortalHomeOverviewAction() {
+  const actor = await getActivityActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  const [logsResult, financialResult] = await Promise.all([
+    actor.adminClient
+      .from("activity_logs")
+      .select("id, workspace_id, area, action, description, created_at")
+      .eq("workspace_id", actor.workspaceId)
+      .order("created_at", { ascending: false })
+      .limit(5)
+      .returns<ActivityRow[]>(),
+    actor.adminClient
+      .from("financial_entries")
+      .select("type, amount, due_date, created_at, paid_at")
+      .eq("workspace_id", actor.workspaceId)
+      .returns<Array<{
+        type: string | null
+        amount: number | null
+        due_date: string | null
+        created_at: string | null
+        paid_at: string | null
+      }>>(),
+  ])
+
+  const error = logsResult.error || financialResult.error
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  const entries = financialResult.data ?? []
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+
+  let monthIncome = 0
+  let monthExpense = 0
+  let pendingAmount = 0
+
+  for (const entry of entries) {
+    const amount = typeof entry.amount === "number" ? entry.amount : 0
+    const entryType = entry.type === "expense" ? "expense" : "income"
+    const dueDateValue = entry.due_date || entry.created_at
+    const dueDate = dueDateValue ? new Date(dueDateValue) : null
+    const inCurrentMonth = dueDate ? dueDate >= monthStart && dueDate < monthEnd : false
+
+    if (entryType === "income" && inCurrentMonth) {
+      monthIncome += amount
+    }
+
+    if (entryType === "expense" && inCurrentMonth) {
+      monthExpense += amount
+    }
+
+    if (!entry.paid_at) {
+      pendingAmount += amount
+    }
+  }
+
+  return {
+    success: true,
+    overview: {
+      financial: {
+        monthIncome,
+        monthExpense,
+        monthBalance: monthIncome - monthExpense,
+        pendingAmount,
+      },
+      logs: (logsResult.data ?? []).map((log) => ({
+        id: log.id,
+        area: log.area || "sistema",
+        action: log.action || "activity_logged",
+        description: log.description || "Atividade registrada.",
+        createdAt: log.created_at,
+      })),
+    },
   }
 }
