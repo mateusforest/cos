@@ -4,6 +4,7 @@ import { use } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, MessageSquare } from "lucide-react"
+import { runOperationsEngineAction } from "@/actions/operations-engine"
 import { AreaChat } from "@/components/app/area-chat"
 import { SupportWorkspaceCenter } from "@/components/support/support-workspace-center"
 import { useSupport } from "@/components/support/support-context"
@@ -60,6 +61,36 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
                 ? () => router.push("/portal")
                 : undefined,
         }))}
+        onSendMessage={async (input, now) => {
+          try {
+            const result = await runOperationsEngineAction({
+              message: input,
+              area,
+            })
+
+            return {
+              messages: [
+                {
+                  from: "cos",
+                  text: result.message,
+                  time: now,
+                  ctaLabel: result.suggestedLabel,
+                  ctaHref: result.suggestedHref,
+                },
+              ],
+            }
+          } catch {
+            return {
+              messages: [
+                {
+                  from: "cos",
+                  text: "Nao consegui executar sua solicitacao agora. Tente novamente em instantes.",
+                  time: now,
+                },
+              ],
+            }
+          }
+        }}
         emptyLabel={
           area === "sistema"
             ? "Ainda não há mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre sistema, alertas e logs."

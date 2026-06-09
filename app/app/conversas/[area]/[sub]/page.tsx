@@ -2,6 +2,7 @@
 
 import { use } from "react"
 import { useRouter } from "next/navigation"
+import { runOperationsEngineAction } from "@/actions/operations-engine"
 import { AreaChat } from "@/components/app/area-chat"
 import { areaConfigs, slug } from "@/lib/area-configs"
 
@@ -139,6 +140,37 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
           }
         },
       }))}
+      onSendMessage={async (input, now) => {
+        try {
+          const result = await runOperationsEngineAction({
+            message: input,
+            area,
+            subArea: sub,
+          })
+
+          return {
+            messages: [
+              {
+                from: "cos",
+                text: result.message,
+                time: now,
+                ctaLabel: result.suggestedLabel,
+                ctaHref: result.suggestedHref,
+              },
+            ],
+          }
+        } catch {
+          return {
+            messages: [
+              {
+                from: "cos",
+                text: "Nao consegui executar sua solicitacao agora. Tente novamente em instantes.",
+                time: now,
+              },
+            ],
+          }
+        }
+      }}
       emptyLabel={chatCopy.emptyLabel}
     />
   )

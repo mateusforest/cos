@@ -24,7 +24,9 @@ import {
 } from "lucide-react"
 import { getOperationsHomeContextAction } from "@/actions/operations-home"
 import { createMeetingAction } from "@/actions/meetings"
+import { runOperationsEngineAction } from "@/actions/operations-engine"
 import { useAuth } from "@/components/auth/auth-provider"
+import type { ChatMessage } from "@/components/app/area-chat"
 import { useSupport } from "@/components/support/support-context"
 import { toast } from "@/hooks/use-toast"
 
@@ -95,6 +97,7 @@ export default function AppHomePage() {
   const { user, profile, workspace } = useAuth()
   const { openSupport } = useSupport()
   const [message, setMessage] = useState("")
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [balanceOpen, setBalanceOpen] = useState(false)
   const [modal, setModal] = useState<ModalType>(null)
   const [shortcutPreferences, setShortcutPreferences] = useState<Record<string, boolean> | null>(null)
@@ -105,6 +108,7 @@ export default function AppHomePage() {
   const [isCreatingMeeting, setIsCreatingMeeting] = useState(false)
   const [micState, setMicState] = useState<MicState>("idle")
   const [micPreview, setMicPreview] = useState("")
+  const [isEngineRunning, setIsEngineRunning] = useState(false)
   const [stats, setStats] = useState<{
     clientes: number
     operacoes: number
@@ -279,13 +283,50 @@ export default function AppHomePage() {
     setShortcutDraft(null)
   }
 
-  const handleSend = () => {
-    if (!message.trim()) return
-    toast({
-      title: "Mensagem pronta",
-      description: "Sua mensagem foi preparada localmente. O envio real sera conectado ao backend.",
-    })
+  const handleSend = async () => {
+    if (!message.trim() || isEngineRunning) return
+
+    const nextMessage = message.trim()
+    const now = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+
+    setChatMessages((prev) => [...prev, { from: "user", text: nextMessage, time: now }])
     setMessage("")
+    setMicPreview("")
+    setIsEngineRunning(true)
+    try {
+      const result = await runOperationsEngineAction({
+        message: nextMessage,
+      })
+
+      const responseTime = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          from: "cos",
+          text: result.message,
+          time: responseTime,
+          ctaLabel: result.suggestedLabel,
+          ctaHref: result.suggestedHref,
+        },
+      ])
+
+      if (result.ok) {
+        await loadStats({ silent: true })
+      }
+    } catch {
+      const responseTime = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          from: "cos",
+          text: "Nao consegui executar sua solicitacao agora. Tente novamente em instantes.",
+          time: responseTime,
+        },
+      ])
+    } finally {
+      setIsEngineRunning(false)
+    }
   }
 
   const buildRecognition = () => {
@@ -492,6 +533,7 @@ export default function AppHomePage() {
               type="text"
               value={message || micPreview}
               onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={(event) => event.key === "Enter" && void handleSend()}
               placeholder="Fale com o COS..."
               className="w-full rounded-full bg-transparent px-5 py-3 pr-20 text-sm focus:outline-none"
             />
@@ -499,7 +541,7 @@ export default function AppHomePage() {
               <button onClick={startListening} className={`p-2 transition-colors ${micState === "listening" ? "text-[#0a0a0a]" : "text-gray-400 hover:text-gray-600"}`} aria-label="Falar">
                 <Mic className="h-4 w-4" />
               </button>
-              <button onClick={handleSend} disabled={!message.trim()} className="rounded-full bg-[#0a0a0a] p-2 text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50" aria-label="Enviar">
+              <button onClick={() => void handleSend()} disabled={!message.trim() || isEngineRunning} className="rounded-full bg-[#0a0a0a] p-2 text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50" aria-label="Enviar">
                 <Send className="h-4 w-4" />
               </button>
             </div>
@@ -538,6 +580,42 @@ export default function AppHomePage() {
                     <button type="button" onClick={finalizeListening} className="flex-1 rounded-2xl bg-[#0a0a0a] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">
                       Finalizar
                     </button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence initial={false}>
+            {(chatMessages.length > 0 || isEngineRunning) && (
+              <motion.div initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 8, opacity: 0 }} className="mt-3 space-y-2">
+                {chatMessages.map((chatMessage, index) => (
+                  <div key={`${chatMessage.time}-${index}`} className={`flex ${chatMessage.from === "user" ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 ${chatMessage.from === "user" ? "bg-[#0a0a0a] text-white" : "border border-gray-100 bg-white text-[#0a0a0a]"}`}>
+                      {chatMessage.from === "cos" && (
+                        <span className="mb-0.5 flex items-center gap-1 text-[10px] font-medium text-gray-400">
+                          <Sparkles className="h-3 w-3" /> COS
+                        </span>
+                      )}
+                      <p className="text-sm leading-snug">{chatMessage.text}</p>
+                      {chatMessage.ctaLabel && chatMessage.ctaHref && (
+                        <Link href={chatMessage.ctaHref} className="mt-2 inline-flex rounded-full border border-gray-200 px-3 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50">
+                          {chatMessage.ctaLabel}
+                        </Link>
+                      )}
+                      <span className={`mt-1 block text-[10px] ${chatMessage.from === "user" ? "text-gray-300" : "text-gray-400"}`}>{chatMessage.time}</span>
+                    </div>
+                  </div>
+                ))}
+
+                {isEngineRunning && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[88%] rounded-2xl border border-gray-100 bg-white px-3.5 py-2.5 text-[#0a0a0a]">
+                      <span className="mb-0.5 flex items-center gap-1 text-[10px] font-medium text-gray-400">
+                        <Sparkles className="h-3 w-3" /> COS
+                      </span>
+                      <p className="text-sm leading-snug text-gray-500">Executando sua solicitacao...</p>
+                    </div>
                   </div>
                 )}
               </motion.div>

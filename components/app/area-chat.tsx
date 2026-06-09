@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
@@ -10,6 +11,8 @@ export type ChatMessage = {
   from: "cos" | "user"
   text: string
   time: string
+  ctaLabel?: string
+  ctaHref?: string
 }
 
 export type QuickAction = {
@@ -23,6 +26,11 @@ export type SendMessageResult =
   | {
       messages?: ChatMessage[]
     }
+  | Promise<
+      void | {
+        messages?: ChatMessage[]
+      }
+    >
 
 export function AreaChat({
   title,
@@ -50,16 +58,32 @@ export function AreaChat({
   const router = useRouter()
   const [input, setInput] = useState("")
   const [chat, setChat] = useState<ChatMessage[]>(messages)
+  const [isSending, setIsSending] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const send = () => {
-    if (!input.trim()) return
+  const send = async () => {
+    if (!input.trim() || isSending) return
     const now = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
     const nextInput = input.trim()
-    const extra = onSendMessage?.(nextInput, now)
-    const extraMessages = extra?.messages ?? []
-    setChat((prev) => [...prev, { from: "user", text: nextInput, time: now }, ...extraMessages])
+    setChat((prev) => [...prev, { from: "user", text: nextInput, time: now }])
     setInput("")
+
+    if (!onSendMessage) {
+      return
+    }
+
+    setIsSending(true)
+
+    try {
+      const extra = await onSendMessage(nextInput, now)
+      const extraMessages = extra?.messages ?? []
+
+      if (extraMessages.length > 0) {
+        setChat((prev) => [...prev, ...extraMessages])
+      }
+    } finally {
+      setIsSending(false)
+    }
   }
 
   return (
@@ -106,10 +130,28 @@ export function AreaChat({
                   </span>
                 )}
                 <p className="text-sm leading-snug">{m.text}</p>
+                {m.ctaLabel && m.ctaHref && (
+                  <Link
+                    href={m.ctaHref}
+                    className="mt-2 inline-flex rounded-full border border-gray-200 px-3 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                  >
+                    {m.ctaLabel}
+                  </Link>
+                )}
                 <span className={`block text-[10px] mt-1 ${m.from === "user" ? "text-gray-300" : "text-gray-400"}`}>{m.time}</span>
               </div>
             </motion.div>
           ))
+        )}
+        {isSending && (
+          <motion.div initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex justify-start">
+            <div className="max-w-[80%] rounded-2xl border border-gray-100 bg-white px-3.5 py-2.5 text-[#0a0a0a]">
+              <span className="mb-0.5 flex items-center gap-1 text-[10px] font-medium text-gray-400">
+                <Sparkles className="w-3 h-3" /> COS
+              </span>
+              <p className="text-sm leading-snug text-gray-500">Executando sua solicitação...</p>
+            </div>
+          </motion.div>
         )}
       </div>
 
@@ -157,13 +199,13 @@ export function AreaChat({
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && send()}
+              onKeyDown={(e) => e.key === "Enter" && void send()}
               placeholder={placeholder}
               className="w-full px-4 py-2.5 bg-gray-50 rounded-full border border-gray-200 text-sm focus:outline-none focus:border-gray-300"
             />
           </div>
           {input.trim() ? (
-            <button onClick={send} className="p-2.5 bg-[#0a0a0a] text-white rounded-full hover:bg-[#1a1a1a] transition-colors" aria-label="Enviar">
+            <button onClick={() => void send()} disabled={isSending} className="p-2.5 bg-[#0a0a0a] text-white rounded-full hover:bg-[#1a1a1a] transition-colors disabled:cursor-not-allowed disabled:opacity-50" aria-label="Enviar">
               <Send className="w-4 h-4" />
             </button>
           ) : (
