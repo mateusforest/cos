@@ -3,10 +3,13 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/server"
 import { runOperationsEngine } from "@/lib/cos-engine/operations-engine"
 import { validateOperationsActor } from "@/lib/cos-engine/operations-actor"
+import { buildOperationsContext } from "@/lib/cos-engine/operations-context"
+import { detectOperationsIntent } from "@/lib/cos-engine/operations-intents"
 import {
   buildOperationsConversationArea,
   buildOperationsConversationTitle,
   formatOperationsConversationTime,
+  inferOperationsConversationAreaFromIntent,
 } from "@/lib/cos-engine/operations-conversations"
 import type {
   OperationsEngineInput,
@@ -162,13 +165,24 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
     }
   }
 
-  const conversationArea = buildOperationsConversationArea({
+  const explicitConversationArea = buildOperationsConversationArea({
     area: input.area,
     subArea: input.subArea,
   })
+  const detected = detectOperationsIntent(
+    message,
+    buildOperationsContext({
+      area: input.area,
+      subArea: input.subArea,
+    }),
+  )
+  const conversationArea =
+    explicitConversationArea !== "general"
+      ? explicitConversationArea
+      : inferOperationsConversationAreaFromIntent(detected)
   const conversationTitle = buildOperationsConversationTitle({
-    area: input.area,
-    subArea: input.subArea,
+    area: conversationArea.split("/")[0],
+    subArea: conversationArea.split("/")[1],
   })
 
   const conversationResult = await findOrCreateConversation({
@@ -196,6 +210,7 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
       subArea: input.subArea ?? null,
       source: "operations_engine",
       conversation_area: conversationArea,
+      detected_intent: detected.intent,
     },
   })
 
@@ -223,6 +238,7 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
       area: input.area ?? null,
       subArea: input.subArea ?? null,
       conversation_area: conversationArea,
+      detected_intent: detected.intent,
       suggestedLabel: result.suggestedLabel ?? null,
       suggestedHref: result.suggestedHref ?? null,
     },

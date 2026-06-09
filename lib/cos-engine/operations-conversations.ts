@@ -1,4 +1,5 @@
 import { buildOperationsContext } from "@/lib/cos-engine/operations-context"
+import type { DetectedIntent } from "@/lib/cos-engine/types"
 
 const areaTitles: Record<string, string> = {
   general: "Geral",
@@ -50,6 +51,47 @@ export function buildOperationsConversationArea(input: { area?: string; subArea?
   }
 
   return `${context.area}/${context.subArea}`
+}
+
+export function inferOperationsConversationAreaFromIntent(detected: DetectedIntent) {
+  switch (detected.intent) {
+    case "create_client":
+    case "get_clients_count":
+      return "cadastros/clientes"
+    case "create_financial_income":
+      return "financeiro/ganhos"
+    case "create_financial_expense":
+      return "financeiro/gastos"
+    case "get_financial_summary":
+      return "financeiro"
+    case "create_operation":
+      return "operacoes/projetos"
+    case "create_document": {
+      const type = String(detected.entities.type || "").trim().toLowerCase()
+
+      if (type === "contrato") {
+        return "documentos/contratos"
+      }
+
+      if (type === "relatorio" || type === "relatório") {
+        return "documentos/relatorios"
+      }
+
+      if (type === "arquivo") {
+        return "documentos/arquivos"
+      }
+
+      return "documentos"
+    }
+    case "create_meeting":
+      return "reunioes"
+    case "create_support_ticket":
+      return "suporte"
+    case "get_recent_activity":
+    case "unknown":
+    default:
+      return "general"
+  }
 }
 
 export function buildOperationsConversationTitle(input: { area?: string; subArea?: string }) {
