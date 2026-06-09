@@ -66,10 +66,10 @@ export function HeroSection() {
         >
           <div className="relative overflow-hidden rounded-t-3xl">
             <Image
-              src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/ChatGPT%20Image%201%20de%20jun.%20de%202026%2C%2019_42_15-QjY2ihS2t86VosGyfjD08OLrf6hKtq.png"
+              src="/cos-hero-banner.png"
               alt="COS - Sua empresa conversa. O COS executa."
-              width={1920}
-              height={1080}
+              width={1717}
+              height={916}
               className="w-full h-auto object-cover"
               priority
             />
@@ -109,10 +109,10 @@ export function HeroSection() {
       >
         <div className="relative overflow-hidden rounded-3xl">
           <Image
-            src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/ChatGPT%20Image%201%20de%20jun.%20de%202026%2C%2019_42_15-QjY2ihS2t86VosGyfjD08OLrf6hKtq.png"
+            src="/cos-hero-banner.png"
             alt="COS - Sua empresa conversa. O COS executa."
-            width={1920}
-            height={1080}
+            width={1717}
+            height={916}
             className="w-full h-auto"
             priority
           />
