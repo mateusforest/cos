@@ -1,5 +1,3 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server"
-import { getUserAccessForUser } from "@/lib/auth"
 import { createClientAction, getClientsAction } from "@/actions/clients"
 import { createFinancialEntryAction, getFinancialSummaryAction } from "@/actions/financial"
 import { createOperationAction } from "@/actions/operations"
@@ -7,35 +5,17 @@ import { createDocumentAction } from "@/actions/documents"
 import { createMeetingAction } from "@/actions/meetings"
 import { createSupportTicketAction } from "@/actions/support"
 import { getWorkspaceActivityLogsAction } from "@/actions/activity"
+import { validateOperationsActor } from "@/lib/cos-engine/operations-actor"
 import { buildOperationsContext } from "@/lib/cos-engine/operations-context"
 import { detectOperationsIntent } from "@/lib/cos-engine/operations-intents"
-import { buildEngineError, buildEngineSuccess, formatCurrencyBRL, humanizeActivityAction } from "@/lib/cos-engine/operations-response"
+import {
+  buildEngineError,
+  buildEngineSuccess,
+  formatCurrencyBRL,
+  humanizeActivityAction,
+} from "@/lib/cos-engine/operations-response"
 import { toTitleCase } from "@/lib/cos-engine/operations-tools"
 import type { OperationsEngineInput, OperationsEngineResult } from "@/lib/cos-engine/types"
-
-async function validateOperationsActor() {
-  const supabase = await createSupabaseServerClient()
-  const { data: authData, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !authData.user) {
-    return { error: "Sessão inválida. Faça login novamente." as const }
-  }
-
-  const access = await getUserAccessForUser(authData.user)
-
-  if (!access.workspace?.id) {
-    return { error: "Nenhum workspace encontrado para esta conta." as const }
-  }
-
-  if (access.workspace.type !== "operations") {
-    return { error: "O Operations Engine está disponível apenas para workspaces COS Operações." as const }
-  }
-
-  return {
-    user: authData.user,
-    access,
-  }
-}
 
 async function resolveClientIdByName(clientName: string) {
   const clientsResult = await getClientsAction()
@@ -67,7 +47,7 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
   const message = input.message.trim()
 
   if (!message) {
-    return buildEngineError("Escreva uma solicitação para eu poder ajudar.")
+    return buildEngineError("Escreva uma solicitacao para eu poder ajudar.")
   }
 
   const context = buildOperationsContext(input)
@@ -112,11 +92,11 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
       const title = rawTitle ? toTitleCase(rawTitle) : ""
 
       if (!amount) {
-        return buildEngineError("Para registrar esse lançamento, preciso do valor.", detected.intent)
+        return buildEngineError("Para registrar esse lancamento, preciso do valor.", detected.intent)
       }
 
       if (!title) {
-        return buildEngineError("Para registrar esse lançamento, preciso da descrição.", detected.intent)
+        return buildEngineError("Para registrar esse lancamento, preciso da descricao.", detected.intent)
       }
 
       const isIncome = detected.intent === "create_financial_income"
@@ -130,7 +110,7 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
       })
 
       if (result.error) {
-        return buildEngineError("Nao consegui registrar o lançamento agora. Tente novamente em instantes.", detected.intent)
+        return buildEngineError("Nao consegui registrar o lancamento agora. Tente novamente em instantes.", detected.intent)
       }
 
       return buildEngineSuccess({
@@ -147,7 +127,7 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
       const clientName = String(detected.entities.clientName || "").trim()
 
       if (!title) {
-        return buildEngineError("Para criar a operação, preciso do título.", "create_operation")
+        return buildEngineError("Para criar a operacao, preciso do titulo.", "create_operation")
       }
 
       let clientId: string | undefined
@@ -173,16 +153,16 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
       })
 
       if (result.error) {
-        return buildEngineError("Nao consegui criar a operação agora. Tente novamente em instantes.", "create_operation")
+        return buildEngineError("Nao consegui criar a operacao agora. Tente novamente em instantes.", "create_operation")
       }
 
       return buildEngineSuccess({
         action: "create_operation",
         resultId: result.operationId,
         message: resolvedClientName
-          ? `Operação ${title} criada com sucesso para ${resolvedClientName}.`
-          : `Operação ${title} criada com sucesso.`,
-        suggestedLabel: "Ver operações no Portal",
+          ? `Operacao ${title} criada com sucesso para ${resolvedClientName}.`
+          : `Operacao ${title} criada com sucesso.`,
+        suggestedLabel: "Ver operacoes no Portal",
         suggestedHref: "/portal/operacoes",
       })
     }
@@ -192,7 +172,7 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
       const type = String(detected.entities.type || "outro").trim()
 
       if (!title) {
-        return buildEngineError("Para criar o documento, preciso do título.", "create_document")
+        return buildEngineError("Para criar o documento, preciso do titulo.", "create_document")
       }
 
       const result = await createDocumentAction({
@@ -220,7 +200,7 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
       const title = String(detected.entities.title || "").trim()
 
       if (!title) {
-        return buildEngineError("Para criar a reunião, preciso do título.", "create_meeting")
+        return buildEngineError("Para criar a reuniao, preciso do titulo.", "create_meeting")
       }
 
       const result = await createMeetingAction({
@@ -230,27 +210,27 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
       })
 
       if (result.error) {
-        return buildEngineError("Nao consegui criar a reunião agora. Tente novamente em instantes.", "create_meeting")
+        return buildEngineError("Nao consegui criar a reuniao agora. Tente novamente em instantes.", "create_meeting")
       }
 
       return buildEngineSuccess({
         action: "create_meeting",
         resultId: result.meetingId,
-        message: `Criei a reunião ${title} como rascunho.`,
-        suggestedLabel: "Ver reuniões",
+        message: `Criei a reuniao ${title} como rascunho.`,
+        suggestedLabel: "Ver reunioes",
         suggestedHref: "/app/conversas/reunioes",
       })
     }
 
     case "create_support_ticket": {
-      const category = String(detected.entities.category || "Dúvida sobre o COS")
-      const subject = String(detected.entities.subject || "Solicitação de suporte").trim()
+      const category = String(detected.entities.category || "Duvida sobre o COS")
+      const subject = String(detected.entities.subject || "Solicitacao de suporte").trim()
 
       const result = await createSupportTicketAction({
         category,
-        subject: subject || "Solicitação de suporte",
+        subject: subject || "Solicitacao de suporte",
         description: message,
-        priority: "Média",
+        priority: "Media",
       })
 
       if (result.error) {
@@ -277,7 +257,7 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
 
       return buildEngineSuccess({
         action: "get_clients_count",
-        message: `Você tem ${clientsCount} cliente${clientsCount === 1 ? "" : "s"} cadastrado${clientsCount === 1 ? "" : "s"}.`,
+        message: `Voce tem ${clientsCount} cliente${clientsCount === 1 ? "" : "s"} cadastrado${clientsCount === 1 ? "" : "s"}.`,
       })
     }
 
@@ -290,7 +270,7 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
 
       return buildEngineSuccess({
         action: "get_financial_summary",
-        message: `Seu saldo atual é ${formatCurrencyBRL(result.summary.balance)}.`,
+        message: `Seu saldo atual e ${formatCurrencyBRL(result.summary.balance)}.`,
         suggestedLabel: "Ver financeiro no Portal",
         suggestedHref: "/portal/financeiro",
       })
@@ -300,7 +280,7 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
       const result = await getWorkspaceActivityLogsAction()
 
       if (result.error) {
-        return buildEngineError("Nao consegui consultar as últimas atividades agora.", "get_recent_activity")
+        return buildEngineError("Nao consegui consultar as ultimas atividades agora.", "get_recent_activity")
       }
 
       const recentLogs = (result.logs ?? []).slice(0, 3)
@@ -308,8 +288,8 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
       if (recentLogs.length === 0) {
         return buildEngineSuccess({
           action: "get_recent_activity",
-          message: "Ainda não há atividades registradas no seu workspace.",
-          suggestedLabel: "Abrir histórico",
+          message: "Ainda nao ha atividades registradas no seu workspace.",
+          suggestedLabel: "Abrir historico",
           suggestedHref: "/app/historico",
         })
       }
@@ -320,8 +300,8 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
 
       return buildEngineSuccess({
         action: "get_recent_activity",
-        message: `Suas últimas atividades foram: ${summary}.`,
-        suggestedLabel: "Abrir histórico",
+        message: `Suas ultimas atividades foram: ${summary}.`,
+        suggestedLabel: "Abrir historico",
         suggestedHref: "/app/historico",
       })
     }
@@ -329,7 +309,7 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
     case "unknown":
     default:
       return buildEngineError(
-        "Ainda não consigo executar essa solicitação, mas posso ajudar com clientes, financeiro, operações, documentos, reuniões e suporte.",
+        "Ainda nao consigo executar essa solicitacao, mas posso ajudar com clientes, financeiro, operacoes, documentos, reunioes e suporte.",
         "unknown",
       )
   }

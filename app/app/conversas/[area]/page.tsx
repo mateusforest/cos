@@ -1,11 +1,14 @@
 "use client"
 
-import { use } from "react"
+import { use, useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ChevronLeft, ChevronRight, MessageSquare } from "lucide-react"
-import { runOperationsEngineAction } from "@/actions/operations-engine"
-import { AreaChat } from "@/components/app/area-chat"
+import {
+  getOperationsConversationMessagesAction,
+  runOperationsEngineAction,
+} from "@/actions/operations-engine"
+import { AreaChat, type ChatMessage } from "@/components/app/area-chat"
 import { SupportWorkspaceCenter } from "@/components/support/support-workspace-center"
 import { useSupport } from "@/components/support/support-context"
 import { areaConfigs, slug } from "@/lib/area-configs"
@@ -15,6 +18,40 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
   const router = useRouter()
   const { openSupport } = useSupport()
   const config = areaConfigs[area]
+  const isChatArea = Boolean(config) && config.subsections.length === 0 && area !== "suporte"
+  const [messages, setMessages] = useState<ChatMessage[]>(config?.messages ?? [])
+  const [isLoadingMessages, setIsLoadingMessages] = useState(isChatArea)
+
+  useEffect(() => {
+    if (!config || !isChatArea) {
+      return
+    }
+
+    let isMounted = true
+
+    const loadMessages = async () => {
+      setIsLoadingMessages(true)
+      const result = await getOperationsConversationMessagesAction({ area })
+
+      if (!isMounted) {
+        return
+      }
+
+      if (result.success) {
+        setMessages(result.messages)
+      } else {
+        setMessages(config.messages ?? [])
+      }
+
+      setIsLoadingMessages(false)
+    }
+
+    void loadMessages()
+
+    return () => {
+      isMounted = false
+    }
+  }, [area, config, isChatArea])
 
   if (!config) {
     return (
@@ -26,8 +63,8 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
           <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
             <MessageSquare className="w-7 h-7 text-gray-400" />
           </div>
-          <h1 className="text-lg font-semibold text-[#0a0a0a] mb-1">Conversa não encontrada</h1>
-          <p className="text-sm text-gray-500">Esta conversa ainda não está disponível para o seu workspace.</p>
+          <h1 className="text-lg font-semibold text-[#0a0a0a] mb-1">Conversa nao encontrada</h1>
+          <p className="text-sm text-gray-500">Esta conversa ainda nao esta disponivel para o seu workspace.</p>
         </div>
       </div>
     )
@@ -42,16 +79,18 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
   if (config.subsections.length === 0) {
     return (
       <AreaChat
+        conversationKey={area}
         title={config.label}
         subtitle={
           area === "sistema"
             ? "Logs, alertas e configuracoes do workspace."
-            : "Atendimento, duvidas, problemas tecnicos, plano, cobranca e integracoes."
+            : `Conversa contextual de ${config.label.toLowerCase()} do seu workspace.`
         }
         icon={Icon}
         color={config.color}
         bg={config.bg}
-        messages={config.messages}
+        messages={messages}
+        isLoadingHistory={isLoadingMessages}
         quickActions={config.quickActions.map((label) => ({
           label,
           onClick:
@@ -93,8 +132,8 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
         }}
         emptyLabel={
           area === "sistema"
-            ? "Ainda não há mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre sistema, alertas e logs."
-            : "Nenhuma conversa de suporte ainda."
+            ? "Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre sistema, alertas e logs."
+            : `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${config.label.toLowerCase()}.`
         }
       />
     )
@@ -112,7 +151,7 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
         </span>
         <div>
           <h1 className="text-xl font-bold text-[#0a0a0a]">{config.label}</h1>
-          <p className="text-sm text-gray-500">Selecione uma área para abrir a conversa contextual.</p>
+          <p className="text-sm text-gray-500">Selecione uma area para abrir a conversa contextual.</p>
         </div>
       </div>
 

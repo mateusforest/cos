@@ -31,6 +31,15 @@ export type OperationsEngineResult = {
   suggestedHref?: string
 }
 
+export type PersistedOperationsChatMessage = {
+  id: string
+  from: "cos" | "user"
+  text: string
+  time: string
+  ctaLabel?: string
+  ctaHref?: string
+}
+
 export type DetectedIntent = {
   intent: OperationsEngineIntent
   entities: Record<string, string | number | boolean | null | undefined>

@@ -1,9 +1,12 @@
 "use client"
 
-import { use } from "react"
+import { use, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { runOperationsEngineAction } from "@/actions/operations-engine"
-import { AreaChat } from "@/components/app/area-chat"
+import {
+  getOperationsConversationMessagesAction,
+  runOperationsEngineAction,
+} from "@/actions/operations-engine"
+import { AreaChat, type ChatMessage } from "@/components/app/area-chat"
 import { areaConfigs, slug } from "@/lib/area-configs"
 
 const portalDestinations: Record<string, string> = {
@@ -30,12 +33,10 @@ const portalDestinations: Record<string, string> = {
 }
 
 function resolveChatCopy(area: string, subLabel: string) {
-  const key = slug(subLabel)
-
   if (area === "cadastros") {
     return {
       subtitle: `Conversa contextual de ${subLabel.toLowerCase()} do seu workspace.`,
-      emptyLabel: `Ainda não há mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
+      emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
       quickActions: ["Criar cliente", "Buscar cliente", "Ver clientes no Portal"],
     }
   }
@@ -43,23 +44,23 @@ function resolveChatCopy(area: string, subLabel: string) {
   if (area === "operacoes") {
     return {
       subtitle: `Conversa operacional sobre ${subLabel.toLowerCase()}.`,
-      emptyLabel: `Ainda não há mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
-      quickActions: ["Criar operação", "Buscar operação", "Ver operações no Portal"],
+      emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
+      quickActions: ["Criar operacao", "Buscar operacao", "Ver operacoes no Portal"],
     }
   }
 
   if (area === "vendas") {
     return {
       subtitle: `Conversa comercial sobre ${subLabel.toLowerCase()}.`,
-      emptyLabel: `Ainda não há mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
-      quickActions: ["Criar proposta", "Buscar negociação", "Ver vendas no Portal"],
+      emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
+      quickActions: ["Criar proposta", "Buscar negociacao", "Ver vendas no Portal"],
     }
   }
 
   if (area === "financeiro") {
     return {
       subtitle: `Conversa financeira sobre ${subLabel.toLowerCase()}.`,
-      emptyLabel: `Ainda não há mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
+      emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
       quickActions: ["Registrar ganho", "Registrar gasto", "Ver financeiro no Portal"],
     }
   }
@@ -67,7 +68,7 @@ function resolveChatCopy(area: string, subLabel: string) {
   if (area === "equipe") {
     return {
       subtitle: `Conversa contextual da equipe ${subLabel.toLowerCase()}.`,
-      emptyLabel: `Ainda não há mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre a equipe ${subLabel.toLowerCase()}.`,
+      emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre a equipe ${subLabel.toLowerCase()}.`,
       quickActions: ["Adicionar membro", "Atribuir tarefa", "Ver equipe no Portal"],
     }
   }
@@ -75,14 +76,14 @@ function resolveChatCopy(area: string, subLabel: string) {
   if (area === "documentos") {
     return {
       subtitle: `Conversa documental sobre ${subLabel.toLowerCase()}.`,
-      emptyLabel: `Ainda não há mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
+      emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
       quickActions: ["Criar documento", "Buscar arquivo", "Ver documentos no Portal"],
     }
   }
 
   return {
-    subtitle: `${subLabel} · COS Operações`,
-    emptyLabel: `Ainda não há mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
+    subtitle: `${subLabel} · COS Operacoes`,
+    emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
     quickActions: ["Abrir no Portal"],
   }
 }
@@ -91,6 +92,8 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
   const { area, sub } = use(params)
   const router = useRouter()
   const config = areaConfigs[area]
+  const [messages, setMessages] = useState<ChatMessage[]>(config?.messages ?? [])
+  const [isLoadingMessages, setIsLoadingMessages] = useState(true)
 
   const subLabel =
     config?.subsections.find((section) => slug(section) === sub) ??
@@ -98,14 +101,46 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
 
   const chatCopy = resolveChatCopy(area, subLabel)
 
+  useEffect(() => {
+    let isMounted = true
+
+    const loadMessages = async () => {
+      setIsLoadingMessages(true)
+      const result = await getOperationsConversationMessagesAction({
+        area,
+        subArea: sub,
+      })
+
+      if (!isMounted) {
+        return
+      }
+
+      if (result.success) {
+        setMessages(result.messages)
+      } else {
+        setMessages(config?.messages ?? [])
+      }
+
+      setIsLoadingMessages(false)
+    }
+
+    void loadMessages()
+
+    return () => {
+      isMounted = false
+    }
+  }, [area, sub, config])
+
   return (
     <AreaChat
+      conversationKey={`${area}/${sub}`}
       title={subLabel}
       subtitle={chatCopy.subtitle}
       icon={config?.icon ?? areaConfigs.sistema.icon}
       color={config?.color}
       bg={config?.bg}
-      messages={config?.messages ?? []}
+      messages={messages}
+      isLoadingHistory={isLoadingMessages}
       quickActions={chatCopy.quickActions.map((label) => ({
         label,
         onClick: () => {
@@ -119,7 +154,7 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
             return
           }
 
-          if (label === "Criar operação") {
+          if (label === "Criar operacao") {
             router.push("/app/novo/operacao")
             return
           }

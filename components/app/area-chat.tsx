@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { ChevronLeft, Send, Mic, Plus, Sparkles, type LucideIcon } from "lucide-react"
@@ -38,28 +38,43 @@ export function AreaChat({
   icon: Icon,
   color = "#0a0a0a",
   bg = "#f3f4f6",
+  conversationKey = "default",
   messages = [],
   quickActions = [],
   emptyLabel = "Nenhuma mensagem por aqui ainda.",
   placeholder = "Escreva uma mensagem...",
   onSendMessage,
+  isLoadingHistory = false,
 }: {
   title: string
   subtitle?: string
   icon: LucideIcon
   color?: string
   bg?: string
+  conversationKey?: string
   messages?: ChatMessage[]
   quickActions?: QuickAction[]
   emptyLabel?: string
   placeholder?: string
   onSendMessage?: (input: string, now: string) => SendMessageResult
+  isLoadingHistory?: boolean
 }) {
   const router = useRouter()
   const [input, setInput] = useState("")
   const [chat, setChat] = useState<ChatMessage[]>(messages)
   const [isSending, setIsSending] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const conversationKeyRef = useRef(conversationKey)
+
+  useEffect(() => {
+    if (conversationKeyRef.current !== conversationKey) {
+      conversationKeyRef.current = conversationKey
+      setChat(messages)
+      return
+    }
+
+    setChat((current) => (current.length === 0 ? messages : current))
+  }, [conversationKey, messages])
 
   const send = async () => {
     if (!input.trim() || isSending) return
@@ -108,7 +123,14 @@ export function AreaChat({
 
       {/* History */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        {chat.length === 0 ? (
+        {isLoadingHistory ? (
+          <div className="flex flex-col items-center justify-center text-center h-full py-16">
+            <span className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: bg }}>
+              <Icon className="w-6 h-6" style={{ color }} />
+            </span>
+            <p className="text-sm text-gray-500 max-w-xs">Carregando mensagens...</p>
+          </div>
+        ) : chat.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center h-full py-16">
             <span className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: bg }}>
               <Icon className="w-6 h-6" style={{ color }} />

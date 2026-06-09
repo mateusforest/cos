@@ -24,7 +24,10 @@ import {
 } from "lucide-react"
 import { getOperationsHomeContextAction } from "@/actions/operations-home"
 import { createMeetingAction } from "@/actions/meetings"
-import { runOperationsEngineAction } from "@/actions/operations-engine"
+import {
+  getOperationsConversationMessagesAction,
+  runOperationsEngineAction,
+} from "@/actions/operations-engine"
 import { useAuth } from "@/components/auth/auth-provider"
 import type { ChatMessage } from "@/components/app/area-chat"
 import { useSupport } from "@/components/support/support-context"
@@ -216,6 +219,29 @@ export default function AppHomePage() {
   useEffect(() => {
     void loadStats()
   }, [loadStats, workspace?.id])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadGeneralConversation = async () => {
+      const result = await getOperationsConversationMessagesAction()
+
+      if (!isMounted) {
+        return
+      }
+
+      if (result.success) {
+        setChatMessages(result.messages)
+      }
+
+    }
+
+    void loadGeneralConversation()
+
+    return () => {
+      isMounted = false
+    }
+  }, [workspace?.id])
 
   const quickActions = [
     { icon: Sparkles, label: "Sugerir acao", onClick: () => setModal("sugerir") },
