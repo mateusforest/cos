@@ -148,11 +148,11 @@ export default function ConnectHomePage() {
                         </span>
                       </span>
                     </div>
-                    <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                      <span>{source.sectionsCount} sessoes</span>
-                      <span>{source.actionsCount} acoes</span>
-                    </div>
-                    <div className="mt-3 flex gap-2">
+                     <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                       <span>{source.sectionsCount} sessoes</span>
+                       <span>{source.actionsCount} acoes</span>
+                     </div>
+                     <div className="mt-3 flex gap-2">
                       <button
                         onClick={() => openModal("section", { sourceId: source.id })}
                         className="flex-1 rounded-lg bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100"
@@ -162,13 +162,21 @@ export default function ConnectHomePage() {
                       <button
                         onClick={() => openModal("action", { sourceId: source.id })}
                         className="flex-1 rounded-lg bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100"
-                      >
-                        Criar acao
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
+                       >
+                         Criar acao
+                       </button>
+                     </div>
+                     <div className="mt-2 flex justify-end">
+                       <button
+                         onClick={() => openModal("deleteSource", { sourceId: source.id })}
+                         className="text-xs font-medium text-gray-500 transition-colors hover:text-gray-700"
+                       >
+                         Remover fonte
+                       </button>
+                     </div>
+                   </div>
+                 )
+               })}
             </div>
           </div>
         ) : (

@@ -58,6 +58,7 @@ export type ConnectModal =
   | "foto"
   | "section"
   | "action"
+  | "deleteSource"
   | "configuredAction"
   | null
 

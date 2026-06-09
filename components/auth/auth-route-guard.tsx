@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { canAccessPath, resolveHomePath } from "@/lib/auth-routing"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -18,8 +18,10 @@ function GuardLoading({ label }: { label: string }) {
 export function ProtectedRouteGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { user, profile, workspace, isLoading } = useAuth()
+  const { user, profile, workspace, isLoading, refresh } = useAuth()
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [isRecoveringAccess, setIsRecoveringAccess] = useState(false)
+  const recoveryAttemptRef = useRef<string | null>(null)
 
   const loginHref = useMemo(() => {
     const params = new URLSearchParams()
@@ -39,7 +41,20 @@ export function ProtectedRouteGuard({ children }: { children: ReactNode }) {
     }
 
     if (canAccessPath(pathname, { profile, workspace })) {
+      recoveryAttemptRef.current = null
+      setIsRecoveringAccess(false)
       setIsRedirecting(false)
+      return
+    }
+
+    const recoveryKey = `${user.id}:${pathname}`
+
+    if (recoveryAttemptRef.current !== recoveryKey) {
+      recoveryAttemptRef.current = recoveryKey
+      setIsRecoveringAccess(true)
+      void refresh().finally(() => {
+        setIsRecoveringAccess(false)
+      })
       return
     }
 
@@ -58,9 +73,9 @@ export function ProtectedRouteGuard({ children }: { children: ReactNode }) {
     }
 
     setIsRedirecting(false)
-  }, [isLoading, user, pathname, profile, workspace, router, loginHref])
+  }, [isLoading, user, pathname, profile, workspace, router, loginHref, refresh])
 
-  if (isLoading || isRedirecting) {
+  if (isLoading || isRedirecting || isRecoveringAccess) {
     return <GuardLoading label="Verificando acesso..." />
   }
 

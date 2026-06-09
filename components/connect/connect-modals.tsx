@@ -7,6 +7,7 @@ import {
   createConnectActionAction,
   createConnectSectionAction,
   createConnectSourceAction,
+  deleteConnectSourceAction,
   type ConnectActionType,
   type ConnectSourceStatus,
 } from "@/actions/connect"
@@ -224,6 +225,29 @@ export function ConnectModals() {
     await refreshData({ silent: true })
     toast("Acao criada com sucesso.")
     setActionForm({ name: "", actionType: "read", notes: "" })
+    resetAndClose()
+  }
+
+  const handleDeleteSource = async () => {
+    if (!selectedSource) {
+      setError("Escolha uma fonte para remover.")
+      return
+    }
+
+    setIsSubmitting(true)
+    setError("")
+    const result = await deleteConnectSourceAction({
+      sourceId: selectedSource.id,
+    })
+    setIsSubmitting(false)
+
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+
+    await refreshData({ silent: true })
+    toast("Fonte removida com sucesso.")
     resetAndClose()
   }
 
@@ -456,6 +480,27 @@ export function ConnectModals() {
             >
               Entendi
             </button>
+          </div>
+        </>
+      )
+    }
+
+    if (modal.type === "deleteSource") {
+      return (
+        <>
+          <ModalHeader title="Remover fonte" onClose={resetAndClose} icon={Database} />
+          <div className="space-y-4">
+            <InfoCard text={`Fonte selecionada: ${selectedSource?.name || "Fonte nao encontrada."}`} />
+            <p className="text-sm leading-relaxed text-gray-500">
+              Tem certeza que deseja remover esta fonte? As sessoes e acoes vinculadas tambem serao removidas.
+            </p>
+            {error && <ErrorCard text={error} />}
+            <ModalActions
+              onCancel={resetAndClose}
+              onConfirm={handleDeleteSource}
+              confirmLabel={isSubmitting ? "Removendo..." : "Remover fonte"}
+              disabled={isSubmitting || !selectedSource}
+            />
           </div>
         </>
       )

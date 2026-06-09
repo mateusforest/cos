@@ -127,6 +127,7 @@ export default function AppHomePage() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
   const micActionRef = useRef<"finalize" | "cancel">("finalize")
+  const routedMessageResetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const shortcutsStorageKey = useMemo(
     () => (workspace?.id ? `cos:operations:shortcuts:${workspace.id}` : null),
@@ -136,6 +137,17 @@ export default function AppHomePage() {
   useEffect(() => {
     return () => {
       recognitionRef.current?.stop()
+      if (routedMessageResetRef.current && typeof window !== "undefined") {
+        window.clearTimeout(routedMessageResetRef.current)
+      }
+    }
+  }, [])
+
+  const loadGeneralConversation = useCallback(async () => {
+    const result = await getOperationsConversationMessagesAction({ area: "general" })
+
+    if (result.success) {
+      setChatMessages(result.messages)
     }
   }, [])
 
@@ -223,8 +235,8 @@ export default function AppHomePage() {
   useEffect(() => {
     let isMounted = true
 
-    const loadGeneralConversation = async () => {
-      const result = await getOperationsConversationMessagesAction()
+    const syncGeneralConversation = async () => {
+      const result = await getOperationsConversationMessagesAction({ area: "general" })
 
       if (!isMounted) {
         return
@@ -233,10 +245,9 @@ export default function AppHomePage() {
       if (result.success) {
         setChatMessages(result.messages)
       }
-
     }
 
-    void loadGeneralConversation()
+    void syncGeneralConversation()
 
     return () => {
       isMounted = false
@@ -312,6 +323,11 @@ export default function AppHomePage() {
   const handleSend = async () => {
     if (!message.trim() || isEngineRunning) return
 
+    if (routedMessageResetRef.current && typeof window !== "undefined") {
+      window.clearTimeout(routedMessageResetRef.current)
+      routedMessageResetRef.current = null
+    }
+
     const nextMessage = message.trim()
     const now = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 
@@ -325,20 +341,35 @@ export default function AppHomePage() {
       })
 
       const responseTime = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+      const responseText =
+        typeof result.message === "string" && result.message.trim()
+          ? result.message
+          : "Nao consegui executar sua solicitacao agora. Tente novamente em instantes."
+      const ctaLabel = "suggestedLabel" in result && typeof result.suggestedLabel === "string" ? result.suggestedLabel : undefined
+      const ctaHref = "suggestedHref" in result && typeof result.suggestedHref === "string" ? result.suggestedHref : undefined
+      const conversationArea =
+        "conversationArea" in result && typeof result.conversationArea === "string" ? result.conversationArea : "general"
 
       setChatMessages((prev) => [
         ...prev,
         {
           from: "cos",
-          text: result.message,
+          text: responseText,
           time: responseTime,
-          ctaLabel: result.suggestedLabel,
-          ctaHref: result.suggestedHref,
+          ctaLabel,
+          ctaHref,
         },
       ])
 
       if (result.ok) {
         await loadStats({ silent: true })
+      }
+
+      if (conversationArea !== "general" && typeof window !== "undefined") {
+        routedMessageResetRef.current = window.setTimeout(() => {
+          void loadGeneralConversation()
+          routedMessageResetRef.current = null
+        }, 1800)
       }
     } catch {
       const responseTime = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })

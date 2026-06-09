@@ -476,13 +476,31 @@ export async function deleteConnectSourceAction({ sourceId }: { sourceId: string
     return { error: resolved.error }
   }
 
-  await actor.adminClient.from("connect_actions").delete().eq("source_id", sourceId).eq("workspace_id", actor.workspaceId)
-  await actor.adminClient.from("connect_sections").delete().eq("source_id", sourceId).eq("workspace_id", actor.workspaceId)
+  const { error: actionsError } = await actor.adminClient
+    .from("connect_actions")
+    .delete()
+    .eq("source_id", sourceId)
+    .eq("workspace_id", actor.workspaceId)
+
+  if (actionsError) {
+    return { error: actionsError.message }
+  }
+
+  const { error: sectionsError } = await actor.adminClient
+    .from("connect_sections")
+    .delete()
+    .eq("source_id", sourceId)
+    .eq("workspace_id", actor.workspaceId)
+
+  if (sectionsError) {
+    return { error: sectionsError.message }
+  }
 
   const { error } = await actor.adminClient
     .from("connect_sources")
     .delete()
     .eq("id", sourceId)
+    .eq("workspace_id", actor.workspaceId)
 
   if (error) {
     return { error: error.message }
