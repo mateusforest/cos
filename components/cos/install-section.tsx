@@ -138,10 +138,10 @@ export function InstallSection() {
         >
           <div className="relative overflow-hidden rounded-3xl">
             <Image
-              src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/ChatGPT%20Image%202%20de%20jun.%20de%202026%2C%2017_40_42-9BrDdZ9hySLqkK79JXFJkDVcIWBATa.png"
+              src="/cos-install-banner.png"
               alt="Instale o COS - Opere como um app"
-              width={1920}
-              height={900}
+              width={1672}
+              height={941}
               className="w-full h-auto"
             />
             <button
