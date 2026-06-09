@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, createContext, useContext, useRef } from "react"
+import { useEffect, useState, createContext, useContext, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -40,8 +40,11 @@ import {
   PanelRightOpen,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
+import { getWorkspaceActivityLogsAction } from "@/actions/activity"
+import { getFinancialSummaryAction } from "@/actions/financial"
 import { HeaderActions } from "@/components/app/header-actions"
 import { AppInteractionsProvider } from "@/components/app/app-interactions"
+import { useAuth } from "@/components/auth/auth-provider"
 import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
 import { SupportProvider, useSupport } from "@/components/support/support-context"
 import { Toaster } from "@/components/ui/toaster"
@@ -440,15 +443,136 @@ function DesktopSidebar() {
 
 function DesktopContextPanel() {
   const [collapsed, setCollapsed] = useState(false)
+  const pathname = usePathname()
+  const { workspace } = useAuth()
+  const [isLoading, setIsLoading] = useState(true)
+  const [financialSummary, setFinancialSummary] = useState<{
+    totalIncome: number
+    totalExpense: number
+    balance: number
+    monthBalance: number
+    entriesCount: number
+  } | null>(null)
+  const [activities, setActivities] = useState<Array<{ id: string; dot: string; text: string; time: string }>>([])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadContext = async (silent: boolean) => {
+      if (!silent) {
+        setIsLoading(true)
+      }
+
+      const [financialResult, activitiesResult] = await Promise.all([
+        getFinancialSummaryAction(),
+        getWorkspaceActivityLogsAction(),
+      ])
+
+      if (!isMounted) {
+        return
+      }
+
+      if (financialResult.success && financialResult.summary) {
+        setFinancialSummary({
+          totalIncome: financialResult.summary.totalIncome,
+          totalExpense: financialResult.summary.totalExpense,
+          balance: financialResult.summary.balance,
+          monthBalance: financialResult.summary.monthBalance,
+          entriesCount: financialResult.summary.entriesCount,
+        })
+      }
+
+      if (activitiesResult.success) {
+        setActivities(
+          (activitiesResult.logs ?? []).slice(0, 5).map((log) => ({
+            id: log.id,
+            dot:
+              log.area === "financial"
+                ? "#22c55e"
+                : log.area === "meetings"
+                  ? "#ef4444"
+                  : log.area === "support"
+                    ? "#6b7280"
+                    : "#3b82f6",
+            text: log.description,
+            time: formatContextTimestamp(log.createdAt),
+          })),
+        )
+      }
+
+      if (!silent) {
+        setIsLoading(false)
+      }
+    }
+
+    void loadContext(false)
+
+    return () => {
+      isMounted = false
+    }
+  }, [workspace?.id])
+
+  useEffect(() => {
+    if (!workspace?.id) {
+      return
+    }
+
+    let cancelled = false
+
+    const refreshContext = async () => {
+      const [financialResult, activitiesResult] = await Promise.all([
+        getFinancialSummaryAction(),
+        getWorkspaceActivityLogsAction(),
+      ])
+
+      if (cancelled) {
+        return
+      }
+
+      if (financialResult.success && financialResult.summary) {
+        setFinancialSummary({
+          totalIncome: financialResult.summary.totalIncome,
+          totalExpense: financialResult.summary.totalExpense,
+          balance: financialResult.summary.balance,
+          monthBalance: financialResult.summary.monthBalance,
+          entriesCount: financialResult.summary.entriesCount,
+        })
+      }
+
+      if (activitiesResult.success) {
+        setActivities(
+          (activitiesResult.logs ?? []).slice(0, 5).map((log) => ({
+            id: log.id,
+            dot:
+              log.area === "financial"
+                ? "#22c55e"
+                : log.area === "meetings"
+                  ? "#ef4444"
+                  : log.area === "support"
+                    ? "#6b7280"
+                    : "#3b82f6",
+            text: log.description,
+            time: formatContextTimestamp(log.createdAt),
+          })),
+        )
+      }
+    }
+
+    void refreshContext()
+
+    return () => {
+      cancelled = true
+    }
+  }, [pathname, workspace?.id])
+
+  const previousBalance = financialSummary ? financialSummary.balance - financialSummary.monthBalance : 0
 
   const financeiro = [
-    { label: "Saldo final", value: "R$ 0,00", accent: true },
-    { label: "Ganhos", value: "+ R$ 0,00", color: "text-green-600" },
-    { label: "Gastos", value: "- R$ 0,00", color: "text-red-600" },
-    { label: "Saldo anterior", value: "R$ 0,00", color: "text-gray-600" },
+    { label: "Saldo final", value: financialSummary ? formatCurrency(financialSummary.balance) : null, accent: true },
+    { label: "Ganhos", value: financialSummary ? `+ ${formatCurrency(financialSummary.totalIncome)}` : null, color: "text-green-600" },
+    { label: "Gastos", value: financialSummary ? `- ${formatCurrency(financialSummary.totalExpense)}` : null, color: "text-red-600" },
+    { label: "Saldo anterior", value: financialSummary ? formatCurrency(previousBalance) : null, color: "text-gray-600" },
   ]
-
-  const activities: { dot: string; text: string; time: string }[] = []
 
   if (collapsed) {
     return (
@@ -476,13 +600,25 @@ function DesktopContextPanel() {
             <span className="text-sm font-semibold text-[#0a0a0a]">Financeiro</span>
           </div>
           <div className="space-y-2">
-            {financeiro.map((f) => (
-              <div key={f.label} className={`flex items-center justify-between rounded-xl px-3 py-2.5 ${f.accent ? "bg-[#0a0a0a]" : "bg-gray-50"}`}>
-                <span className={`text-xs ${f.accent ? "text-gray-300" : "text-gray-500"}`}>{f.label}</span>
-                <span className={`text-sm font-semibold ${f.accent ? "text-white" : f.color ?? "text-[#0a0a0a]"}`}>{f.value}</span>
-              </div>
-            ))}
+            {isLoading && !financialSummary ? (
+              Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5">
+                  <span className="h-3 w-24 animate-pulse rounded bg-gray-200" />
+                  <span className="h-4 w-20 animate-pulse rounded bg-gray-200" />
+                </div>
+              ))
+            ) : (
+              financeiro.map((f) => (
+                <div key={f.label} className={`flex items-center justify-between rounded-xl px-3 py-2.5 ${f.accent ? "bg-[#0a0a0a]" : "bg-gray-50"}`}>
+                  <span className={`text-xs ${f.accent ? "text-gray-300" : "text-gray-500"}`}>{f.label}</span>
+                  <span className={`text-sm font-semibold ${f.accent ? "text-white" : f.color ?? "text-[#0a0a0a]"}`}>{f.value ?? "R$ 0,00"}</span>
+                </div>
+              ))
+            )}
           </div>
+          {financialSummary && (
+            <p className="mt-2 text-xs text-gray-400">{financialSummary.entriesCount} lancamentos financeiros no workspace.</p>
+          )}
         </div>
 
         <div>
@@ -490,7 +626,19 @@ function DesktopContextPanel() {
             <Clock className="w-4 h-4 text-gray-400" />
             <span className="text-sm font-semibold text-[#0a0a0a]">Atividades recentes</span>
           </div>
-          {activities.length === 0 ? (
+          {isLoading && activities.length === 0 ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="flex items-start gap-2.5">
+                  <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-gray-200" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 w-40 animate-pulse rounded bg-gray-200" />
+                    <div className="h-3 w-24 animate-pulse rounded bg-gray-100" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : activities.length === 0 ? (
             <p className="text-sm text-gray-500">Nenhum registro ainda.</p>
           ) : (
             <div className="space-y-3">
@@ -509,6 +657,32 @@ function DesktopContextPanel() {
       </div>
     </aside>
   )
+}
+
+function formatCurrency(value: number) {
+  return value.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  })
+}
+
+function formatContextTimestamp(value: string | null) {
+  if (!value) {
+    return "Agora"
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return "Agora"
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)
 }
 
 function AppShell({ children }: { children: React.ReactNode }) {

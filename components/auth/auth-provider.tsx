@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -45,6 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [workspace, setWorkspace] = useState<WorkspaceRecord | null>(null)
   const [membershipRole, setMembershipRole] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const isMountedRef = useRef(true)
 
   const clearAuth = useCallback(() => {
     const emptyState = emptyAuthState()
@@ -55,9 +57,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false)
   }, [])
 
-  const refresh = useCallback(async () => {
-    setIsLoading(true)
-
+  const hydrateAuth = useCallback(async ({ silent }: { silent: boolean }) => {
+    if (!silent) {
+      setIsLoading(true)
+    }
     try {
       const response = await fetch("/api/auth/context", {
         method: "GET",
@@ -65,34 +68,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       if (!response.ok) {
-        clearAuth()
+        if (!silent && isMountedRef.current) {
+          clearAuth()
+        }
         return
       }
 
       const data = await response.json()
+      if (!isMountedRef.current) {
+        return
+      }
+
+      if (!data.user) {
+        clearAuth()
+        return
+      }
+
       setUser(data.user)
       setProfile(data.profile)
       setWorkspace(data.workspace)
       setMembershipRole(data.membershipRole)
       setIsLoading(false)
     } catch {
-      clearAuth()
+      if (!silent && isMountedRef.current) {
+        clearAuth()
+      }
     }
   }, [clearAuth])
 
+  const refresh = useCallback(async () => {
+    await hydrateAuth({ silent: true })
+  }, [hydrateAuth])
+
   const syncAuth = useCallback(async () => {
-    await refresh()
-  }, [refresh])
+    await hydrateAuth({ silent: false })
+  }, [hydrateAuth])
 
   useEffect(() => {
-    let isMounted = true
+    isMountedRef.current = true
 
     const bootstrap = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession()
 
-      if (!isMounted) {
+      if (!isMountedRef.current) {
         return
       }
 
@@ -101,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      await refresh()
+      await hydrateAuth({ silent: false })
     }
 
     void bootstrap()
@@ -109,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!isMounted) {
+      if (!isMountedRef.current) {
         return
       }
 
@@ -122,15 +142,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: session.user.id,
         email: session.user.email ?? null,
       })
-      setIsLoading(true)
-      void refresh()
+      void hydrateAuth({ silent: true })
     })
 
     return () => {
-      isMounted = false
+      isMountedRef.current = false
       subscription.unsubscribe()
     }
-  }, [clearAuth, refresh, supabase])
+  }, [clearAuth, hydrateAuth, supabase])
 
   const value = useMemo<AuthState>(
     () => ({

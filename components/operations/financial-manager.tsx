@@ -229,8 +229,9 @@ export function FinancialManager({
     await loadData()
   }
 
+  const previousBalance = (summary?.balance ?? 0) - (summary?.monthBalance ?? 0)
   const cards = [
-    { label: "Saldo", value: currency(summary?.balance ?? 0), sublabel: "Saldo anterior = R$ 0,00", icon: Wallet, color: "text-emerald-500" },
+    { label: "Saldo", value: currency(summary?.balance ?? 0), sublabel: `Saldo anterior = ${currency(previousBalance)}`, icon: Wallet, color: "text-emerald-500" },
     { label: "Ganhos", value: currency(summary?.totalIncome ?? 0), sublabel: "Entradas do workspace", icon: TrendingUp, color: "text-emerald-500" },
     { label: "Gastos", value: currency(summary?.totalExpense ?? 0), sublabel: "Saídas do workspace", icon: TrendingDown, color: "text-red-500" },
     { label: "Lançamentos", value: String(summary?.entriesCount ?? 0), sublabel: "Registros financeiros", icon: DollarSign, color: "text-gray-500" },
@@ -264,16 +265,27 @@ export function FinancialManager({
         {feedback && <div className="mb-4 rounded-2xl border border-green-100 bg-green-50 p-4 text-sm text-green-700">{feedback}</div>}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {cards.map((card) => (
-            <div key={card.label} className="rounded-2xl border border-gray-100 bg-white p-5">
-              <div className="mb-2 flex items-start justify-between">
-                <span className="text-sm text-gray-500">{card.label}</span>
-                <card.icon className={`w-5 h-5 ${card.color}`} />
-              </div>
-              <p className="text-2xl font-semibold">{card.value}</p>
-              <p className="text-sm text-gray-500">{card.sublabel}</p>
-            </div>
-          ))}
+          {isLoading && !summary
+            ? Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="rounded-2xl border border-gray-100 bg-white p-5">
+                  <div className="mb-3 flex items-start justify-between">
+                    <span className="h-4 w-24 animate-pulse rounded bg-gray-200" />
+                    <span className="h-5 w-5 animate-pulse rounded bg-gray-100" />
+                  </div>
+                  <div className="h-8 w-28 animate-pulse rounded bg-gray-200" />
+                  <div className="mt-2 h-4 w-32 animate-pulse rounded bg-gray-100" />
+                </div>
+              ))
+            : cards.map((card) => (
+                <div key={card.label} className="rounded-2xl border border-gray-100 bg-white p-5">
+                  <div className="mb-2 flex items-start justify-between">
+                    <span className="text-sm text-gray-500">{card.label}</span>
+                    <card.icon className={`w-5 h-5 ${card.color}`} />
+                  </div>
+                  <p className="text-2xl font-semibold">{card.value}</p>
+                  <p className="text-sm text-gray-500">{card.sublabel}</p>
+                </div>
+              ))}
         </div>
 
         <div className="rounded-2xl border border-gray-100 bg-white p-5">

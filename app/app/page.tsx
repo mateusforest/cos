@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { AnimatePresence, motion } from "framer-motion"
@@ -95,22 +95,39 @@ const defaultMeetingForm: MeetingFormState = {
 }
 
 export default function AppHomePage() {
-  const { user, profile } = useAuth()
+  const { user, profile, workspace } = useAuth()
   const { openSupport } = useSupport()
   const [message, setMessage] = useState("")
   const [balanceOpen, setBalanceOpen] = useState(false)
   const [modal, setModal] = useState<ModalType>(null)
-  const [shortcuts, setShortcuts] = useState(defaultShortcuts)
+  const [shortcutPreferences, setShortcutPreferences] = useState<Record<string, boolean> | null>(null)
+  const [shortcutDraft, setShortcutDraft] = useState<Record<string, boolean> | null>(null)
+  const [isShortcutsReady, setIsShortcutsReady] = useState(false)
   const [meetingForm, setMeetingForm] = useState<MeetingFormState>(defaultMeetingForm)
   const [meetingFeedback, setMeetingFeedback] = useState<{ tone: "success" | "error"; text: string } | null>(null)
   const [isCreatingMeeting, setIsCreatingMeeting] = useState(false)
   const [micState, setMicState] = useState<MicState>("idle")
   const [micPreview, setMicPreview] = useState("")
-  const [balance, setBalance] = useState({ anterior: 0, ganhos: 0, gastos: 0 })
+  const [stats, setStats] = useState<{
+    clientes: number
+    operacoes: number
+    balanco: number
+    anterior: number
+    ganhos: number
+    gastos: number
+    equipe: number
+    reunioes: number
+  } | null>(null)
+  const [isStatsLoading, setIsStatsLoading] = useState(true)
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
   const micActionRef = useRef<"finalize" | "cancel">("finalize")
+
+  const shortcutsStorageKey = useMemo(
+    () => (workspace?.id ? `cos:operations:shortcuts:${workspace.id}` : null),
+    [workspace?.id],
+  )
 
   useEffect(() => {
     return () => {
@@ -119,71 +136,81 @@ export default function AppHomePage() {
   }, [])
 
   useEffect(() => {
-    const loadStats = async () => {
-      const [clientsResult, financialResult, membersResult, operationsResult, meetingsResult] = await Promise.all([
-        getClientsAction(),
-        getFinancialSummaryAction(),
-        getWorkspaceMembersAction(),
-        getOperationsAction(),
-        getMeetingsAction(),
-      ])
+    setIsShortcutsReady(false)
 
-      setShortcuts((prev) =>
-        prev.map((shortcut) => {
-          if (shortcut.id === "clientes") {
-            return {
-              ...shortcut,
-              value: String(clientsResult.success ? (clientsResult.clients?.filter((client) => client.status === "active").length ?? 0) : 0),
-            }
-          }
+    const defaultPreferences = Object.fromEntries(defaultShortcuts.map((shortcut) => [shortcut.id, shortcut.enabled]))
 
-          if (shortcut.id === "balanco") {
-            return {
-              ...shortcut,
-              value:
-                financialResult.success && financialResult.summary
-                  ? formatCurrency(financialResult.summary.balance)
-                  : "R$ 0,00",
-            }
-          }
-
-          if (shortcut.id === "equipe") {
-            return {
-              ...shortcut,
-              value: String(membersResult.success ? (membersResult.members?.length ?? 0) : 0),
-            }
-          }
-
-          if (shortcut.id === "operacoes") {
-            return {
-              ...shortcut,
-              value: String(operationsResult.success ? (operationsResult.operations?.filter((operation) => operation.status !== "archived").length ?? 0) : 0),
-            }
-          }
-
-          if (shortcut.id === "reunioes") {
-            return {
-              ...shortcut,
-              value: String(meetingsResult.success ? (meetingsResult.meetings?.filter((meeting) => meeting.status !== "archived").length ?? 0) : 0),
-              enabled: true,
-            }
-          }
-
-          return shortcut
-        }),
-      )
-
-      if (financialResult.success && financialResult.summary) {
-        setBalance({
-          anterior: 0,
-          ganhos: financialResult.summary.totalIncome,
-          gastos: financialResult.summary.totalExpense,
-        })
-      }
+    if (!shortcutsStorageKey || typeof window === "undefined") {
+      setShortcutPreferences(defaultPreferences)
+      setIsShortcutsReady(true)
+      return
     }
 
+    try {
+      const rawValue = window.localStorage.getItem(shortcutsStorageKey)
+      if (!rawValue) {
+        setShortcutPreferences(defaultPreferences)
+        setIsShortcutsReady(true)
+        return
+      }
+
+      const parsed = JSON.parse(rawValue) as Record<string, boolean>
+      setShortcutPreferences({
+        ...defaultPreferences,
+        ...parsed,
+      })
+    } catch {
+      setShortcutPreferences(defaultPreferences)
+    } finally {
+      setIsShortcutsReady(true)
+    }
+  }, [shortcutsStorageKey])
+
+  useEffect(() => {
+    if (!shortcutsStorageKey || !shortcutPreferences || !isShortcutsReady || typeof window === "undefined") {
+      return
+    }
+
+    window.localStorage.setItem(shortcutsStorageKey, JSON.stringify(shortcutPreferences))
+  }, [isShortcutsReady, shortcutPreferences, shortcutsStorageKey])
+
+  const loadStats = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false
+
+    if (!silent) {
+      setIsStatsLoading(true)
+    }
+
+    const [clientsResult, financialResult, membersResult, operationsResult, meetingsResult] = await Promise.all([
+      getClientsAction(),
+      getFinancialSummaryAction(),
+      getWorkspaceMembersAction(),
+      getOperationsAction(),
+      getMeetingsAction(),
+    ])
+
+    setStats({
+      clientes: clientsResult.success ? (clientsResult.clients?.filter((client) => client.status === "active").length ?? 0) : 0,
+      operacoes: operationsResult.success ? (operationsResult.operations?.filter((operation) => operation.status !== "archived").length ?? 0) : 0,
+      balanco: financialResult.success && financialResult.summary ? financialResult.summary.balance : 0,
+      anterior:
+        financialResult.success && financialResult.summary
+          ? financialResult.summary.balance - financialResult.summary.monthBalance
+          : 0,
+      ganhos: financialResult.success && financialResult.summary ? financialResult.summary.totalIncome : 0,
+      gastos: financialResult.success && financialResult.summary ? financialResult.summary.totalExpense : 0,
+      equipe: membersResult.success ? (membersResult.members?.length ?? 0) : 0,
+      reunioes: meetingsResult.success ? (meetingsResult.meetings?.filter((meeting) => meeting.status !== "archived").length ?? 0) : 0,
+    })
+
+    if (!silent) {
+      setIsStatsLoading(false)
+    }
+  }, [workspace?.id])
+
+  useEffect(() => {
     void loadStats()
-  }, [])
+  }, [loadStats, workspace?.id])
 
   const quickActions = [
     { icon: Sparkles, label: "Sugerir acao", onClick: () => setModal("sugerir") },
@@ -200,7 +227,27 @@ export default function AppHomePage() {
     { icon: LifeBuoy, label: "Suporte", onClick: openSupport },
   ]
 
-  const saldoFinal = balance.anterior + balance.ganhos - balance.gastos
+  const shortcuts = useMemo(
+    () =>
+      defaultShortcuts.map((shortcut) => ({
+        ...shortcut,
+        enabled: shortcutPreferences?.[shortcut.id] ?? shortcut.enabled,
+        value:
+          shortcut.id === "clientes"
+            ? String(stats?.clientes ?? 0)
+            : shortcut.id === "operacoes"
+              ? String(stats?.operacoes ?? 0)
+              : shortcut.id === "balanco"
+                ? formatCurrency(stats?.balanco ?? 0)
+                : shortcut.id === "equipe"
+                  ? String(stats?.equipe ?? 0)
+                  : shortcut.id === "reunioes"
+                    ? String(stats?.reunioes ?? 0)
+                    : shortcut.value,
+      })),
+    [shortcutPreferences, stats],
+  )
+  const saldoFinal = stats?.balanco ?? 0
   const enabledShortcuts = shortcuts.filter((shortcut) => shortcut.enabled)
   const displayName = profile?.full_name || user?.email?.split("@")[0] || "sua equipe"
 
@@ -208,13 +255,23 @@ export default function AppHomePage() {
     return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
   }
 
-  const toggleShortcut = (id: string) =>
-    setShortcuts((prev) => prev.map((shortcut) => (shortcut.id === id ? { ...shortcut, enabled: !shortcut.enabled } : shortcut)))
+  const toggleShortcutDraft = (id: string) =>
+    setShortcutDraft((prev) => {
+      if (!prev) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        [id]: !prev[id],
+      }
+    })
 
   const closeModal = () => {
     setModal(null)
     setMeetingFeedback(null)
     setIsCreatingMeeting(false)
+    setShortcutDraft(null)
   }
 
   const handleSend = () => {
@@ -387,22 +444,27 @@ export default function AppHomePage() {
     }
 
     setMeetingFeedback({ tone: "success", text: "Reuniao criada com sucesso." })
-    setShortcuts((prev) =>
-      prev.map((shortcut) =>
-        shortcut.id === "reunioes"
-          ? {
-              ...shortcut,
-              enabled: true,
-              value: String(Number(shortcut.value || "0") + 1),
-            }
-          : shortcut,
-      ),
-    )
+    await loadStats({ silent: true })
 
     toast({
       title: "Reuniao criada com sucesso.",
       description: "A reuniao ja pode ser vista em Reunioes.",
     })
+  }
+
+  const openShortcutsEditor = () => {
+    setShortcutDraft(shortcutPreferences)
+    setModal("editar")
+  }
+
+  const saveShortcutPreferences = () => {
+    if (!shortcutDraft) {
+      closeModal()
+      return
+    }
+
+    setShortcutPreferences(shortcutDraft)
+    closeModal()
   }
 
   return (
@@ -494,21 +556,33 @@ export default function AppHomePage() {
             <Sparkles className="h-3.5 w-3.5 text-gray-400" />
             <span className="text-xs font-medium text-gray-500">Atalhos inteligentes</span>
           </div>
-          <button onClick={() => setModal("editar")} className="text-xs text-gray-400 transition-colors hover:text-gray-600">
+          <button onClick={openShortcutsEditor} className="text-xs text-gray-400 transition-colors hover:text-gray-600">
             Editar
           </button>
         </div>
 
         <div className="rounded-xl border border-gray-100 bg-white p-3">
-          <div className={`grid gap-2 ${enabledShortcuts.length <= 4 ? "grid-cols-4" : "grid-cols-3"}`}>
-            {enabledShortcuts.map((shortcut) => (
-              <button key={shortcut.id} onClick={() => shortcut.isBalance && setBalanceOpen(true)} className="flex flex-col items-center text-center">
-                <shortcut.icon className="mb-1 h-4 w-4 text-gray-400" />
-                <span className="text-base font-semibold text-[#0a0a0a]">{shortcut.value}</span>
-                <span className="text-[10px] leading-tight text-gray-500">{shortcut.label}</span>
-              </button>
-            ))}
-          </div>
+          {!isShortcutsReady || isStatsLoading ? (
+            <div className="grid grid-cols-4 gap-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="flex flex-col items-center gap-2 py-1">
+                  <div className="h-4 w-4 animate-pulse rounded bg-gray-200" />
+                  <div className="h-4 w-12 animate-pulse rounded bg-gray-200" />
+                  <div className="h-3 w-16 animate-pulse rounded bg-gray-100" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className={`grid gap-2 ${enabledShortcuts.length <= 4 ? "grid-cols-4" : "grid-cols-3"}`}>
+              {enabledShortcuts.map((shortcut) => (
+                <button key={shortcut.id} onClick={() => shortcut.isBalance && setBalanceOpen(true)} className="flex flex-col items-center text-center">
+                  <shortcut.icon className="mb-1 h-4 w-4 text-gray-400" />
+                  <span className="text-base font-semibold text-[#0a0a0a]">{shortcut.value}</span>
+                  <span className="text-[10px] leading-tight text-gray-500">{shortcut.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </motion.div>
 
@@ -523,21 +597,21 @@ export default function AppHomePage() {
                   <X className="h-5 w-5 text-gray-500" />
                 </button>
               </div>
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-2.5">
-                  <span className="text-sm text-gray-600">Saldo anterior</span>
-                  <span className="text-sm font-semibold text-[#0a0a0a]">{formatCurrency(balance.anterior)}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-xl bg-green-50 px-4 py-2.5">
-                  <span className="text-sm text-green-700">Ganhos</span>
-                  <span className="text-sm font-semibold text-green-600">+ {formatCurrency(balance.ganhos)}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-xl bg-red-50 px-4 py-2.5">
-                  <span className="text-sm text-red-700">Gastos</span>
-                  <span className="text-sm font-semibold text-red-600">- {formatCurrency(balance.gastos)}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-xl bg-[#0a0a0a] px-4 py-3.5">
-                  <span className="text-sm font-medium text-white">Saldo final</span>
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-2.5">
+                    <span className="text-sm text-gray-600">Saldo anterior</span>
+                    <span className="text-sm font-semibold text-[#0a0a0a]">{formatCurrency(stats?.anterior ?? 0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl bg-green-50 px-4 py-2.5">
+                    <span className="text-sm text-green-700">Ganhos</span>
+                    <span className="text-sm font-semibold text-green-600">+ {formatCurrency(stats?.ganhos ?? 0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl bg-red-50 px-4 py-2.5">
+                    <span className="text-sm text-red-700">Gastos</span>
+                    <span className="text-sm font-semibold text-red-600">- {formatCurrency(stats?.gastos ?? 0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl bg-[#0a0a0a] px-4 py-3.5">
+                    <span className="text-sm font-medium text-white">Saldo final</span>
                   <span className="text-base font-bold text-white">{formatCurrency(saldoFinal)}</span>
                 </div>
               </div>
@@ -696,12 +770,12 @@ export default function AppHomePage() {
                       <GripVertical className="h-4 w-4 flex-shrink-0 text-gray-300" />
                       <shortcut.icon className="h-4 w-4 flex-shrink-0 text-gray-400" />
                       <span className="flex-1 text-sm font-medium text-[#0a0a0a]">{shortcut.label}</span>
-                      <button onClick={() => toggleShortcut(shortcut.id)} className={`relative h-6 w-10 flex-shrink-0 rounded-full transition-colors ${shortcut.enabled ? "bg-[#0a0a0a]" : "bg-gray-200"}`} aria-label={`Alternar ${shortcut.label}`}>
-                        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${shortcut.enabled ? "left-[18px]" : "left-0.5"}`} />
+                      <button onClick={() => toggleShortcutDraft(shortcut.id)} className={`relative h-6 w-10 flex-shrink-0 rounded-full transition-colors ${shortcutDraft?.[shortcut.id] ?? shortcut.enabled ? "bg-[#0a0a0a]" : "bg-gray-200"}`} aria-label={`Alternar ${shortcut.label}`}>
+                        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${shortcutDraft?.[shortcut.id] ?? shortcut.enabled ? "left-[18px]" : "left-0.5"}`} />
                       </button>
                     </div>
                   ))}
-                  <button onClick={closeModal} className="mt-2 w-full rounded-2xl bg-[#0a0a0a] py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">
+                  <button onClick={saveShortcutPreferences} className="mt-2 w-full rounded-2xl bg-[#0a0a0a] py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">
                     Salvar
                   </button>
                 </div>
