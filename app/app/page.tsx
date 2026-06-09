@@ -22,11 +22,8 @@ import {
   Wallet,
   X,
 } from "lucide-react"
-import { getClientsAction } from "@/actions/clients"
-import { getFinancialSummaryAction } from "@/actions/financial"
-import { createMeetingAction, getMeetingsAction } from "@/actions/meetings"
-import { getOperationsAction } from "@/actions/operations"
-import { getWorkspaceMembersAction } from "@/actions/workspace"
+import { getOperationsHomeContextAction } from "@/actions/operations-home"
+import { createMeetingAction } from "@/actions/meetings"
 import { useAuth } from "@/components/auth/auth-provider"
 import { useSupport } from "@/components/support/support-context"
 import { toast } from "@/hooks/use-toast"
@@ -82,7 +79,7 @@ const nextSteps = [
 const defaultShortcuts = [
   { id: "clientes", icon: Users, value: "0", label: "Clientes", enabled: true },
   { id: "operacoes", icon: Briefcase, value: "0", label: "Operacoes", enabled: true },
-  { id: "balanco", icon: Wallet, value: "R$ 0,00", label: "Balanco", isBalance: true, enabled: true },
+  { id: "balanco", icon: Wallet, value: "0,00", label: "Balanco", isBalance: true, enabled: true },
   { id: "equipe", icon: UsersRound, value: "0", label: "Equipe", enabled: true },
   { id: "vendas", icon: ArrowRight, value: "0", label: "Vendas", enabled: false },
   { id: "reunioes", icon: Video, value: "0", label: "Reunioes", enabled: false },
@@ -181,27 +178,31 @@ export default function AppHomePage() {
       setIsStatsLoading(true)
     }
 
-    const [clientsResult, financialResult, membersResult, operationsResult, meetingsResult] = await Promise.all([
-      getClientsAction(),
-      getFinancialSummaryAction(),
-      getWorkspaceMembersAction(),
-      getOperationsAction(),
-      getMeetingsAction(),
-    ])
+    const contextResult = await getOperationsHomeContextAction()
 
-    setStats({
-      clientes: clientsResult.success ? (clientsResult.clients?.filter((client) => client.status === "active").length ?? 0) : 0,
-      operacoes: operationsResult.success ? (operationsResult.operations?.filter((operation) => operation.status !== "archived").length ?? 0) : 0,
-      balanco: financialResult.success && financialResult.summary ? financialResult.summary.balance : 0,
-      anterior:
-        financialResult.success && financialResult.summary
-          ? financialResult.summary.balance - financialResult.summary.monthBalance
-          : 0,
-      ganhos: financialResult.success && financialResult.summary ? financialResult.summary.totalIncome : 0,
-      gastos: financialResult.success && financialResult.summary ? financialResult.summary.totalExpense : 0,
-      equipe: membersResult.success ? (membersResult.members?.length ?? 0) : 0,
-      reunioes: meetingsResult.success ? (meetingsResult.meetings?.filter((meeting) => meeting.status !== "archived").length ?? 0) : 0,
-    })
+    if (contextResult.success && contextResult.summary) {
+      setStats({
+        clientes: contextResult.summary.clientsCount,
+        operacoes: contextResult.summary.operationsCount,
+        balanco: contextResult.summary.financial.balance,
+        anterior: contextResult.summary.financial.balance - contextResult.summary.financial.monthBalance,
+        ganhos: contextResult.summary.financial.totalIncome,
+        gastos: contextResult.summary.financial.totalExpense,
+        equipe: contextResult.summary.teamCount,
+        reunioes: contextResult.summary.meetingsCount,
+      })
+    } else {
+      setStats({
+        clientes: 0,
+        operacoes: 0,
+        balanco: 0,
+        anterior: 0,
+        ganhos: 0,
+        gastos: 0,
+        equipe: 0,
+        reunioes: 0,
+      })
+    }
 
     if (!silent) {
       setIsStatsLoading(false)
@@ -236,9 +237,9 @@ export default function AppHomePage() {
           shortcut.id === "clientes"
             ? String(stats?.clientes ?? 0)
             : shortcut.id === "operacoes"
-              ? String(stats?.operacoes ?? 0)
+                ? String(stats?.operacoes ?? 0)
               : shortcut.id === "balanco"
-                ? formatCurrency(stats?.balanco ?? 0)
+                ? formatCompactBalance(stats?.balanco ?? 0)
                 : shortcut.id === "equipe"
                   ? String(stats?.equipe ?? 0)
                   : shortcut.id === "reunioes"
@@ -253,6 +254,10 @@ export default function AppHomePage() {
 
   function formatCurrency(value: number) {
     return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+  }
+
+  function formatCompactBalance(value: number) {
+    return formatCurrency(value).replace(/^R\$\s?/, "")
   }
 
   const toggleShortcutDraft = (id: string) =>
@@ -577,7 +582,7 @@ export default function AppHomePage() {
               {enabledShortcuts.map((shortcut) => (
                 <button key={shortcut.id} onClick={() => shortcut.isBalance && setBalanceOpen(true)} className="flex flex-col items-center text-center">
                   <shortcut.icon className="mb-1 h-4 w-4 text-gray-400" />
-                  <span className="text-base font-semibold text-[#0a0a0a]">{shortcut.value}</span>
+                  <span className={`max-w-full truncate font-semibold text-[#0a0a0a] ${shortcut.isBalance ? "text-sm tabular-nums" : "text-base"}`}>{shortcut.value}</span>
                   <span className="text-[10px] leading-tight text-gray-500">{shortcut.label}</span>
                 </button>
               ))}

@@ -19,13 +19,7 @@ import {
   Settings,
   LifeBuoy,
 } from "lucide-react"
-import { getClientsAction } from "@/actions/clients"
-import { getDocumentsAction } from "@/actions/documents"
-import { getFinancialSummaryAction } from "@/actions/financial"
-import { getMeetingsAction } from "@/actions/meetings"
-import { getOperationsAction } from "@/actions/operations"
-import { getSupportTicketsAction } from "@/actions/support"
-import { getWorkspaceMembersAction } from "@/actions/workspace"
+import { getOperationsHomeContextAction } from "@/actions/operations-home"
 import { useAppInteractions } from "@/components/app/app-interactions"
 import { areaConfigs, slug } from "@/lib/area-configs"
 
@@ -63,28 +57,19 @@ export default function ConversasPage() {
     let isMounted = true
 
     const loadConversationSummary = async () => {
-      const [clientsResult, financialResult, membersResult, operationsResult, documentsResult, meetingsResult, supportResult] =
-        await Promise.all([
-          getClientsAction(),
-          getFinancialSummaryAction(),
-          getWorkspaceMembersAction(),
-          getOperationsAction(),
-          getDocumentsAction(),
-          getMeetingsAction(),
-          getSupportTicketsAction(),
-        ])
+      const contextResult = await getOperationsHomeContextAction()
 
       if (!isMounted) {
         return
       }
 
-      const activeClients = clientsResult.success ? (clientsResult.clients?.filter((client) => client.status === "active").length ?? 0) : 0
-      const operationsCount = operationsResult.success ? (operationsResult.operations?.filter((operation) => operation.status !== "archived").length ?? 0) : 0
-      const entriesCount = financialResult.success ? (financialResult.summary?.entriesCount ?? 0) : 0
-      const membersCount = membersResult.success ? (membersResult.members?.length ?? 0) : 0
-      const documentsCount = documentsResult.success ? (documentsResult.documents?.filter((document) => document.status !== "archived").length ?? 0) : 0
-      const meetingsCount = meetingsResult.success ? (meetingsResult.meetings?.filter((meeting) => meeting.status !== "archived").length ?? 0) : 0
-      const supportCount = supportResult.success ? (supportResult.tickets?.length ?? 0) : 0
+      const activeClients = contextResult.success ? contextResult.summary.clientsCount : 0
+      const operationsCount = contextResult.success ? contextResult.summary.operationsCount : 0
+      const entriesCount = contextResult.success ? contextResult.summary.financial.entriesCount : 0
+      const membersCount = contextResult.success ? contextResult.summary.teamCount : 0
+      const documentsCount = contextResult.success ? contextResult.summary.documentsCount : 0
+      const meetingsCount = contextResult.success ? contextResult.summary.meetingsCount : 0
+      const supportCount = contextResult.success ? contextResult.summary.supportCount : 0
 
       setConversations((current) =>
         current.map((conversation) => {

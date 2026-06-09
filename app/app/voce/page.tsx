@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 import {
@@ -11,8 +11,6 @@ import {
   CreditCard,
   Receipt,
   Globe,
-  Moon,
-  Sun,
   Bell,
   Lock,
   Smartphone,
@@ -28,18 +26,17 @@ import {
   FileText,
   ShieldCheck,
 } from "lucide-react"
-import { useTheme } from "next-themes"
 import { updateProfileAction } from "@/actions/profile"
 import { useAppInteractions } from "@/components/app/app-interactions"
 import { useAuth } from "@/components/auth/auth-provider"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { toast } from "@/hooks/use-toast"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 
 type SheetType =
   | "perfil"
   | "avatar"
   | "idioma"
-  | "aparencia"
   | "faturamento"
   | "pacotes"
   | "pin"
@@ -59,7 +56,6 @@ const emptyProfileForm: ProfileFormState = {
 export default function VocePage() {
   const [sheet, setSheet] = useState<SheetType>(null)
   const [language, setLanguage] = useState("Portugues")
-  const [avatarDraft, setAvatarDraft] = useState("")
   const [notifications, setNotifications] = useState({
     push: true,
     email: true,
@@ -68,8 +64,9 @@ export default function VocePage() {
   const [profileForm, setProfileForm] = useState<ProfileFormState>(emptyProfileForm)
   const [profileError, setProfileError] = useState("")
   const [savingProfile, setSavingProfile] = useState(false)
+  const [selectedAvatarName, setSelectedAvatarName] = useState("")
   const { user, profile, workspace, refresh } = useAuth()
-  const { theme, setTheme } = useTheme()
+  const avatarInputRef = useRef<HTMLInputElement>(null)
   const {
     openCompany,
     openTeam,
@@ -92,9 +89,9 @@ export default function VocePage() {
   useEffect(() => {
     if (sheet !== "avatar") return
 
-    setAvatarDraft(profile?.avatar_url || "")
+    setSelectedAvatarName("")
     setProfileError("")
-  }, [sheet, profile])
+  }, [sheet])
 
   const displayUser = {
     name: profile?.full_name || user?.email || "Seu perfil",
@@ -103,11 +100,6 @@ export default function VocePage() {
   }
 
   const languages = ["Portugues", "Ingles", "Espanhol"]
-  const appearances = [
-    { label: "Claro", icon: Sun },
-    { label: "Escuro", icon: Moon },
-  ]
-  const appearance = theme === "dark" ? "Escuro" : "Claro"
 
   const companyItems = [
     { icon: Building2, label: "Minha empresa", sublabel: workspace?.name || "Nenhuma empresa cadastrada ainda", onClick: openCompany },
@@ -148,16 +140,9 @@ export default function VocePage() {
     setSavingProfile(true)
     setProfileError("")
 
-    if (!removeAvatar && !avatarDraft.trim()) {
-      setSavingProfile(false)
-      setProfileError("Informe uma URL de imagem ou remova a foto atual.")
-      return
-    }
-
     const result = await updateProfileAction({
       fullName: profile?.full_name || "",
       phone: profile?.phone || "",
-      avatarUrl: avatarDraft,
       removeAvatar,
     })
 
@@ -170,12 +155,85 @@ export default function VocePage() {
 
     await refresh()
     toast({
-      title: removeAvatar ? "Foto removida" : "Foto atualizada",
-      description: removeAvatar
-        ? "O avatar foi removido com sucesso."
-        : "A nova foto foi aplicada em todo o sistema.",
+      title: "Foto removida",
+      description: "O avatar foi removido com sucesso.",
     })
     closeSheet()
+  }
+
+  const uploadAvatar = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+
+    if (!file || !user?.id) {
+      return
+    }
+
+    const validTypes = ["image/png", "image/jpeg", "image/webp"]
+    if (!validTypes.includes(file.type)) {
+      setProfileError("Selecione uma imagem PNG, JPEG ou WEBP.")
+      event.target.value = ""
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setProfileError("A imagem deve ter no maximo 5 MB.")
+      event.target.value = ""
+      return
+    }
+
+    const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg"
+    const filePath = `${user.id}/avatar.${extension}`
+
+    setSavingProfile(true)
+    setProfileError("")
+    setSelectedAvatarName(file.name)
+
+    try {
+      const supabase = createSupabaseBrowserClient()
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, { upsert: true, contentType: file.type })
+
+      if (uploadError) {
+        const normalizedMessage = uploadError.message.toLowerCase()
+        setSavingProfile(false)
+        setProfileError(
+          normalizedMessage.includes("bucket") || normalizedMessage.includes("storage")
+            ? "Storage de avatar ainda nao configurado."
+            : uploadError.message,
+        )
+        event.target.value = ""
+        return
+      }
+
+      const { data } = supabase.storage.from("avatars").getPublicUrl(filePath)
+
+      const result = await updateProfileAction({
+        fullName: profile?.full_name || "",
+        phone: profile?.phone || "",
+        avatarUrl: data.publicUrl,
+      })
+
+      setSavingProfile(false)
+
+      if (result.error) {
+        setProfileError(result.error)
+        event.target.value = ""
+        return
+      }
+
+      await refresh()
+      toast({
+        title: "Foto atualizada",
+        description: "O novo avatar foi aplicado em todo o sistema.",
+      })
+      event.target.value = ""
+      closeSheet()
+    } catch {
+      setSavingProfile(false)
+      setProfileError("Storage de avatar ainda nao configurado.")
+      event.target.value = ""
+    }
   }
 
   const MenuItem = ({
@@ -309,7 +367,6 @@ export default function VocePage() {
 
       <Section title="Preferencias" delay={0.3}>
         <MenuItem icon={Globe} label="Idioma e regiao" sublabel={language} onClick={() => setSheet("idioma")} />
-        <MenuItem icon={Moon} label="Aparencia" sublabel={appearance} onClick={() => setSheet("aparencia")} />
         <div className="p-4">
           <div className="mb-3 flex items-center gap-4">
             <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gray-100">
@@ -412,25 +469,37 @@ export default function VocePage() {
                 <>
                   <SheetHeader title="Alterar foto" onClose={closeSheet} />
                   <div className="space-y-4">
-                    <InfoCard text="Upload de imagem sera conectado posteriormente. Por enquanto, voce pode usar uma URL de imagem." />
-                    <Field label="URL da imagem">
-                      <input
-                        type="text"
-                        value={avatarDraft}
-                        onChange={(e) => setAvatarDraft(e.target.value)}
-                        placeholder="https://..."
-                        className={fieldClassName}
-                      />
-                    </Field>
+                    <InfoCard text="Selecione uma imagem do seu dispositivo. Upload de imagem via storage sera usado quando estiver configurado." />
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={uploadAvatar}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={savingProfile}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Camera className="h-4 w-4" />
+                      {savingProfile ? "Enviando..." : "Selecionar imagem"}
+                    </button>
+                    {selectedAvatarName && (
+                      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                        <p className="text-sm text-gray-600">Arquivo selecionado: {selectedAvatarName}</p>
+                      </div>
+                    )}
                     {profileError && <ErrorCard text={profileError} />}
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <button
                         type="button"
-                        onClick={() => void saveAvatar(false)}
+                        onClick={() => avatarInputRef.current?.click()}
                         disabled={savingProfile}
-                        className="rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {savingProfile ? "Salvando..." : "Inserir URL da imagem"}
+                        Escolher outra imagem
                       </button>
                       <button
                         type="button"
@@ -460,28 +529,6 @@ export default function VocePage() {
                       >
                         <span className="text-sm font-medium text-[#0a0a0a]">{lang}</span>
                         {language === lang && <Check className="h-5 w-5 text-[#0a0a0a]" />}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {sheet === "aparencia" && (
-                <>
-                  <SheetHeader title="Aparencia" onClose={closeSheet} />
-                  <div className="space-y-1">
-                    {appearances.map((option) => (
-                      <button
-                        key={option.label}
-                        onClick={() => {
-                          setTheme(option.label === "Escuro" ? "dark" : "light")
-                          closeSheet()
-                        }}
-                        className="flex w-full items-center gap-3 rounded-xl px-4 py-3 transition-colors hover:bg-gray-50"
-                      >
-                        <option.icon className="h-5 w-5 text-gray-600" />
-                        <span className="flex-1 text-left text-sm font-medium text-[#0a0a0a]">{option.label}</span>
-                        {appearance === option.label && <Check className="h-5 w-5 text-[#0a0a0a]" />}
                       </button>
                     ))}
                   </div>

@@ -40,14 +40,7 @@ import {
   PanelRightOpen,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import { getWorkspaceActivityLogsAction } from "@/actions/activity"
-import { getClientsAction } from "@/actions/clients"
-import { getDocumentsAction } from "@/actions/documents"
-import { getFinancialSummaryAction } from "@/actions/financial"
-import { getMeetingsAction } from "@/actions/meetings"
-import { getOperationsAction } from "@/actions/operations"
-import { getSupportTicketsAction } from "@/actions/support"
-import { getWorkspaceMembersAction } from "@/actions/workspace"
+import { getOperationsHomeContextAction } from "@/actions/operations-home"
 import { HeaderActions } from "@/components/app/header-actions"
 import { AppInteractionsProvider } from "@/components/app/app-interactions"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -401,28 +394,19 @@ function DesktopSidebar() {
     let isMounted = true
 
     const loadSidebarData = async () => {
-      const [clientsResult, financialResult, membersResult, operationsResult, documentsResult, meetingsResult, supportResult] =
-        await Promise.all([
-          getClientsAction(),
-          getFinancialSummaryAction(),
-          getWorkspaceMembersAction(),
-          getOperationsAction(),
-          getDocumentsAction(),
-          getMeetingsAction(),
-          getSupportTicketsAction(),
-        ])
+      const contextResult = await getOperationsHomeContextAction()
 
       if (!isMounted) {
         return
       }
 
-      const activeClients = clientsResult.success ? (clientsResult.clients?.filter((client) => client.status === "active").length ?? 0) : 0
-      const entriesCount = financialResult.success ? (financialResult.summary?.entriesCount ?? 0) : 0
-      const membersCount = membersResult.success ? (membersResult.members?.length ?? 0) : 0
-      const operationsCount = operationsResult.success ? (operationsResult.operations?.filter((operation) => operation.status !== "archived").length ?? 0) : 0
-      const documentsCount = documentsResult.success ? (documentsResult.documents?.filter((document) => document.status !== "archived").length ?? 0) : 0
-      const meetingsCount = meetingsResult.success ? (meetingsResult.meetings?.filter((meeting) => meeting.status !== "archived").length ?? 0) : 0
-      const supportCount = supportResult.success ? (supportResult.tickets?.length ?? 0) : 0
+      const activeClients = contextResult.success ? contextResult.summary.clientsCount : 0
+      const entriesCount = contextResult.success ? contextResult.summary.financial.entriesCount : 0
+      const membersCount = contextResult.success ? contextResult.summary.teamCount : 0
+      const operationsCount = contextResult.success ? contextResult.summary.operationsCount : 0
+      const documentsCount = contextResult.success ? contextResult.summary.documentsCount : 0
+      const meetingsCount = contextResult.success ? contextResult.summary.meetingsCount : 0
+      const supportCount = contextResult.success ? contextResult.summary.supportCount : 0
 
       setSessionsData((current) =>
         current.map((session) => {
@@ -534,6 +518,7 @@ function DesktopContextPanel() {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
   const { workspace } = useAuth()
+  const hasHydratedRouteRef = useRef(false)
   const [isLoading, setIsLoading] = useState(true)
   const [financialSummary, setFinancialSummary] = useState<{
     totalIncome: number
@@ -552,28 +537,27 @@ function DesktopContextPanel() {
         setIsLoading(true)
       }
 
-      const [financialResult, activitiesResult] = await Promise.all([
-        getFinancialSummaryAction(),
-        getWorkspaceActivityLogsAction(),
-      ])
+      const contextResult = await getOperationsHomeContextAction()
 
       if (!isMounted) {
         return
       }
 
-      if (financialResult.success && financialResult.summary) {
+      if (contextResult.success && contextResult.summary) {
         setFinancialSummary({
-          totalIncome: financialResult.summary.totalIncome,
-          totalExpense: financialResult.summary.totalExpense,
-          balance: financialResult.summary.balance,
-          monthBalance: financialResult.summary.monthBalance,
-          entriesCount: financialResult.summary.entriesCount,
+          totalIncome: contextResult.summary.financial.totalIncome,
+          totalExpense: contextResult.summary.financial.totalExpense,
+          balance: contextResult.summary.financial.balance,
+          monthBalance: contextResult.summary.financial.monthBalance,
+          entriesCount: contextResult.summary.financial.entriesCount,
         })
+      } else {
+        setFinancialSummary(null)
       }
 
-      if (activitiesResult.success) {
+      if (contextResult.success) {
         setActivities(
-          (activitiesResult.logs ?? []).slice(0, 5).map((log) => ({
+          contextResult.summary.activities.map((log) => ({
             id: log.id,
             dot:
               log.area === "financial"
@@ -587,6 +571,8 @@ function DesktopContextPanel() {
             time: formatContextTimestamp(log.createdAt),
           })),
         )
+      } else {
+        setActivities([])
       }
 
       if (!silent) {
@@ -606,31 +592,35 @@ function DesktopContextPanel() {
       return
     }
 
+    if (!hasHydratedRouteRef.current) {
+      hasHydratedRouteRef.current = true
+      return
+    }
+
     let cancelled = false
 
     const refreshContext = async () => {
-      const [financialResult, activitiesResult] = await Promise.all([
-        getFinancialSummaryAction(),
-        getWorkspaceActivityLogsAction(),
-      ])
+      const contextResult = await getOperationsHomeContextAction()
 
       if (cancelled) {
         return
       }
 
-      if (financialResult.success && financialResult.summary) {
+      if (contextResult.success && contextResult.summary) {
         setFinancialSummary({
-          totalIncome: financialResult.summary.totalIncome,
-          totalExpense: financialResult.summary.totalExpense,
-          balance: financialResult.summary.balance,
-          monthBalance: financialResult.summary.monthBalance,
-          entriesCount: financialResult.summary.entriesCount,
+          totalIncome: contextResult.summary.financial.totalIncome,
+          totalExpense: contextResult.summary.financial.totalExpense,
+          balance: contextResult.summary.financial.balance,
+          monthBalance: contextResult.summary.financial.monthBalance,
+          entriesCount: contextResult.summary.financial.entriesCount,
         })
+      } else {
+        setFinancialSummary(null)
       }
 
-      if (activitiesResult.success) {
+      if (contextResult.success) {
         setActivities(
-          (activitiesResult.logs ?? []).slice(0, 5).map((log) => ({
+          contextResult.summary.activities.map((log) => ({
             id: log.id,
             dot:
               log.area === "financial"
@@ -644,6 +634,8 @@ function DesktopContextPanel() {
             time: formatContextTimestamp(log.createdAt),
           })),
         )
+      } else {
+        setActivities([])
       }
     }
 
