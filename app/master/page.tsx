@@ -32,6 +32,7 @@ type DashboardStats = {
 type RecentActivity = {
   id: string
   action: string
+  actionLabel?: string
   description: string
   workspaceName: string
   createdAt: string | null
@@ -166,7 +167,7 @@ export default function MasterOverviewPage() {
                         <ArrowUpRight className="h-4 w-4 text-gray-500" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{activity.action}</p>
+                        <p className="truncate text-sm font-medium">{activity.actionLabel || activity.action}</p>
                         <p className="truncate text-xs text-muted-foreground">
                           {activity.description}
                           {activity.workspaceName ? ` · ${activity.workspaceName}` : ""}

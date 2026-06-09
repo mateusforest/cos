@@ -35,6 +35,8 @@ type WorkspaceMemberRow = {
 type ActivityLogRow = {
   id: string
   workspace_id?: string | null
+  user_id?: string | null
+  area?: string | null
   action?: string | null
   description?: string | null
   created_at?: string | null
@@ -67,19 +69,19 @@ async function requireMasterActor() {
   const { data: authData, error: authError } = await supabase.auth.getUser()
 
   if (authError || !authData.user) {
-    return { error: "Sessão inválida. Faça login novamente." as const }
+    return { error: "Sessao invalida. Faca login novamente." as const }
   }
 
   const access = await getUserAccessForUser(authData.user)
 
   if (access.profile?.global_role !== "master") {
-    return { error: "Acesso restrito à equipe master." as const }
+    return { error: "Acesso restrito a equipe master." as const }
   }
 
   const adminClient = createSupabaseAdminClient()
 
   if (!adminClient) {
-    return { error: "SUPABASE_SERVICE_ROLE_KEY não configurada para o painel master." as const }
+    return { error: "SUPABASE_SERVICE_ROLE_KEY nao configurada para o painel master." as const }
   }
 
   return {
@@ -98,9 +100,126 @@ function toCurrencyBRL(value: number) {
 }
 
 function normalizeWorkspaceType(value: string | null | undefined) {
-  if (value === "operations") return "Operações"
+  if (value === "operations") return "Operacoes"
   if (value === "connect") return "Connect"
-  return "—"
+  return "-"
+}
+
+function humanizeMasterActivityAction(action: string | null | undefined) {
+  const normalized = (action || "activity_logged").trim().toLowerCase()
+
+  const labels: Record<string, string> = {
+    connect_action_created: "Ação criada",
+    connect_action_updated: "Ação atualizada",
+    connect_action_deleted: "Ação removida",
+    connect_section_created: "Sessão criada",
+    connect_section_updated: "Sessão atualizada",
+    connect_section_deleted: "Sessão removida",
+    connect_source_created: "Fonte conectada",
+    connect_source_updated: "Fonte atualizada",
+    connect_source_deleted: "Fonte removida",
+    financial_entry_created: "Lançamento financeiro criado",
+    financial_entry_updated: "Lançamento financeiro atualizado",
+    financial_entry_deleted: "Lançamento financeiro removido",
+    client_created: "Cliente criado",
+    client_updated: "Cliente atualizado",
+    client_archived: "Cliente arquivado",
+    support_ticket_created: "Chamado de suporte aberto",
+    support_message_created: "Mensagem enviada no suporte",
+    master_support_reply: "Resposta enviada no suporte",
+    meeting_created: "Reunião criada",
+    meeting_updated: "Reunião atualizada",
+    meeting_archived: "Reunião arquivada",
+    document_created: "Documento criado",
+    document_updated: "Documento atualizado",
+    document_archived: "Documento arquivado",
+    operation_created: "Operação criada",
+    operation_updated: "Operação atualizada",
+    operation_archived: "Operação arquivada",
+  }
+
+  if (labels[normalized]) {
+    return labels[normalized]
+  }
+
+  return normalized
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function classifyMasterActivity({
+  action,
+  area,
+  description,
+}: {
+  action: string | null | undefined
+  area: string | null | undefined
+  description: string | null | undefined
+}) {
+  const normalizedAction = (action || "").toLowerCase()
+  const normalizedArea = (area || "").toLowerCase()
+  const normalizedDescription = (description || "").toLowerCase()
+  const combined = `${normalizedAction} ${normalizedArea} ${normalizedDescription}`
+
+  if (combined.includes("user") || combined.includes("usuario") || combined.includes("profile") || combined.includes("member")) {
+    return "Usuário"
+  }
+
+  if (
+    combined.includes("subscription") ||
+    combined.includes("assinatura") ||
+    combined.includes("invoice") ||
+    combined.includes("billing") ||
+    combined.includes("cobranca") ||
+    combined.includes("payment") ||
+    combined.includes("stripe")
+  ) {
+    return "Assinatura"
+  }
+
+  if (normalizedAction.startsWith("connect_source_")) {
+    return "Integração"
+  }
+
+  if (normalizedAction.startsWith("connect_section_")) {
+    return "Sessão"
+  }
+
+  if (combined.includes("workspace")) {
+    return "Workspace"
+  }
+
+  return "Sistema"
+}
+
+async function loadMasterActivityRows(actor: MasterActor, limit: number) {
+  return actor.adminClient
+    .from("activity_logs")
+    .select("id, workspace_id, user_id, area, action, description, created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit)
+    .returns<ActivityLogRow[]>()
+}
+
+function mapMasterActivities({
+  logs,
+  workspaceMap,
+  profileMap,
+}: {
+  logs: ActivityLogRow[]
+  workspaceMap: Map<string, string>
+  profileMap?: Map<string, string>
+}) {
+  return logs.map((log) => ({
+    id: log.id,
+    action: log.action || "activity_logged",
+    actionLabel: humanizeMasterActivityAction(log.action),
+    category: classifyMasterActivity(log),
+    description: log.description || "Atividade registrada.",
+    actorName: log.user_id ? profileMap?.get(log.user_id) || "Sistema COS" : "Sistema COS",
+    workspaceName: log.workspace_id ? workspaceMap.get(log.workspace_id) || "Workspace sem nome" : "",
+    createdAt: log.created_at || null,
+  }))
 }
 
 export async function getMasterDashboardStatsAction() {
@@ -181,37 +300,27 @@ export async function getMasterRecentActivityAction() {
     return { error: actor.error }
   }
 
-  const { data: logs, error } = await actor.adminClient
-    .from("activity_logs")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(8)
-    .returns<ActivityLogRow[]>()
+  const logsResult = await loadMasterActivityRows(actor, 8)
 
-  if (error) {
-    return { error: error.message }
+  if (logsResult.error) {
+    return { error: logsResult.error.message }
   }
 
-  const workspaceIds = Array.from(
-    new Set((logs ?? []).map((log) => log.workspace_id).filter((value): value is string => Boolean(value))),
-  )
-
+  const logs = logsResult.data ?? []
+  const workspaceIds = Array.from(new Set(logs.map((log) => log.workspace_id).filter((value): value is string => Boolean(value))))
   const workspaceResult =
     workspaceIds.length > 0
       ? await actor.adminClient.from("workspaces").select("id, name").in("id", workspaceIds)
       : { data: [] as { id: string; name: string | null }[] }
 
-  const workspaceMap = new Map((workspaceResult.data ?? []).map((workspace) => [workspace.id, workspace.name]))
+  const workspaceMap = new Map((workspaceResult.data ?? []).map((workspace) => [workspace.id, workspace.name || "Workspace sem nome"]))
 
   return {
     success: true,
-    activities: (logs ?? []).map((log) => ({
-      id: log.id,
-      action: log.action || "activity_logged",
-      description: log.description || "Atividade registrada.",
-      workspaceName: log.workspace_id ? workspaceMap.get(log.workspace_id) || "Workspace sem nome" : "",
-      createdAt: log.created_at || null,
-    })),
+    activities: mapMasterActivities({
+      logs,
+      workspaceMap,
+    }),
   }
 }
 
@@ -243,12 +352,7 @@ export async function getMasterOverviewAction() {
     actor.adminClient.from("ai_usage_logs").select("total_tokens"),
     actor.adminClient.from("connect_sources").select("id").eq("status", "connected"),
     actor.adminClient.from("invoices").select("*"),
-    actor.adminClient
-      .from("activity_logs")
-      .select("id, workspace_id, action, description, created_at")
-      .order("created_at", { ascending: false })
-      .limit(8)
-      .returns<ActivityLogRow[]>(),
+    loadMasterActivityRows(actor, 8),
     actor.adminClient.from("workspace_members").select("workspace_id, user_id, role").returns<WorkspaceMemberRow[]>(),
   ])
 
@@ -294,6 +398,7 @@ export async function getMasterOverviewAction() {
   }, 0)
 
   const workspaceMap = new Map(workspaces.map((workspace) => [workspace.id, workspace]))
+  const workspaceNameMap = new Map(workspaces.map((workspace) => [workspace.id, workspace.name || "Workspace sem nome"]))
   const memberCounts = new Map<string, number>()
 
   members.forEach((member) => {
@@ -323,13 +428,10 @@ export async function getMasterOverviewAction() {
         openSupportTickets: openTicketsResult.count ?? 0,
         activeIntegrations: Array.isArray(connectSourcesResult.data) ? connectSourcesResult.data.length : 0,
       } satisfies MasterOverviewStats,
-      activities: logs.map((log) => ({
-        id: log.id,
-        action: log.action || "activity_logged",
-        description: log.description || "Atividade registrada.",
-        workspaceName: log.workspace_id ? workspaceMap.get(log.workspace_id)?.name || "Workspace sem nome" : "",
-        createdAt: log.created_at || null,
-      })),
+      activities: mapMasterActivities({
+        logs,
+        workspaceMap: workspaceNameMap,
+      }),
       topClients,
     },
   }
@@ -479,7 +581,7 @@ export async function getMasterUsersAction() {
 
       return {
         id: profile.id,
-        fullName: profile.full_name || profile.email || "Usuário sem nome",
+        fullName: profile.full_name || profile.email || "Usuario sem nome",
         email: profile.email || "Sem e-mail",
         globalRole: profile.global_role || "user",
         workspaces: workspaceNames,
@@ -544,5 +646,37 @@ export async function getMasterSettingsOverviewAction() {
         role: "master",
       },
     },
+  }
+}
+
+export async function getMasterAuditLogsAction() {
+  const actor = await requireMasterActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  const [logsResult, workspacesResult, profilesResult] = await Promise.all([
+    loadMasterActivityRows(actor, 250),
+    actor.adminClient.from("workspaces").select("id, name").returns<{ id: string; name: string | null }[]>(),
+    actor.adminClient.from("profiles").select("id, full_name, email").returns<{ id: string; full_name: string | null; email: string | null }[]>(),
+  ])
+
+  const error = logsResult.error || workspacesResult.error || profilesResult.error
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  const workspaceMap = new Map((workspacesResult.data ?? []).map((workspace) => [workspace.id, workspace.name || "Workspace sem nome"]))
+  const profileMap = new Map((profilesResult.data ?? []).map((profile) => [profile.id, profile.full_name || profile.email || "Sistema COS"]))
+
+  return {
+    success: true,
+    logs: mapMasterActivities({
+      logs: logsResult.data ?? [],
+      workspaceMap,
+      profileMap,
+    }),
   }
 }
