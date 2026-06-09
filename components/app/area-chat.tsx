@@ -18,6 +18,12 @@ export type QuickAction = {
   onClick?: () => void
 }
 
+export type SendMessageResult =
+  | void
+  | {
+      messages?: ChatMessage[]
+    }
+
 export function AreaChat({
   title,
   subtitle,
@@ -27,6 +33,8 @@ export function AreaChat({
   messages = [],
   quickActions = [],
   emptyLabel = "Nenhuma mensagem por aqui ainda.",
+  placeholder = "Escreva uma mensagem...",
+  onSendMessage,
 }: {
   title: string
   subtitle?: string
@@ -36,6 +44,8 @@ export function AreaChat({
   messages?: ChatMessage[]
   quickActions?: QuickAction[]
   emptyLabel?: string
+  placeholder?: string
+  onSendMessage?: (input: string, now: string) => SendMessageResult
 }) {
   const router = useRouter()
   const [input, setInput] = useState("")
@@ -45,7 +55,10 @@ export function AreaChat({
   const send = () => {
     if (!input.trim()) return
     const now = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-    setChat((prev) => [...prev, { from: "user", text: input, time: now }])
+    const nextInput = input.trim()
+    const extra = onSendMessage?.(nextInput, now)
+    const extraMessages = extra?.messages ?? []
+    setChat((prev) => [...prev, { from: "user", text: nextInput, time: now }, ...extraMessages])
     setInput("")
   }
 
@@ -145,7 +158,7 @@ export function AreaChat({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && send()}
-              placeholder="Escreva uma mensagem..."
+              placeholder={placeholder}
               className="w-full px-4 py-2.5 bg-gray-50 rounded-full border border-gray-200 text-sm focus:outline-none focus:border-gray-300"
             />
           </div>

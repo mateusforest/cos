@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search,
@@ -25,160 +25,181 @@ const sourceTypeIcon: Record<string, typeof Database> = {
   "E-mail": Mail,
   WhatsApp: MessageCircle,
   "Banco de dados": Database,
+  API: Plug,
+  "Portal interno": Database,
 }
 
 export default function ConnectConversasPage() {
-  const { sources, hasSources, openModal, toast } = useConnect()
+  const { sources, hasSources, openModal, toast, isLoading } = useConnect()
   const [searchQuery, setSearchQuery] = useState("")
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  const connectSections = [
-    {
-      id: "support",
-      label: "Suporte",
-      type: "Suporte",
-      subsections: [] as string[],
-      description: "Atendimento, dúvidas, problemas técnicos, planos, cobrança e integrações.",
-    },
-    ...(hasSources
-      ? [
-          { id: "geral", label: "Geral", type: "Geral", subsections: [] as string[], description: "Visão geral das fontes conectadas." },
-          ...sources.map((source) => ({
-            id: source.id,
-            label: source.name,
-            type: source.type,
-            subsections: source.sections,
-            description: source.sections.length > 0 ? `${source.sections.length} seções disponíveis` : "Toque para conversar",
-          })),
-        ]
-      : []),
-  ]
-
-  const filtered = connectSections.filter((conversation) =>
-    conversation.label.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
+  const filteredSources = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return sources
+    return sources
+      .map((source) => ({
+        ...source,
+        sections: source.sections.filter(
+          (section) =>
+            section.name.toLowerCase().includes(query) ||
+            source.name.toLowerCase().includes(query),
+        ),
+      }))
+      .filter((source) => source.name.toLowerCase().includes(query) || source.sections.length > 0)
+  }, [searchQuery, sources])
 
   return (
     <div className="px-4 py-4">
       <motion.div initial={{ y: -10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mb-4">
-        <h1 className="text-2xl font-bold text-[#0a0a0a] mb-0.5">Conversas</h1>
-        <p className="text-sm text-gray-500">As conversas se organizam conforme suas fontes conectadas.</p>
+        <h1 className="mb-0.5 text-2xl font-bold text-[#0a0a0a]">Conversas</h1>
+        <p className="text-sm text-gray-500">As conversas se organizam conforme as fontes e sessoes do seu Connect.</p>
       </motion.div>
 
-      <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05 }} className="flex gap-2 mb-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+      <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05 }} className="mb-4 flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Buscar conversas..."
-            className="w-full pl-10 pr-4 py-2.5 bg-white rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-gray-300"
+            className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm focus:border-gray-300 focus:outline-none"
           />
         </div>
-        <button onClick={() => toast("Filtros das fontes em preparação.")} className="flex items-center gap-1.5 px-3 py-2.5 bg-white rounded-xl border border-gray-200">
-          <SlidersHorizontal className="w-4 h-4 text-gray-600" />
+        <button
+          onClick={() => toast("Use a busca acima para localizar fontes e sessoes configuradas.")}
+          className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5"
+        >
+          <SlidersHorizontal className="h-4 w-4 text-gray-600" />
           <span className="text-sm font-medium text-gray-700">Filtrar</span>
         </button>
       </motion.div>
 
       <div className="space-y-1">
-        {filtered.map((conversation, index) => {
-          const isOpen = expanded === conversation.id
-          const isSupport = conversation.id === "support"
-          const Icon = isSupport ? LifeBuoy : sourceTypeIcon[conversation.type] ?? Plug
+        <motion.div
+          initial={{ x: -10, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ delay: 0.05 }}
+          className="overflow-hidden rounded-xl border border-gray-100 bg-white"
+        >
+          <Link href="/connect/conversas/suporte" className="flex items-center gap-3 p-3 transition-colors hover:bg-gray-50 active:bg-gray-100">
+            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gray-100">
+              <LifeBuoy className="h-5 w-5 text-gray-600" />
+            </div>
+            <div className="min-w-0 flex-1 text-left">
+              <div className="mb-0.5 flex items-center justify-between">
+                <span className="text-sm font-semibold text-[#0a0a0a]">Suporte</span>
+                <span className="text-xs text-gray-400">Atendimento</span>
+              </div>
+              <span className="block truncate text-xs text-gray-500">
+                Atendimento, duvidas, problemas tecnicos, plano, cobranca e integracoes.
+              </span>
+            </div>
+            <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-300" />
+          </Link>
+        </motion.div>
 
-          return (
-            <motion.div
-              key={conversation.id}
-              initial={{ x: -10, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.05 + index * 0.03 }}
-              className="bg-white rounded-xl border border-gray-100 overflow-hidden"
-            >
-              {isSupport ? (
-                <Link href="/connect/conversas/suporte" className="flex items-center gap-3 p-3 w-full hover:bg-gray-50 active:bg-gray-100 transition-colors">
-                  <div className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-5 h-5 text-gray-600" />
-                  </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-semibold text-[#0a0a0a] text-sm">{conversation.label}</span>
-                      <span className="text-xs text-gray-400">{conversation.type}</span>
-                    </div>
-                    <span className="text-xs text-gray-500 truncate block">{conversation.description}</span>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
-                </Link>
-              ) : (
+        {isLoading ? (
+          Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="h-20 animate-pulse rounded-xl bg-white" />
+          ))
+        ) : (
+          filteredSources.map((source, index) => {
+            const isOpen = expanded === source.id
+            const Icon = sourceTypeIcon[source.sourceType] ?? Plug
+
+            return (
+              <motion.div
+                key={source.id}
+                initial={{ x: -10, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                transition={{ delay: 0.06 + index * 0.03 }}
+                className="overflow-hidden rounded-xl border border-gray-100 bg-white"
+              >
                 <button
-                  onClick={() => {
-                    if (conversation.subsections.length > 0) {
-                      setExpanded(isOpen ? null : conversation.id)
-                      return
-                    }
-                    toast(`Conversa de ${conversation.label} em preparação.`)
-                  }}
-                  className="flex items-center gap-3 p-3 w-full hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                  onClick={() => setExpanded(isOpen ? null : source.id)}
+                  className="flex w-full items-center gap-3 p-3 text-left transition-colors hover:bg-gray-50 active:bg-gray-100"
                 >
-                  <div className="w-11 h-11 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-5 h-5 text-gray-600" />
+                  <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gray-100">
+                    <Icon className="h-5 w-5 text-gray-600" />
                   </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-semibold text-[#0a0a0a] text-sm">{conversation.label}</span>
-                      <span className="text-xs text-gray-400">{conversation.type}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-0.5 flex items-center justify-between">
+                      <span className="truncate text-sm font-semibold text-[#0a0a0a]">{source.name}</span>
+                      <span className="text-xs text-gray-400">{source.sourceType}</span>
                     </div>
-                    <span className="text-xs text-gray-500 truncate block">{conversation.description}</span>
+                    <span className="block truncate text-xs text-gray-500">
+                      {source.sectionsCount > 0
+                        ? `${source.sectionsCount} sessoes · ${source.actionsCount} acoes`
+                        : "Nenhuma sessao criada ainda."}
+                    </span>
                   </div>
-                  {conversation.subsections.length > 0 ? (
-                    <ChevronDown className={`w-4 h-4 text-gray-300 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                  {source.sections.length > 0 ? (
+                    <ChevronDown className={`h-4 w-4 flex-shrink-0 text-gray-300 transition-transform ${isOpen ? "rotate-180" : ""}`} />
                   ) : (
-                    <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                    <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-300" />
                   )}
                 </button>
-              )}
 
-              <AnimatePresence initial={false}>
-                {!isSupport && isOpen && conversation.subsections.length > 0 && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden border-t border-gray-50"
-                  >
-                    <div className="p-2 pl-4">
-                      {conversation.subsections.map((subsection) => (
-                        <button
-                          key={subsection}
-                          onClick={() => toast(`${subsection} (${conversation.label}) em preparação.`)}
-                          className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-50 active:bg-gray-100 transition-colors w-full"
-                        >
-                          <span className="text-sm text-gray-700">{subsection}</span>
-                          <ChevronRight className="w-4 h-4 text-gray-300" />
-                        </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          )
-        })}
+                <AnimatePresence initial={false}>
+                  {isOpen && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden border-t border-gray-50"
+                    >
+                      <div className="space-y-1 p-2 pl-4">
+                        {source.sections.length === 0 ? (
+                          <button
+                            onClick={() => openModal("section", { sourceId: source.id })}
+                            className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-50 active:bg-gray-100"
+                          >
+                            <span className="text-sm text-gray-700">Criar primeira sessao</span>
+                            <ChevronRight className="h-4 w-4 text-gray-300" />
+                          </button>
+                        ) : (
+                          source.sections.map((section) => (
+                            <Link
+                              key={section.id}
+                              href={`/connect/conversas/${source.id}/${section.id}`}
+                              className="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-50 active:bg-gray-100"
+                            >
+                              <span className="text-sm text-gray-700">{section.name}</span>
+                              <ChevronRight className="h-4 w-4 text-gray-300" />
+                            </Link>
+                          ))
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            )
+          })
+        )}
       </div>
 
-      {!hasSources && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6 flex flex-col items-center justify-center text-center py-10 px-4 bg-white rounded-2xl border border-gray-100">
-          <div className="w-16 h-16 rounded-3xl bg-gray-100 flex items-center justify-center mb-5">
-            <Plug className="w-7 h-7 text-gray-400" />
+      {!hasSources && !isLoading && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-gray-100 bg-white px-4 py-10 text-center"
+        >
+          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-gray-100">
+            <Plug className="h-7 w-7 text-gray-400" />
           </div>
-          <h2 className="text-lg font-semibold text-[#0a0a0a] mb-2">Suas conversas aparecerão aqui</h2>
-          <p className="text-sm text-gray-500 max-w-xs leading-relaxed mb-6">
-            Quando você conectar um sistema, planilha ou canal, o COS organizará as conversas conforme a estrutura da sua empresa.
+          <h2 className="mb-2 text-lg font-semibold text-[#0a0a0a]">Suas conversas aparecerao aqui</h2>
+          <p className="mb-6 max-w-xs text-sm leading-relaxed text-gray-500">
+            Suas conversas aparecerao aqui quando voce criar uma fonte e organizar suas sessoes.
           </p>
-          <button onClick={() => openModal("system")} className="flex items-center gap-2 py-3 px-5 bg-[#0a0a0a] text-white rounded-xl text-sm font-medium hover:bg-[#1a1a1a] transition-colors">
-            <Plug className="w-4 h-4" /> Conectar primeira fonte
+          <button
+            onClick={() => openModal("system")}
+            className="flex items-center gap-2 rounded-xl bg-[#0a0a0a] px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]"
+          >
+            <Plug className="h-4 w-4" /> Conectar primeira fonte
           </button>
         </motion.div>
       )}

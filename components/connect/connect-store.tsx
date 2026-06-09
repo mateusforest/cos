@@ -1,17 +1,43 @@
 "use client"
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { CheckCircle2 } from "lucide-react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { updatePrimarySystemAction } from "@/actions/workspace"
+import { getConnectWorkspaceOverviewAction } from "@/actions/connect"
+
+export type ConnectSection = {
+  id: string
+  sourceId: string
+  name: string
+  description: string
+  config: Record<string, unknown>
+  createdAt: string | null
+}
+
+export type ConnectAction = {
+  id: string
+  sourceId: string
+  name: string
+  actionType: string
+  config: Record<string, unknown>
+  createdAt: string | null
+}
 
 export type ConnectSource = {
   id: string
   name: string
-  type: string
-  status: "connected" | "preparing"
-  sections: string[]
+  sourceType: string
+  status: "not_configured" | "configured" | "connected" | "error" | "paused"
+  statusLabel: string
+  accessUrl: string
+  config: Record<string, unknown>
+  createdAt: string | null
+  sectionsCount: number
+  actionsCount: number
+  sections: ConnectSection[]
+  actions: ConnectAction[]
 }
 
 export type MainSystem = {
@@ -30,17 +56,38 @@ export type ConnectModal =
   | "equipe"
   | "arquivo"
   | "foto"
+  | "section"
+  | "action"
+  | "configuredAction"
   | null
+
+type ConnectModalState = {
+  type: ConnectModal
+  sourceId?: string
+  actionId?: string
+}
 
 type ConnectContextValue = {
   sources: ConnectSource[]
+  sections: ConnectSection[]
+  actions: ConnectAction[]
   hasSources: boolean
-  addSource: (source: ConnectSource) => void
+  summary: {
+    configuredSources: number
+    totalSources: number
+    totalSections: number
+    totalActions: number
+  }
+  isLoading: boolean
+  canManage: boolean
+  refreshData: (options?: { silent?: boolean }) => Promise<void>
   mainSystem: MainSystem | null
   setMainSystem: (system: MainSystem) => Promise<{ error?: string }>
-  modal: ConnectModal
-  openModal: (modal: ConnectModal) => void
+  modal: ConnectModalState | null
+  openModal: (modal: ConnectModal, payload?: { sourceId?: string; actionId?: string }) => void
   closeModal: () => void
+  selectedSource: ConnectSource | null
+  selectedAction: ConnectAction | null
   toast: (message: string) => void
 }
 
@@ -55,15 +102,58 @@ export function useConnect() {
 export function ConnectProvider({ children }: { children: ReactNode }) {
   const { workspace, refresh } = useAuth()
   const [sources, setSources] = useState<ConnectSource[]>([])
-  const [modal, setModal] = useState<ConnectModal>(null)
+  const [sections, setSections] = useState<ConnectSection[]>([])
+  const [actions, setActions] = useState<ConnectAction[]>([])
+  const [summary, setSummary] = useState({
+    configuredSources: 0,
+    totalSources: 0,
+    totalSections: 0,
+    totalActions: 0,
+  })
+  const [canManage, setCanManage] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [modal, setModal] = useState<ConnectModalState | null>(null)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
 
-  const addSource = useCallback((source: ConnectSource) => {
-    setSources((prev) => {
-      if (prev.some((item) => item.id === source.id)) return prev
-      return [...prev, source]
-    })
-  }, [])
+  const refreshData = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false
+
+      if (!silent) {
+        setIsLoading(true)
+      }
+
+      const result = await getConnectWorkspaceOverviewAction()
+
+      if (result.success && result.overview) {
+        setSources(result.overview.sources ?? [])
+        setSections(result.overview.sections ?? [])
+        setActions(result.overview.actions ?? [])
+        setSummary(result.overview.summary)
+        setCanManage(result.overview.canManage)
+      } else {
+        setSources([])
+        setSections([])
+        setActions([])
+        setSummary({
+          configuredSources: 0,
+          totalSources: 0,
+          totalSections: 0,
+          totalActions: 0,
+        })
+        setCanManage(false)
+      }
+
+      if (!silent) {
+        setIsLoading(false)
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    void refreshData()
+  }, [refreshData, workspace?.id])
 
   const setMainSystem = useCallback(
     async (system: MainSystem) => {
@@ -84,7 +174,14 @@ export function ConnectProvider({ children }: { children: ReactNode }) {
     [refresh],
   )
 
-  const openModal = useCallback((value: ConnectModal) => setModal(value), [])
+  const openModal = useCallback((type: ConnectModal, payload?: { sourceId?: string; actionId?: string }) => {
+    setModal({
+      type,
+      sourceId: payload?.sourceId,
+      actionId: payload?.actionId,
+    })
+  }, [])
+
   const closeModal = useCallback(() => setModal(null), [])
 
   const toast = useCallback((message: string) => {
@@ -103,17 +200,34 @@ export function ConnectProvider({ children }: { children: ReactNode }) {
         }
       : null
 
+  const selectedSource = useMemo(
+    () => sources.find((source) => source.id === modal?.sourceId) ?? null,
+    [modal?.sourceId, sources],
+  )
+
+  const selectedAction = useMemo(
+    () => actions.find((connectAction) => connectAction.id === modal?.actionId) ?? null,
+    [actions, modal?.actionId],
+  )
+
   return (
     <ConnectContext.Provider
       value={{
         sources,
+        sections,
+        actions,
         hasSources: sources.length > 0,
-        addSource,
+        summary,
+        isLoading,
+        canManage,
+        refreshData,
         mainSystem,
         setMainSystem,
         modal,
         openModal,
         closeModal,
+        selectedSource,
+        selectedAction,
         toast,
       }}
     >
@@ -125,9 +239,9 @@ export function ConnectProvider({ children }: { children: ReactNode }) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-[80] px-4 py-3 bg-[#0a0a0a] text-white rounded-2xl shadow-xl flex items-center gap-2 max-w-[90vw]"
+            className="fixed bottom-24 left-1/2 z-[80] flex max-w-[90vw] -translate-x-1/2 items-center gap-2 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-white shadow-xl lg:bottom-6"
           >
-            <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
+            <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-green-400" />
             <span className="text-sm">{toastMsg}</span>
           </motion.div>
         )}
