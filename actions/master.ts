@@ -5,6 +5,8 @@ import { getUserAccessForUser } from "@/lib/auth"
 
 type MasterActor = {
   actorId: string
+  profileName: string | null
+  profileEmail: string | null
   adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>
 }
 
@@ -36,6 +38,17 @@ type ActivityLogRow = {
   action?: string | null
   description?: string | null
   created_at?: string | null
+}
+
+type MasterOverviewStats = {
+  activeClients: number
+  activeWorkspaces: number
+  totalUsers: number
+  monthlyRevenue: number
+  monthlyRevenueLabel: string
+  aiUsageTokens: number
+  openSupportTickets: number
+  activeIntegrations: number
 }
 
 function formatMonthBounds() {
@@ -71,6 +84,8 @@ async function requireMasterActor() {
 
   return {
     actorId: authData.user.id,
+    profileName: access.profile?.full_name || null,
+    profileEmail: access.profile?.email || authData.user.email || null,
     adminClient,
   } satisfies MasterActor
 }
@@ -197,6 +212,126 @@ export async function getMasterRecentActivityAction() {
       workspaceName: log.workspace_id ? workspaceMap.get(log.workspace_id) || "Workspace sem nome" : "",
       createdAt: log.created_at || null,
     })),
+  }
+}
+
+export async function getMasterOverviewAction() {
+  const actor = await requireMasterActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  const { start, end } = formatMonthBounds()
+
+  const [
+    workspacesResult,
+    profilesResult,
+    openTicketsResult,
+    aiUsageResult,
+    connectSourcesResult,
+    invoicesResult,
+    logsResult,
+    membersResult,
+  ] = await Promise.all([
+    actor.adminClient.from("workspaces").select("id, name, type, owner_id, created_at", { count: "exact" }).returns<WorkspaceRow[]>(),
+    actor.adminClient.from("profiles").select("id", { count: "exact", head: true }),
+    actor.adminClient
+      .from("support_tickets")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["open", "in_progress", "waiting"]),
+    actor.adminClient.from("ai_usage_logs").select("total_tokens"),
+    actor.adminClient.from("connect_sources").select("id").eq("status", "connected"),
+    actor.adminClient.from("invoices").select("*"),
+    actor.adminClient
+      .from("activity_logs")
+      .select("id, workspace_id, action, description, created_at")
+      .order("created_at", { ascending: false })
+      .limit(8)
+      .returns<ActivityLogRow[]>(),
+    actor.adminClient.from("workspace_members").select("workspace_id, user_id, role").returns<WorkspaceMemberRow[]>(),
+  ])
+
+  const error =
+    workspacesResult.error ||
+    profilesResult.error ||
+    openTicketsResult.error ||
+    aiUsageResult.error ||
+    connectSourcesResult.error ||
+    invoicesResult.error ||
+    logsResult.error ||
+    membersResult.error
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  const workspaces = workspacesResult.data ?? []
+  const members = membersResult.data ?? []
+  const logs = logsResult.data ?? []
+
+  const monthlyInvoices = (Array.isArray(invoicesResult.data) ? invoicesResult.data : []).filter((invoice) => {
+    const status = typeof invoice.status === "string" ? invoice.status.toLowerCase() : ""
+    const paidAt = typeof invoice.paid_at === "string" ? invoice.paid_at : typeof invoice.created_at === "string" ? invoice.created_at : null
+    return status === "paid" && Boolean(paidAt) && paidAt >= start && paidAt < end
+  })
+
+  const monthlyRevenue = monthlyInvoices.reduce((sum, invoice) => {
+    const amount =
+      typeof invoice.amount === "number"
+        ? invoice.amount
+        : typeof invoice.amount_paid === "number"
+          ? invoice.amount_paid
+          : typeof invoice.total === "number"
+            ? invoice.total
+            : 0
+
+    return sum + amount
+  }, 0)
+
+  const totalTokens = (Array.isArray(aiUsageResult.data) ? aiUsageResult.data : []).reduce((sum, log) => {
+    return sum + (typeof log.total_tokens === "number" ? log.total_tokens : 0)
+  }, 0)
+
+  const workspaceMap = new Map(workspaces.map((workspace) => [workspace.id, workspace]))
+  const memberCounts = new Map<string, number>()
+
+  members.forEach((member) => {
+    memberCounts.set(member.workspace_id, (memberCounts.get(member.workspace_id) ?? 0) + 1)
+  })
+
+  const topClients = [...workspaces]
+    .map((workspace) => ({
+      name: workspace.name || "Workspace sem nome",
+      type: normalizeWorkspaceType(workspace.type),
+      status: "Ativo",
+      users: memberCounts.get(workspace.id) ?? 0,
+    }))
+    .sort((left, right) => right.users - left.users)
+    .slice(0, 5)
+
+  return {
+    success: true,
+    overview: {
+      stats: {
+        activeClients: workspaces.length,
+        activeWorkspaces: workspaces.length,
+        totalUsers: profilesResult.count ?? 0,
+        monthlyRevenue,
+        monthlyRevenueLabel: toCurrencyBRL(monthlyRevenue),
+        aiUsageTokens: totalTokens,
+        openSupportTickets: openTicketsResult.count ?? 0,
+        activeIntegrations: Array.isArray(connectSourcesResult.data) ? connectSourcesResult.data.length : 0,
+      } satisfies MasterOverviewStats,
+      activities: logs.map((log) => ({
+        id: log.id,
+        action: log.action || "activity_logged",
+        description: log.description || "Atividade registrada.",
+        workspaceName: log.workspace_id ? workspaceMap.get(log.workspace_id)?.name || "Workspace sem nome" : "",
+        createdAt: log.created_at || null,
+      })),
+      topClients,
+    },
   }
 }
 
@@ -374,5 +509,40 @@ export async function getMasterTopClientsAction() {
   return {
     success: true,
     clients: topClients,
+  }
+}
+
+export async function getMasterSettingsOverviewAction() {
+  const actor = await requireMasterActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || null
+  const environment = process.env.VERCEL_ENV || process.env.NODE_ENV || "development"
+
+  return {
+    success: true,
+    settings: {
+      platformName: "COS",
+      appUrl: supabaseUrl,
+      environment,
+      status: "Ativo",
+      aiConfigured: Boolean(process.env.OPENAI_API_KEY),
+      stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY),
+      integrations: [
+        { name: "Supabase", status: process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "Configurado" : "Nao configurado" },
+        { name: "OpenAI", status: process.env.OPENAI_API_KEY ? "Configurado" : "Nao configurado" },
+        { name: "Stripe", status: process.env.STRIPE_SECRET_KEY ? "Configurado" : "Nao configurado" },
+        { name: "WhatsApp", status: "Em preparacao" },
+        { name: "E-mail", status: "Em preparacao" },
+      ],
+      currentUser: {
+        name: actor.profileName || actor.profileEmail || "Equipe COS",
+        email: actor.profileEmail || "",
+        role: "master",
+      },
+    },
   }
 }

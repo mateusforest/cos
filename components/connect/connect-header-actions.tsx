@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Search, Bell, X, User, SlidersHorizontal, Shield, LogOut, ExternalLink, Clock, Plug } from "lucide-react"
@@ -9,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useConnect } from "./connect-store"
 import { useAuth } from "@/components/auth/auth-provider"
 import { logoutAction } from "@/actions/auth"
+import { UserAvatar } from "@/components/shared/user-avatar"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 
 const avatarMenu = [
@@ -29,9 +29,6 @@ export function ConnectHeaderActions() {
 
   const displayName = profile?.full_name || user?.email || "Seu perfil"
   const displayEmail = profile?.email || user?.email || "Nenhum e-mail cadastrado"
-  const displayAvatar =
-    profile?.avatar_url ||
-    "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=64&h=64&fit=crop&crop=face"
 
   const handleSystem = () => {
     if (mainSystem?.url) {
@@ -62,8 +59,13 @@ export function ConnectHeaderActions() {
           <Bell className="w-5 h-5 text-gray-500" />
         </button>
         <div className="relative">
-          <button onClick={() => setAvatarOpen((value) => !value)} className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 block" aria-label="Menu do perfil">
-            <Image src={displayAvatar} alt={displayName} width={32} height={32} priority className="w-full h-full object-cover" />
+          <button onClick={() => setAvatarOpen((value) => !value)} className="block" aria-label="Menu do perfil">
+            <UserAvatar
+              fullName={profile?.full_name}
+              email={profile?.email || user?.email}
+              avatarUrl={profile?.avatar_url}
+              size={32}
+            />
           </button>
 
           <AnimatePresence>
@@ -78,9 +80,12 @@ export function ConnectHeaderActions() {
                   className="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden"
                 >
                   <div className="flex items-center gap-3 p-4 border-b border-gray-100">
-                    <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-200">
-                      <Image src={displayAvatar} alt={displayName} width={40} height={40} className="w-full h-full object-cover" />
-                    </div>
+                    <UserAvatar
+                      fullName={profile?.full_name}
+                      email={profile?.email || user?.email}
+                      avatarUrl={profile?.avatar_url}
+                      size={40}
+                    />
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-[#0a0a0a] truncate">{displayName}</p>
                       <p className="text-xs text-gray-500 truncate">{displayEmail}</p>

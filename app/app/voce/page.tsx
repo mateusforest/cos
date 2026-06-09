@@ -31,7 +31,7 @@ import { useAppInteractions } from "@/components/app/app-interactions"
 import { useAuth } from "@/components/auth/auth-provider"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { toast } from "@/hooks/use-toast"
-import { createSupabaseBrowserClient } from "@/lib/supabase/client"
+import { uploadAvatarFile } from "@/lib/avatar-upload"
 
 type SheetType =
   | "perfil"
@@ -168,72 +168,43 @@ export default function VocePage() {
       return
     }
 
-    const validTypes = ["image/png", "image/jpeg", "image/webp"]
-    if (!validTypes.includes(file.type)) {
-      setProfileError("Selecione uma imagem PNG, JPEG ou WEBP.")
-      event.target.value = ""
-      return
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setProfileError("A imagem deve ter no maximo 5 MB.")
-      event.target.value = ""
-      return
-    }
-
-    const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg"
-    const filePath = `${user.id}/avatar.${extension}`
-
     setSavingProfile(true)
     setProfileError("")
     setSelectedAvatarName(file.name)
 
-    try {
-      const supabase = createSupabaseBrowserClient()
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(filePath, file, { upsert: true, contentType: file.type })
+    const uploadResult = await uploadAvatarFile({
+      file,
+      userId: user.id,
+    })
 
-      if (uploadError) {
-        const normalizedMessage = uploadError.message.toLowerCase()
-        setSavingProfile(false)
-        setProfileError(
-          normalizedMessage.includes("bucket") || normalizedMessage.includes("storage")
-            ? "Storage de avatar ainda nao configurado."
-            : uploadError.message,
-        )
-        event.target.value = ""
-        return
-      }
-
-      const { data } = supabase.storage.from("avatars").getPublicUrl(filePath)
-
-      const result = await updateProfileAction({
-        fullName: profile?.full_name || "",
-        phone: profile?.phone || "",
-        avatarUrl: data.publicUrl,
-      })
-
+    if (uploadResult.error || !uploadResult.publicUrl) {
       setSavingProfile(false)
-
-      if (result.error) {
-        setProfileError(result.error)
-        event.target.value = ""
-        return
-      }
-
-      await refresh()
-      toast({
-        title: "Foto atualizada",
-        description: "O novo avatar foi aplicado em todo o sistema.",
-      })
+      setProfileError(uploadResult.error || "Storage de avatar ainda nao configurado.")
       event.target.value = ""
-      closeSheet()
-    } catch {
-      setSavingProfile(false)
-      setProfileError("Storage de avatar ainda nao configurado.")
-      event.target.value = ""
+      return
     }
+
+    const result = await updateProfileAction({
+      fullName: profile?.full_name || "",
+      phone: profile?.phone || "",
+      avatarUrl: uploadResult.publicUrl,
+    })
+
+    setSavingProfile(false)
+
+    if (result.error) {
+      setProfileError(result.error)
+      event.target.value = ""
+      return
+    }
+
+    await refresh()
+    toast({
+      title: "Foto atualizada",
+      description: "O novo avatar foi aplicado em todo o sistema.",
+    })
+    event.target.value = ""
+    closeSheet()
   }
 
   const MenuItem = ({

@@ -6,10 +6,11 @@ import { AnimatePresence, motion } from "framer-motion"
 import { Search, Menu, Command, User, Settings, LogOut } from "lucide-react"
 import { useMaster } from "./master-store"
 import { useMasterSession } from "./master-session"
+import { UserAvatar } from "@/components/shared/user-avatar"
 
 export function MasterHeader({ placeholder = "Buscar no Master..." }: { placeholder?: string }) {
   const { setMobileMenuOpen } = useMaster()
-  const { displayName, displayEmail, initials, isPending, handleLogout } = useMasterSession()
+  const { displayName, displayEmail, initials, avatarUrl, isPending, handleLogout } = useMasterSession()
   const [profileOpen, setProfileOpen] = useState(false)
 
   return (
@@ -44,10 +45,10 @@ export function MasterHeader({ placeholder = "Buscar no Master..." }: { placehol
         <div className="relative">
           <button
             onClick={() => setProfileOpen((value) => !value)}
-            className="w-9 h-9 rounded-full bg-[#0a0a0a] flex items-center justify-center text-white text-sm font-medium"
+            className="flex items-center justify-center"
             aria-label="Menu do perfil master"
           >
-            {initials}
+            <UserAvatar fullName={displayName} email={displayEmail} avatarUrl={avatarUrl} size={36} />
           </button>
 
           <AnimatePresence>
@@ -62,9 +63,7 @@ export function MasterHeader({ placeholder = "Buscar no Master..." }: { placehol
                   className="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden"
                 >
                   <div className="flex items-center gap-3 p-4 border-b border-gray-100">
-                    <div className="w-10 h-10 rounded-full bg-[#0a0a0a] flex items-center justify-center text-white text-sm font-medium">
-                      {initials}
-                    </div>
+                    <UserAvatar fullName={displayName} email={displayEmail} avatarUrl={avatarUrl} size={40} />
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-[#0a0a0a] truncate">{displayName}</p>
                       <p className="text-xs text-gray-500 truncate">{displayEmail}</p>

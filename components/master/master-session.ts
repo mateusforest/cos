@@ -14,6 +14,7 @@ export function useMasterSession() {
   const displayName = profile?.full_name || user?.email || "Sua conta"
   const displayEmail = profile?.email || user?.email || "Nenhum e-mail cadastrado"
   const initials = displayName.trim().charAt(0).toUpperCase() || "M"
+  const avatarUrl = profile?.avatar_url || null
 
   const handleLogout = (onAfter?: () => void) => {
     startTransition(async () => {
@@ -30,6 +31,7 @@ export function useMasterSession() {
     displayName,
     displayEmail,
     initials,
+    avatarUrl,
     isPending,
     handleLogout,
   }
