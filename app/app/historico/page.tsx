@@ -45,6 +45,30 @@ const filters = [
   { id: "sistema", icon: Settings, label: "Sistema" },
 ] as const
 
+const actionLabels: Record<string, string> = {
+  financial_entry_created: "Lançamento financeiro criado",
+  financial_entry_updated: "Lançamento financeiro atualizado",
+  financial_entry_deleted: "Lançamento financeiro removido",
+  client_created: "Cliente criado",
+  client_updated: "Cliente atualizado",
+  client_archived: "Cliente arquivado",
+  support_ticket_created: "Chamado de suporte aberto",
+  support_message_created: "Mensagem enviada no suporte",
+  master_support_reply: "Resposta enviada pela equipe COS",
+  operation_created: "Operação criada",
+  operation_updated: "Operação atualizada",
+  operation_archived: "Operação arquivada",
+  document_created: "Documento criado",
+  document_updated: "Documento atualizado",
+  document_archived: "Documento arquivado",
+  meeting_created: "Reunião criada",
+  meeting_updated: "Reunião atualizada",
+  meeting_archived: "Reunião arquivada",
+  support_status_updated: "Status do suporte atualizado",
+  support_priority_updated: "Prioridade do suporte atualizada",
+  support_ticket_assigned: "Chamado de suporte atribuído",
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return "Agora"
   const date = new Date(value)
@@ -75,6 +99,30 @@ function colorForArea(area: string) {
   if (area === "documents") return { color: "#3b82f6", bgColor: "#dbeafe" }
   if (area === "meetings") return { color: "#ef4444", bgColor: "#fee2e2" }
   return { color: "#6b7280", bgColor: "#f3f4f6" }
+}
+
+function humanizeAction(action: string) {
+  if (actionLabels[action]) {
+    return actionLabels[action]
+  }
+
+  const cleaned = action.replace(/_/g, " ").trim()
+
+  if (!cleaned) {
+    return "Atividade registrada"
+  }
+
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+}
+
+function humanizeArea(area: string) {
+  if (area === "clients") return "Clientes"
+  if (area === "financial") return "Financeiro"
+  if (area === "support") return "Suporte"
+  if (area === "operations") return "Operações"
+  if (area === "documents") return "Documentos"
+  if (area === "meetings") return "Reuniões"
+  return "Sistema"
 }
 
 export default function HistoricoPage() {
@@ -192,7 +240,7 @@ export default function HistoricoPage() {
                   <Icon className="h-5 w-5" style={{ color: tone.color }} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-[#0a0a0a]">{log.action}</p>
+                  <p className="truncate text-sm font-medium text-[#0a0a0a]">{humanizeAction(log.action)}</p>
                   <p className="truncate text-sm text-gray-500">{log.description}</p>
                 </div>
                 <span className="text-xs text-gray-400">{formatDateTime(log.createdAt)}</span>
@@ -229,7 +277,7 @@ export default function HistoricoPage() {
                     })()}
                   </span>
                   <div>
-                    <h3 className="font-semibold text-[#0a0a0a]">{selected.action}</h3>
+                    <h3 className="font-semibold text-[#0a0a0a]">{humanizeAction(selected.action)}</h3>
                     <p className="text-sm text-gray-500">{selected.description}</p>
                   </div>
                 </div>
@@ -246,7 +294,7 @@ export default function HistoricoPage() {
                 <div className="flex items-center gap-2 text-sm">
                   <Tag className="h-4 w-4 text-gray-400" />
                   <span className="text-gray-500">Categoria:</span>
-                  <span className="font-medium capitalize text-[#0a0a0a]">{selected.area}</span>
+                  <span className="font-medium text-[#0a0a0a]">{humanizeArea(selected.area)}</span>
                 </div>
               </div>
               <button onClick={() => setSelected(null)} className="mt-5 w-full rounded-xl bg-[#0a0a0a] py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">

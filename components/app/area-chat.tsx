@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { ChevronLeft, Send, Mic, Plus, Sparkles, type LucideIcon } from "lucide-react"
+import { toast } from "@/hooks/use-toast"
 
 export type ChatMessage = {
   from: "cos" | "user"
@@ -39,6 +40,7 @@ export function AreaChat({
   const router = useRouter()
   const [input, setInput] = useState("")
   const [chat, setChat] = useState<ChatMessage[]>(messages)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const send = () => {
     if (!input.trim()) return
@@ -123,11 +125,22 @@ export function AreaChat({
       {/* Message input */}
       <div className="px-4 py-3 border-t border-gray-100 bg-white">
         <div className="flex items-center gap-2">
-          <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors" aria-label="Adicionar">
+          <button
+            onClick={() => {
+              inputRef.current?.focus()
+              toast({
+                title: "Ações rápidas",
+                description: "Use os atalhos acima ou escreva sua solicitação para o COS.",
+              })
+            }}
+            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+            aria-label="Adicionar"
+          >
             <Plus className="w-5 h-5" />
           </button>
           <div className="flex-1 relative">
             <input
+              ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -141,7 +154,17 @@ export function AreaChat({
               <Send className="w-4 h-4" />
             </button>
           ) : (
-            <button className="p-2.5 text-gray-400 hover:text-gray-600 transition-colors" aria-label="Falar">
+            <button
+              onClick={() => {
+                inputRef.current?.focus()
+                toast({
+                  title: "Ditado por voz",
+                  description: "Use a tela inicial do COS para preencher mensagens por voz.",
+                })
+              }}
+              className="p-2.5 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Falar"
+            >
               <Mic className="w-5 h-5" />
             </button>
           )}

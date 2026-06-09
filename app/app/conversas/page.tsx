@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
@@ -19,122 +19,152 @@ import {
   Settings,
   LifeBuoy,
 } from "lucide-react"
+import { getClientsAction } from "@/actions/clients"
+import { getDocumentsAction } from "@/actions/documents"
+import { getFinancialSummaryAction } from "@/actions/financial"
+import { getMeetingsAction } from "@/actions/meetings"
+import { getOperationsAction } from "@/actions/operations"
+import { getSupportTicketsAction } from "@/actions/support"
+import { getWorkspaceMembersAction } from "@/actions/workspace"
 import { useAppInteractions } from "@/components/app/app-interactions"
+import { areaConfigs, slug } from "@/lib/area-configs"
 
 type Conversation = {
   icon: typeof Users
   label: string
   lastMessage: string
   time: string
-  hasNew: boolean
-  count?: number
+  count: number
   color: string
   bgColor: string
   subsections: string[]
 }
 
+const baseConversations: Conversation[] = [
+  { icon: Users, label: "Cadastros", lastMessage: "Sem registros", time: "-", count: 0, color: "#ec4899", bgColor: "#fce7f3", subsections: areaConfigs.cadastros.subsections },
+  { icon: Briefcase, label: "Operações", lastMessage: "Sem registros", time: "-", count: 0, color: "#8b5cf6", bgColor: "#ede9fe", subsections: areaConfigs.operacoes.subsections },
+  { icon: TrendingUp, label: "Vendas", lastMessage: "Conversa contextual pronta", time: "-", count: 0, color: "#3b82f6", bgColor: "#dbeafe", subsections: areaConfigs.vendas.subsections },
+  { icon: DollarSign, label: "Financeiro", lastMessage: "Sem registros", time: "-", count: 0, color: "#22c55e", bgColor: "#dcfce7", subsections: areaConfigs.financeiro.subsections },
+  { icon: UsersRound, label: "Equipe", lastMessage: "Sem registros", time: "-", count: 0, color: "#0ea5e9", bgColor: "#e0f2fe", subsections: areaConfigs.equipe.subsections },
+  { icon: FolderOpen, label: "Documentos", lastMessage: "Sem registros", time: "-", count: 0, color: "#f97316", bgColor: "#ffedd5", subsections: areaConfigs.documentos.subsections },
+  { icon: Video, label: "Reuniões", lastMessage: "Sem registros", time: "-", count: 0, color: "#ef4444", bgColor: "#fee2e2", subsections: areaConfigs.reunioes.subsections },
+  { icon: Settings, label: "Sistema", lastMessage: "Configurações e logs", time: "-", count: 0, color: "#6b7280", bgColor: "#f3f4f6", subsections: areaConfigs.sistema.subsections },
+  { icon: LifeBuoy, label: "Suporte", lastMessage: "Sem registros", time: "-", count: 0, color: "#6b7280", bgColor: "#f3f4f6", subsections: areaConfigs.suporte.subsections },
+]
+
 export default function ConversasPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [conversations, setConversations] = useState<Conversation[]>(baseConversations)
   const router = useRouter()
   const { openFilters } = useAppInteractions()
 
-  const conversations: Conversation[] = [
-    {
-      icon: Users,
-      label: "Cadastros",
-      lastMessage: "Nenhum registro ainda",
-      time: "—",
-      hasNew: false,
-      color: "#ec4899",
-      bgColor: "#fce7f3",
-      subsections: ["Clientes", "Leads", "Produtos", "Serviços", "Fornecedores", "Estoque"],
-    },
-    {
-      icon: Briefcase,
-      label: "Operações",
-      lastMessage: "Nenhum registro ainda",
-      time: "—",
-      hasNew: false,
-      color: "#8b5cf6",
-      bgColor: "#ede9fe",
-      subsections: ["Projetos", "Pedidos", "Processos", "Atendimentos", "Execuções"],
-    },
-    {
-      icon: TrendingUp,
-      label: "Vendas",
-      lastMessage: "Nenhum registro ainda",
-      time: "—",
-      hasNew: false,
-      color: "#3b82f6",
-      bgColor: "#dbeafe",
-      subsections: ["Oportunidades", "Propostas", "Negociações", "Conversões"],
-    },
-    {
-      icon: DollarSign,
-      label: "Financeiro",
-      lastMessage: "Nenhum registro ainda",
-      time: "—",
-      hasNew: false,
-      color: "#22c55e",
-      bgColor: "#dcfce7",
-      subsections: ["Ganhos", "Gastos", "Cobranças", "Balanço"],
-    },
-    {
-      icon: UsersRound,
-      label: "Equipe",
-      lastMessage: "Nenhum registro ainda",
-      time: "—",
-      hasNew: false,
-      color: "#0ea5e9",
-      bgColor: "#e0f2fe",
-      subsections: ["Comercial", "Operacional", "Financeiro", "Administrativo", "Gestão"],
-    },
-    {
-      icon: FolderOpen,
-      label: "Documentos",
-      lastMessage: "Nenhum registro ainda",
-      time: "—",
-      hasNew: false,
-      color: "#f97316",
-      bgColor: "#ffedd5",
-      subsections: ["Contratos", "Propostas", "Termos", "Arquivos"],
-    },
-    {
-      icon: Video,
-      label: "Reuniões",
-      lastMessage: "Nenhum registro ainda",
-      time: "—",
-      hasNew: false,
-      color: "#ef4444",
-      bgColor: "#fee2e2",
-      subsections: ["Gravações", "Resumos", "Tarefas geradas"],
-    },
-    {
-      icon: Settings,
-      label: "Sistema",
-      lastMessage: "Nenhum registro ainda",
-      time: "—",
-      hasNew: false,
-      color: "#6b7280",
-      bgColor: "#f3f4f6",
-      subsections: ["Alertas", "Logs", "Notificações", "Integrações"],
-    },
-    {
-      icon: LifeBuoy,
-      label: "Suporte",
-      lastMessage: "Atendimento, dúvidas, problemas técnicos, plano, cobrança e integrações.",
-      time: "Em preparação",
-      hasNew: false,
-      color: "#6b7280",
-      bgColor: "#f3f4f6",
-      subsections: [],
-    },
-  ]
+  useEffect(() => {
+    let isMounted = true
 
-  const filtered = conversations.filter((c) => c.label.toLowerCase().includes(searchQuery.toLowerCase()) || c.lastMessage.toLowerCase().includes(searchQuery.toLowerCase()))
+    const loadConversationSummary = async () => {
+      const [clientsResult, financialResult, membersResult, operationsResult, documentsResult, meetingsResult, supportResult] =
+        await Promise.all([
+          getClientsAction(),
+          getFinancialSummaryAction(),
+          getWorkspaceMembersAction(),
+          getOperationsAction(),
+          getDocumentsAction(),
+          getMeetingsAction(),
+          getSupportTicketsAction(),
+        ])
 
-  const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "-")
+      if (!isMounted) {
+        return
+      }
+
+      const activeClients = clientsResult.success ? (clientsResult.clients?.filter((client) => client.status === "active").length ?? 0) : 0
+      const operationsCount = operationsResult.success ? (operationsResult.operations?.filter((operation) => operation.status !== "archived").length ?? 0) : 0
+      const entriesCount = financialResult.success ? (financialResult.summary?.entriesCount ?? 0) : 0
+      const membersCount = membersResult.success ? (membersResult.members?.length ?? 0) : 0
+      const documentsCount = documentsResult.success ? (documentsResult.documents?.filter((document) => document.status !== "archived").length ?? 0) : 0
+      const meetingsCount = meetingsResult.success ? (meetingsResult.meetings?.filter((meeting) => meeting.status !== "archived").length ?? 0) : 0
+      const supportCount = supportResult.success ? (supportResult.tickets?.length ?? 0) : 0
+
+      setConversations((current) =>
+        current.map((conversation) => {
+          if (conversation.label === "Cadastros") {
+            return {
+              ...conversation,
+              count: activeClients,
+              lastMessage: activeClients === 1 ? "1 cliente" : activeClients > 1 ? `${activeClients} clientes` : "Sem registros",
+            }
+          }
+
+          if (conversation.label === "Operações") {
+            return {
+              ...conversation,
+              count: operationsCount,
+              lastMessage: operationsCount === 1 ? "1 operação" : operationsCount > 1 ? `${operationsCount} operações` : "Sem registros",
+            }
+          }
+
+          if (conversation.label === "Financeiro") {
+            return {
+              ...conversation,
+              count: entriesCount,
+              lastMessage: entriesCount === 1 ? "1 lançamento" : entriesCount > 1 ? `${entriesCount} lançamentos` : "Sem registros",
+            }
+          }
+
+          if (conversation.label === "Equipe") {
+            return {
+              ...conversation,
+              count: membersCount,
+              lastMessage: membersCount === 1 ? "1 membro" : membersCount > 1 ? `${membersCount} membros` : "Sem registros",
+            }
+          }
+
+          if (conversation.label === "Documentos") {
+            return {
+              ...conversation,
+              count: documentsCount,
+              lastMessage: documentsCount === 1 ? "1 documento" : documentsCount > 1 ? `${documentsCount} documentos` : "Sem registros",
+            }
+          }
+
+          if (conversation.label === "Reuniões") {
+            return {
+              ...conversation,
+              count: meetingsCount,
+              lastMessage: meetingsCount === 1 ? "1 reunião" : meetingsCount > 1 ? `${meetingsCount} reuniões` : "Sem registros",
+            }
+          }
+
+          if (conversation.label === "Suporte") {
+            return {
+              ...conversation,
+              count: supportCount,
+              lastMessage: supportCount === 1 ? "1 chamado" : supportCount > 1 ? `${supportCount} chamados` : "Sem registros",
+            }
+          }
+
+          return conversation
+        }),
+      )
+    }
+
+    void loadConversationSummary()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const filtered = useMemo(
+    () =>
+      conversations.filter(
+        (conversation) =>
+          conversation.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          conversation.lastMessage.toLowerCase().includes(searchQuery.toLowerCase()),
+      ),
+    [conversations, searchQuery],
+  )
 
   return (
     <div className="px-4 py-4">
@@ -161,13 +191,13 @@ export default function ConversasPage() {
       </motion.div>
 
       <div className="space-y-1">
-        {filtered.map((conv, index) => {
-          const isOpen = expanded === conv.label
-          const conversationHref = `/app/conversas/${slug(conv.label)}`
+        {filtered.map((conversation, index) => {
+          const isOpen = expanded === conversation.label
+          const conversationHref = `/app/conversas/${slug(conversation.label)}`
 
           return (
             <motion.div
-              key={conv.label}
+              key={conversation.label}
               initial={{ x: -10, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.05 + index * 0.03 }}
@@ -175,27 +205,32 @@ export default function ConversasPage() {
             >
               <button
                 onClick={() => {
-                  if (conv.subsections.length > 0) {
-                    setExpanded(isOpen ? null : conv.label)
+                  if (conversation.subsections.length > 0) {
+                    setExpanded(isOpen ? null : conversation.label)
                     return
                   }
                   router.push(conversationHref)
                 }}
                 className="flex items-center gap-3 p-3 w-full hover:bg-gray-50 active:bg-gray-100 transition-colors"
               >
-                <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: conv.bgColor }}>
-                  <conv.icon className="w-5 h-5" style={{ color: conv.color }} />
+                <div className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: conversation.bgColor }}>
+                  <conversation.icon className="w-5 h-5" style={{ color: conversation.color }} />
                 </div>
                 <div className="flex-1 min-w-0 text-left">
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className="font-semibold text-[#0a0a0a] text-sm">{conv.label}</span>
-                    <span className="text-xs text-gray-400">{conv.time}</span>
+                    <span className="font-semibold text-[#0a0a0a] text-sm">{conversation.label}</span>
+                    <span className="text-xs text-gray-400">{conversation.time}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500 truncate pr-2">{conv.lastMessage}</span>
+                    <span className="text-xs text-gray-500 truncate pr-2">{conversation.lastMessage}</span>
+                    {conversation.count > 0 && (
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#0a0a0a] px-1.5 text-[11px] text-white">
+                        {conversation.count}
+                      </span>
+                    )}
                   </div>
                 </div>
-                {conv.subsections.length > 0 ? (
+                {conversation.subsections.length > 0 ? (
                   <ChevronDown className={`w-4 h-4 text-gray-300 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
                 ) : (
                   <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
@@ -203,7 +238,7 @@ export default function ConversasPage() {
               </button>
 
               <AnimatePresence initial={false}>
-                {isOpen && conv.subsections.length > 0 && (
+                {isOpen && conversation.subsections.length > 0 && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
@@ -212,13 +247,13 @@ export default function ConversasPage() {
                     className="overflow-hidden border-t border-gray-50"
                   >
                     <div className="p-2 pl-4">
-                      {conv.subsections.map((sub) => (
+                      {conversation.subsections.map((subsection) => (
                         <Link
-                          key={sub}
-                          href={`/app/conversas/${slug(conv.label)}/${slug(sub)}`}
+                          key={subsection}
+                          href={`/app/conversas/${slug(conversation.label)}/${slug(subsection)}`}
                           className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-50 active:bg-gray-100 transition-colors"
                         >
-                          <span className="text-sm text-gray-700">{sub}</span>
+                          <span className="text-sm text-gray-700">{subsection}</span>
                           <ChevronRight className="w-4 h-4 text-gray-300" />
                         </Link>
                       ))}

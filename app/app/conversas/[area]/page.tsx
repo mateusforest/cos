@@ -25,8 +25,8 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
           <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
             <MessageSquare className="w-7 h-7 text-gray-400" />
           </div>
-          <h1 className="text-lg font-semibold text-[#0a0a0a] mb-1">Em preparação</h1>
-          <p className="text-sm text-gray-500">Esta área estará disponível em breve.</p>
+          <h1 className="text-lg font-semibold text-[#0a0a0a] mb-1">Conversa não encontrada</h1>
+          <p className="text-sm text-gray-500">Esta conversa ainda não está disponível para o seu workspace.</p>
         </div>
       </div>
     )
@@ -42,16 +42,29 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
     return (
       <AreaChat
         title={config.label}
-        subtitle="Atendimento, dúvidas, problemas técnicos, plano, cobrança e integrações."
+        subtitle={
+          area === "sistema"
+            ? "Logs, alertas e configuracoes do workspace."
+            : "Atendimento, duvidas, problemas tecnicos, plano, cobranca e integracoes."
+        }
         icon={Icon}
         color={config.color}
         bg={config.bg}
         messages={config.messages}
         quickActions={config.quickActions.map((label) => ({
           label,
-          onClick: label === "Iniciar suporte" ? () => openSupport() : undefined,
+          onClick:
+            label === "Iniciar suporte"
+              ? () => openSupport()
+              : label === "Acessar Portal"
+                ? () => router.push("/portal")
+                : undefined,
         }))}
-        emptyLabel="Nenhuma conversa de suporte ainda."
+        emptyLabel={
+          area === "sistema"
+            ? "Ainda não há mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre sistema, alertas e logs."
+            : "Nenhuma conversa de suporte ainda."
+        }
       />
     )
   }
@@ -68,7 +81,7 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
         </span>
         <div>
           <h1 className="text-xl font-bold text-[#0a0a0a]">{config.label}</h1>
-          <p className="text-sm text-gray-500">Selecione uma área para abrir a conversa.</p>
+          <p className="text-sm text-gray-500">Selecione uma área para abrir a conversa contextual.</p>
         </div>
       </div>
 

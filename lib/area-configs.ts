@@ -22,8 +22,8 @@ export type AreaConfig = {
   messages: ChatMessage[]
 }
 
-export const slug = (s: string) =>
-  s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "-")
+export const slug = (value: string) =>
+  value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "-")
 
 export const areaConfigs: Record<string, AreaConfig> = {
   cadastros: {
@@ -31,8 +31,8 @@ export const areaConfigs: Record<string, AreaConfig> = {
     icon: Users,
     color: "#ec4899",
     bg: "#fce7f3",
-    subsections: ["Clientes", "Leads", "Produtos", "Serviços", "Fornecedores", "Estoque"],
-    quickActions: ["Cadastrar cliente", "Importar lista", "Ver leads"],
+    subsections: ["Clientes", "Leads", "Produtos", "Serviços"],
+    quickActions: ["Criar cliente", "Buscar cliente", "Ver clientes no Portal"],
     messages: [],
   },
   operacoes: {
@@ -40,8 +40,8 @@ export const areaConfigs: Record<string, AreaConfig> = {
     icon: Briefcase,
     color: "#8b5cf6",
     bg: "#ede9fe",
-    subsections: ["Projetos", "Pedidos", "Processos", "Atendimentos", "Execuções"],
-    quickActions: ["Nova operação", "Ver em andamento", "Atribuir responsável"],
+    subsections: ["Projetos", "Ordens", "Processos"],
+    quickActions: ["Criar operação", "Buscar operação", "Ver operações no Portal"],
     messages: [],
   },
   vendas: {
@@ -49,8 +49,8 @@ export const areaConfigs: Record<string, AreaConfig> = {
     icon: TrendingUp,
     color: "#3b82f6",
     bg: "#dbeafe",
-    subsections: ["Oportunidades", "Propostas", "Negociações", "Conversões"],
-    quickActions: ["Nova proposta", "Ver pipeline", "Registrar venda"],
+    subsections: ["Propostas", "Negociações", "Funil"],
+    quickActions: ["Criar proposta", "Buscar negociação", "Ver vendas no Portal"],
     messages: [],
   },
   financeiro: {
@@ -58,8 +58,8 @@ export const areaConfigs: Record<string, AreaConfig> = {
     icon: DollarSign,
     color: "#22c55e",
     bg: "#dcfce7",
-    subsections: ["Ganhos", "Gastos", "Cobranças", "Balanço"],
-    quickActions: ["Registrar ganho", "Registrar gasto", "Ver balanço"],
+    subsections: ["Ganhos", "Gastos", "Fluxo de caixa"],
+    quickActions: ["Registrar ganho", "Registrar gasto", "Ver financeiro no Portal"],
     messages: [],
   },
   equipe: {
@@ -67,8 +67,8 @@ export const areaConfigs: Record<string, AreaConfig> = {
     icon: UsersRound,
     color: "#0ea5e9",
     bg: "#e0f2fe",
-    subsections: ["Comercial", "Operacional", "Financeiro", "Administrativo", "Gestão"],
-    quickActions: ["Adicionar membro", "Atribuir tarefa", "Ver desempenho"],
+    subsections: ["Comercial", "Operacional", "Financeiro", "Administrativo"],
+    quickActions: ["Adicionar membro", "Falar com a equipe", "Ver equipe no Portal"],
     messages: [],
   },
   documentos: {
@@ -76,8 +76,8 @@ export const areaConfigs: Record<string, AreaConfig> = {
     icon: FolderOpen,
     color: "#f97316",
     bg: "#ffedd5",
-    subsections: ["Contratos", "Propostas", "Termos", "Arquivos"],
-    quickActions: ["Gerar documento", "Enviar arquivo", "Ver contratos"],
+    subsections: ["Contratos", "Arquivos", "Relatórios"],
+    quickActions: ["Criar documento", "Buscar arquivo", "Ver documentos no Portal"],
     messages: [],
   },
   reunioes: {
@@ -85,8 +85,8 @@ export const areaConfigs: Record<string, AreaConfig> = {
     icon: Video,
     color: "#ef4444",
     bg: "#fee2e2",
-    subsections: ["Gravações", "Resumos", "Tarefas geradas"],
-    quickActions: ["Gravar reunião", "Ver resumos", "Agendar"],
+    subsections: [],
+    quickActions: ["Criar reunião", "Buscar reunião", "Ver reuniões no Portal"],
     messages: [],
   },
   sistema: {
@@ -94,8 +94,8 @@ export const areaConfigs: Record<string, AreaConfig> = {
     icon: Settings,
     color: "#6b7280",
     bg: "#f3f4f6",
-    subsections: ["Alertas", "Logs", "Notificações", "Integrações"],
-    quickActions: ["Ver alertas", "Gerenciar integrações"],
+    subsections: [],
+    quickActions: ["Ver logs", "Abrir integrações", "Acessar Portal"],
     messages: [],
   },
   suporte: {
@@ -114,5 +114,4 @@ export const equipeGroups: Record<string, { label: string; messages: ChatMessage
   operacional: { label: "Equipe Operacional", messages: [] },
   financeiro: { label: "Equipe Financeira", messages: [] },
   administrativo: { label: "Equipe Administrativa", messages: [] },
-  gestao: { label: "Gestão", messages: [] },
 }

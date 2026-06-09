@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState, type ReactNode } from "react"
-import Image from "next/image"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 import {
@@ -14,7 +13,6 @@ import {
   Globe,
   Moon,
   Sun,
-  Monitor,
   Bell,
   Lock,
   Smartphone,
@@ -30,29 +28,38 @@ import {
   FileText,
   ShieldCheck,
 } from "lucide-react"
+import { useTheme } from "next-themes"
+import { updateProfileAction } from "@/actions/profile"
 import { useAppInteractions } from "@/components/app/app-interactions"
 import { useAuth } from "@/components/auth/auth-provider"
-import { updateProfileAction } from "@/actions/profile"
+import { UserAvatar } from "@/components/shared/user-avatar"
 import { toast } from "@/hooks/use-toast"
 
-type SheetType = "perfil" | "idioma" | "aparencia" | "faturamento" | "pacotes" | "pin" | "biometria" | null
+type SheetType =
+  | "perfil"
+  | "avatar"
+  | "idioma"
+  | "aparencia"
+  | "faturamento"
+  | "pacotes"
+  | "pin"
+  | "biometria"
+  | null
 
 type ProfileFormState = {
   fullName: string
   phone: string
-  avatarUrl: string
 }
 
 const emptyProfileForm: ProfileFormState = {
   fullName: "",
   phone: "",
-  avatarUrl: "",
 }
 
 export default function VocePage() {
   const [sheet, setSheet] = useState<SheetType>(null)
-  const [language, setLanguage] = useState("Português")
-  const [appearance, setAppearance] = useState("Sistema")
+  const [language, setLanguage] = useState("Portugues")
+  const [avatarDraft, setAvatarDraft] = useState("")
   const [notifications, setNotifications] = useState({
     push: true,
     email: true,
@@ -62,6 +69,7 @@ export default function VocePage() {
   const [profileError, setProfileError] = useState("")
   const [savingProfile, setSavingProfile] = useState(false)
   const { user, profile, workspace, refresh } = useAuth()
+  const { theme, setTheme } = useTheme()
   const {
     openCompany,
     openTeam,
@@ -77,8 +85,14 @@ export default function VocePage() {
     setProfileForm({
       fullName: profile?.full_name || "",
       phone: profile?.phone || "",
-      avatarUrl: profile?.avatar_url || "",
     })
+    setProfileError("")
+  }, [sheet, profile])
+
+  useEffect(() => {
+    if (sheet !== "avatar") return
+
+    setAvatarDraft(profile?.avatar_url || "")
     setProfileError("")
   }, [sheet, profile])
 
@@ -86,21 +100,18 @@ export default function VocePage() {
     name: profile?.full_name || user?.email || "Seu perfil",
     email: profile?.email || user?.email || "Nenhum e-mail cadastrado ainda.",
     phone: profile?.phone || "Nenhum telefone cadastrado ainda.",
-    avatar:
-      profile?.avatar_url ||
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&h=120&fit=crop&crop=face",
   }
 
-  const languages = ["Português", "Inglês", "Espanhol"]
+  const languages = ["Portugues", "Ingles", "Espanhol"]
   const appearances = [
     { label: "Claro", icon: Sun },
     { label: "Escuro", icon: Moon },
-    { label: "Sistema", icon: Monitor },
   ]
+  const appearance = theme === "dark" ? "Escuro" : "Claro"
 
   const companyItems = [
     { icon: Building2, label: "Minha empresa", sublabel: workspace?.name || "Nenhuma empresa cadastrada ainda", onClick: openCompany },
-    { icon: Users, label: "Equipe", sublabel: "Membros e permissões do workspace", onClick: openTeam },
+    { icon: Users, label: "Equipe", sublabel: "Membros e permissoes do workspace", onClick: openTeam },
     { icon: CreditCard, label: "Assinatura e plano", sublabel: "Nenhuma assinatura ativa ainda", onClick: openSubscription },
   ]
 
@@ -116,7 +127,6 @@ export default function VocePage() {
     const result = await updateProfileAction({
       fullName: profileForm.fullName,
       phone: profileForm.phone,
-      avatarUrl: profileForm.avatarUrl,
     })
 
     setSavingProfile(false)
@@ -134,7 +144,48 @@ export default function VocePage() {
     closeSheet()
   }
 
-  const MenuItem = ({ icon: Icon, label, sublabel, sublabelColor, onClick, href }: {
+  const saveAvatar = async (removeAvatar = false) => {
+    setSavingProfile(true)
+    setProfileError("")
+
+    if (!removeAvatar && !avatarDraft.trim()) {
+      setSavingProfile(false)
+      setProfileError("Informe uma URL de imagem ou remova a foto atual.")
+      return
+    }
+
+    const result = await updateProfileAction({
+      fullName: profile?.full_name || "",
+      phone: profile?.phone || "",
+      avatarUrl: avatarDraft,
+      removeAvatar,
+    })
+
+    setSavingProfile(false)
+
+    if (result.error) {
+      setProfileError(result.error)
+      return
+    }
+
+    await refresh()
+    toast({
+      title: removeAvatar ? "Foto removida" : "Foto atualizada",
+      description: removeAvatar
+        ? "O avatar foi removido com sucesso."
+        : "A nova foto foi aplicada em todo o sistema.",
+    })
+    closeSheet()
+  }
+
+  const MenuItem = ({
+    icon: Icon,
+    label,
+    sublabel,
+    sublabelColor,
+    onClick,
+    href,
+  }: {
     icon: typeof Building2
     label: string
     sublabel: string
@@ -184,8 +235,8 @@ export default function VocePage() {
   return (
     <div className="px-4 py-6 pb-32">
       <motion.div initial={{ y: -10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mb-4">
-        <h1 className="mb-0.5 text-2xl font-bold text-[#0a0a0a]">Você</h1>
-        <p className="text-sm text-gray-500">Gerencie seu perfil, empresa e preferências.</p>
+        <h1 className="mb-0.5 text-2xl font-bold text-[#0a0a0a]">Voce</h1>
+        <p className="text-sm text-gray-500">Gerencie seu perfil, empresa e preferencias.</p>
       </motion.div>
 
       <motion.div
@@ -196,10 +247,19 @@ export default function VocePage() {
       >
         <div className="flex w-full items-center gap-4">
           <div className="relative">
-            <div className="h-16 w-16 overflow-hidden rounded-full border-2 border-gray-200">
-              <Image src={displayUser.avatar} alt={displayUser.name} width={64} height={64} className="h-full w-full object-cover" />
-            </div>
-            <button type="button" aria-label="Alterar foto de perfil" className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gray-100">
+            <UserAvatar
+              fullName={profile?.full_name}
+              email={profile?.email || user?.email}
+              avatarUrl={profile?.avatar_url}
+              size={64}
+              className="border-2 border-gray-200"
+            />
+            <button
+              type="button"
+              onClick={() => setSheet("avatar")}
+              aria-label="Alterar foto de perfil"
+              className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gray-100"
+            >
               <Camera className="h-3.5 w-3.5 text-gray-600" />
             </button>
           </div>
@@ -243,28 +303,28 @@ export default function VocePage() {
       </Section>
 
       <Section title="Faturamento" delay={0.25}>
-        <MenuItem icon={Receipt} label="Faturamento do COS" sublabel="Histórico, cobranças e notas fiscais" onClick={() => setSheet("faturamento")} />
-        <MenuItem icon={Package} label="Pacotes extras" sublabel="Créditos IA, armazenamento e usuários" onClick={() => setSheet("pacotes")} />
+        <MenuItem icon={Receipt} label="Faturamento do COS" sublabel="Historico, cobrancas e notas fiscais" onClick={() => setSheet("faturamento")} />
+        <MenuItem icon={Package} label="Pacotes extras" sublabel="Creditos IA, armazenamento e usuarios" onClick={() => setSheet("pacotes")} />
       </Section>
 
-      <Section title="Preferências" delay={0.3}>
-        <MenuItem icon={Globe} label="Idioma e região" sublabel={language} onClick={() => setSheet("idioma")} />
-        <MenuItem icon={Moon} label="Aparência" sublabel={appearance} onClick={() => setSheet("aparencia")} />
+      <Section title="Preferencias" delay={0.3}>
+        <MenuItem icon={Globe} label="Idioma e regiao" sublabel={language} onClick={() => setSheet("idioma")} />
+        <MenuItem icon={Moon} label="Aparencia" sublabel={appearance} onClick={() => setSheet("aparencia")} />
         <div className="p-4">
           <div className="mb-3 flex items-center gap-4">
             <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gray-100">
               <Bell className="h-5 w-5 text-gray-600" />
             </div>
             <div className="flex-1">
-              <div className="font-medium text-[#0a0a0a]">Notificações</div>
-              <div className="text-sm text-gray-500">Gerencie como você recebe alertas</div>
+              <div className="font-medium text-[#0a0a0a]">Notificacoes</div>
+              <div className="text-sm text-gray-500">Gerencie como voce recebe alertas</div>
             </div>
           </div>
           <div className="space-y-2 pl-14">
             {[
-              { key: "push" as const, label: "Notificações push" },
+              { key: "push" as const, label: "Notificacoes push" },
               { key: "email" as const, label: "Alertas por e-mail" },
-              { key: "resumos" as const, label: "Resumos diários" },
+              { key: "resumos" as const, label: "Resumos diarios" },
             ].map((opt) => (
               <div key={opt.key} className="flex items-center justify-between">
                 <span className="text-sm text-gray-700">{opt.label}</span>
@@ -281,10 +341,10 @@ export default function VocePage() {
         </div>
       </Section>
 
-      <Section title="Segurança" delay={0.35}>
+      <Section title="Seguranca" delay={0.35}>
         <MenuItem icon={Smartphone} label="PIN de acesso" sublabel="Ativado" sublabelColor="#22c55e" onClick={() => setSheet("pin")} />
         <MenuItem icon={Scan} label="Face ID / Biometria" sublabel="Ativado neste dispositivo" sublabelColor="#22c55e" onClick={() => setSheet("biometria")} />
-        <MenuItem icon={Lock} label="Senha e sessões" sublabel="Gerencie acessos e dispositivos" href="/app/voce/seguranca" />
+        <MenuItem icon={Lock} label="Senha e sessoes" sublabel="Gerencie acessos e dispositivos" href="/app/voce/seguranca" />
       </Section>
 
       <AnimatePresence>
@@ -330,15 +390,6 @@ export default function VocePage() {
                         className={fieldClassName}
                       />
                     </Field>
-                    <Field label="Avatar URL">
-                      <input
-                        type="text"
-                        value={profileForm.avatarUrl}
-                        onChange={(e) => setProfileForm((current) => ({ ...current, avatarUrl: e.target.value }))}
-                        placeholder="https://..."
-                        className={fieldClassName}
-                      />
-                    </Field>
                     {profileError && <ErrorCard text={profileError} />}
                     <div className="flex items-center gap-2 pt-1">
                       <button type="button" onClick={closeSheet} className="flex-1 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200">
@@ -357,9 +408,46 @@ export default function VocePage() {
                 </>
               )}
 
+              {sheet === "avatar" && (
+                <>
+                  <SheetHeader title="Alterar foto" onClose={closeSheet} />
+                  <div className="space-y-4">
+                    <InfoCard text="Upload de imagem sera conectado posteriormente. Por enquanto, voce pode usar uma URL de imagem." />
+                    <Field label="URL da imagem">
+                      <input
+                        type="text"
+                        value={avatarDraft}
+                        onChange={(e) => setAvatarDraft(e.target.value)}
+                        placeholder="https://..."
+                        className={fieldClassName}
+                      />
+                    </Field>
+                    {profileError && <ErrorCard text={profileError} />}
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => void saveAvatar(false)}
+                        disabled={savingProfile}
+                        className="rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {savingProfile ? "Salvando..." : "Inserir URL da imagem"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void saveAvatar(true)}
+                        disabled={savingProfile}
+                        className="rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Remover foto
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
               {sheet === "idioma" && (
                 <>
-                  <SheetHeader title="Idioma e região" onClose={closeSheet} />
+                  <SheetHeader title="Idioma e regiao" onClose={closeSheet} />
                   <div className="space-y-1">
                     {languages.map((lang) => (
                       <button
@@ -380,13 +468,13 @@ export default function VocePage() {
 
               {sheet === "aparencia" && (
                 <>
-                  <SheetHeader title="Aparência" onClose={closeSheet} />
+                  <SheetHeader title="Aparencia" onClose={closeSheet} />
                   <div className="space-y-1">
                     {appearances.map((option) => (
                       <button
                         key={option.label}
                         onClick={() => {
-                          setAppearance(option.label)
+                          setTheme(option.label === "Escuro" ? "dark" : "light")
                           closeSheet()
                         }}
                         className="flex w-full items-center gap-3 rounded-xl px-4 py-3 transition-colors hover:bg-gray-50"
@@ -406,20 +494,20 @@ export default function VocePage() {
                   <div className="mb-4 rounded-xl bg-gray-50 p-4">
                     <div className="mb-1 flex items-center justify-between">
                       <span className="text-sm text-gray-500">Status da assinatura</span>
-                      <span className="text-sm font-medium text-gray-400">Não configurada</span>
+                      <span className="text-sm font-medium text-gray-400">Nao configurada</span>
                     </div>
                     <div className="mb-1 flex items-center justify-between">
-                      <span className="text-sm text-gray-500">Próximo vencimento</span>
-                      <span className="text-sm font-medium text-gray-400">—</span>
+                      <span className="text-sm text-gray-500">Proximo vencimento</span>
+                      <span className="text-sm font-medium text-gray-400">-</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-500">Forma de pagamento</span>
-                      <span className="text-sm font-medium text-gray-400">—</span>
+                      <span className="text-sm font-medium text-gray-400">-</span>
                     </div>
                   </div>
                   <div className="space-y-1">
                     {[
-                      { icon: Receipt, label: "Histórico de cobrança", onClick: openBillingHistory },
+                      { icon: Receipt, label: "Historico de cobranca", onClick: openBillingHistory },
                       { icon: FileText, label: "Notas fiscais", onClick: openInvoices },
                       { icon: CreditCard, label: "Forma de pagamento", onClick: openPayment },
                     ].map((item) => (
@@ -442,9 +530,9 @@ export default function VocePage() {
                   <SheetHeader title="Pacotes extras" onClose={closeSheet} />
                   <div className="space-y-2">
                     {[
-                      { icon: Sparkles, label: "Créditos IA", description: "Mais respostas e automações", detail: "Disponível após configuração comercial" },
-                      { icon: HardDrive, label: "Armazenamento extra", description: "Mais espaço para arquivos e documentos", detail: "Disponível após configuração comercial" },
-                      { icon: UserPlus, label: "Usuários adicionais", description: "Adicione mais membros à equipe", detail: "Disponível após configuração comercial" },
+                      { icon: Sparkles, label: "Creditos IA", description: "Mais respostas e automacoes", detail: "Disponivel apos configuracao comercial" },
+                      { icon: HardDrive, label: "Armazenamento extra", description: "Mais espaco para arquivos e documentos", detail: "Disponivel apos configuracao comercial" },
+                      { icon: UserPlus, label: "Usuarios adicionais", description: "Adicione mais membros a equipe", detail: "Disponivel apos configuracao comercial" },
                     ].map((item) => (
                       <div key={item.label} className="flex items-center gap-3 rounded-xl border border-gray-100 p-3">
                         <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gray-100">

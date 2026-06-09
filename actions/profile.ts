@@ -7,10 +7,12 @@ export async function updateProfileAction({
   fullName,
   phone,
   avatarUrl,
+  removeAvatar = false,
 }: {
   fullName: string
   phone: string
   avatarUrl?: string
+  removeAvatar?: boolean
 }) {
   const supabase = await createSupabaseServerClient()
   const { data: authData, error: authError } = await supabase.auth.getUser()
@@ -27,7 +29,11 @@ export async function updateProfileAction({
       full_name: fullName.trim() || null,
       email: authData.user.email ?? access.profile?.email ?? null,
       phone: phone.trim() || null,
-      avatar_url: avatarUrl?.trim() || access.profile?.avatar_url || null,
+      avatar_url: removeAvatar
+        ? null
+        : avatarUrl === undefined
+          ? access.profile?.avatar_url ?? null
+          : avatarUrl.trim() || null,
     },
     {
       onConflict: "id",

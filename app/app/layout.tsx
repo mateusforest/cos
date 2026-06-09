@@ -41,7 +41,13 @@ import {
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { getWorkspaceActivityLogsAction } from "@/actions/activity"
+import { getClientsAction } from "@/actions/clients"
+import { getDocumentsAction } from "@/actions/documents"
 import { getFinancialSummaryAction } from "@/actions/financial"
+import { getMeetingsAction } from "@/actions/meetings"
+import { getOperationsAction } from "@/actions/operations"
+import { getSupportTicketsAction } from "@/actions/support"
+import { getWorkspaceMembersAction } from "@/actions/workspace"
 import { HeaderActions } from "@/components/app/header-actions"
 import { AppInteractionsProvider } from "@/components/app/app-interactions"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -64,6 +70,16 @@ const FABContext = createContext<{
 })
 
 export const useFAB = () => useContext(FABContext)
+
+type SessionItem = {
+  icon: typeof Users
+  label: string
+  time: string
+  count: number
+  color: string
+  bg: string
+  href: string
+}
 
 const sessions = [
   { icon: Users, label: "Cadastros", time: "Em preparação", count: 0, color: "#ec4899", bg: "#fce7f3" },
@@ -360,6 +376,17 @@ function GlobalHeader() {
 function DesktopSidebar() {
   const pathname = usePathname()
   const { setIsOpen, setLevel } = useFAB()
+  const [sessionsData, setSessionsData] = useState<SessionItem[]>([
+    { icon: Users, label: "Cadastros", time: "Sem registros", count: 0, color: "#ec4899", bg: "#fce7f3", href: "/app/conversas/cadastros" },
+    { icon: Briefcase, label: "Operações", time: "Sem registros", count: 0, color: "#8b5cf6", bg: "#ede9fe", href: "/app/conversas/operacoes" },
+    { icon: TrendingUp, label: "Vendas", time: "Chat contextual", count: 0, color: "#3b82f6", bg: "#dbeafe", href: "/app/conversas/vendas" },
+    { icon: DollarSign, label: "Financeiro", time: "Sem registros", count: 0, color: "#22c55e", bg: "#dcfce7", href: "/app/conversas/financeiro" },
+    { icon: UsersRound, label: "Equipe", time: "Sem registros", count: 0, color: "#0ea5e9", bg: "#e0f2fe", href: "/app/conversas/equipe" },
+    { icon: FolderOpen, label: "Documentos", time: "Sem registros", count: 0, color: "#f97316", bg: "#ffedd5", href: "/app/conversas/documentos" },
+    { icon: Video, label: "Reuniões", time: "Sem registros", count: 0, color: "#ef4444", bg: "#fee2e2", href: "/app/conversas/reunioes" },
+    { icon: LifeBuoy, label: "Suporte", time: "Sem registros", count: 0, color: "#6b7280", bg: "#f3f4f6", href: "/app/conversas/suporte" },
+    { icon: Settings, label: "Sistema", time: "Configurações e logs", count: 0, color: "#6b7280", bg: "#f3f4f6", href: "/app/conversas/sistema" },
+  ])
 
   const navItems = [
     { icon: Home, label: "Início", href: "/app", exact: true },
@@ -369,6 +396,68 @@ function DesktopSidebar() {
   ]
 
   const isActive = (href: string, exact?: boolean) => (exact ? pathname === href : pathname.startsWith(href))
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadSidebarData = async () => {
+      const [clientsResult, financialResult, membersResult, operationsResult, documentsResult, meetingsResult, supportResult] =
+        await Promise.all([
+          getClientsAction(),
+          getFinancialSummaryAction(),
+          getWorkspaceMembersAction(),
+          getOperationsAction(),
+          getDocumentsAction(),
+          getMeetingsAction(),
+          getSupportTicketsAction(),
+        ])
+
+      if (!isMounted) {
+        return
+      }
+
+      const activeClients = clientsResult.success ? (clientsResult.clients?.filter((client) => client.status === "active").length ?? 0) : 0
+      const entriesCount = financialResult.success ? (financialResult.summary?.entriesCount ?? 0) : 0
+      const membersCount = membersResult.success ? (membersResult.members?.length ?? 0) : 0
+      const operationsCount = operationsResult.success ? (operationsResult.operations?.filter((operation) => operation.status !== "archived").length ?? 0) : 0
+      const documentsCount = documentsResult.success ? (documentsResult.documents?.filter((document) => document.status !== "archived").length ?? 0) : 0
+      const meetingsCount = meetingsResult.success ? (meetingsResult.meetings?.filter((meeting) => meeting.status !== "archived").length ?? 0) : 0
+      const supportCount = supportResult.success ? (supportResult.tickets?.length ?? 0) : 0
+
+      setSessionsData((current) =>
+        current.map((session) => {
+          if (session.label === "Cadastros") {
+            return { ...session, count: activeClients, time: activeClients === 1 ? "1 cliente" : activeClients > 1 ? `${activeClients} clientes` : "Sem registros" }
+          }
+          if (session.label === "Operações") {
+            return { ...session, count: operationsCount, time: operationsCount === 1 ? "1 operação" : operationsCount > 1 ? `${operationsCount} operações` : "Sem registros" }
+          }
+          if (session.label === "Financeiro") {
+            return { ...session, count: entriesCount, time: entriesCount === 1 ? "1 lançamento" : entriesCount > 1 ? `${entriesCount} lançamentos` : "Sem registros" }
+          }
+          if (session.label === "Equipe") {
+            return { ...session, count: membersCount, time: membersCount === 1 ? "1 membro" : membersCount > 1 ? `${membersCount} membros` : "Sem registros" }
+          }
+          if (session.label === "Documentos") {
+            return { ...session, count: documentsCount, time: documentsCount === 1 ? "1 documento" : documentsCount > 1 ? `${documentsCount} documentos` : "Sem registros" }
+          }
+          if (session.label === "Reuniões") {
+            return { ...session, count: meetingsCount, time: meetingsCount === 1 ? "1 reunião" : meetingsCount > 1 ? `${meetingsCount} reuniões` : "Sem registros" }
+          }
+          if (session.label === "Suporte") {
+            return { ...session, count: supportCount, time: supportCount === 1 ? "1 chamado" : supportCount > 1 ? `${supportCount} chamados` : "Sem registros" }
+          }
+          return session
+        }),
+      )
+    }
+
+    void loadSidebarData()
+
+    return () => {
+      isMounted = false
+    }
+  }, [pathname])
 
   return (
     <aside className="hidden lg:flex lg:flex-col w-[280px] flex-shrink-0 border-r border-gray-200 bg-white h-screen">
@@ -406,8 +495,8 @@ function DesktopSidebar() {
         <div className="px-2 py-2">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Sessões</span>
         </div>
-        {sessions.map((s) => (
-          <Link key={s.label} href={s.label === "Suporte" ? "/app/conversas/suporte" : "/app/conversas"} className="flex items-center gap-3 px-2.5 py-2 rounded-lg hover:bg-gray-50 transition-colors group">
+        {sessionsData.map((s) => (
+          <Link key={s.label} href={s.href} className="flex items-center gap-3 px-2.5 py-2 rounded-lg hover:bg-gray-50 transition-colors group">
             <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: s.bg }}>
               <s.icon className="w-4 h-4" style={{ color: s.color }} />
             </span>
