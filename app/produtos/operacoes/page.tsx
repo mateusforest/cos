@@ -45,15 +45,17 @@ export default function OperacoesProductPage() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-[2rem] border border-black/5 bg-white shadow-[0_20px_80px_rgba(15,23,42,0.06)]">
-            <div className="p-3 md:p-5">
+          <div className="overflow-hidden rounded-[2rem] border border-black/5 bg-white shadow-[0_28px_100px_rgba(15,23,42,0.08)] ring-1 ring-white/70">
+            <div className="bg-[#fafaf8] p-3 md:p-5">
               <Image
                 src="/cos-operacoes-product-banner.png"
                 alt="COS Operações"
                 width={983}
                 height={1600}
+                quality={95}
+                sizes="(min-width: 1280px) 1280px, (min-width: 768px) calc(100vw - 64px), calc(100vw - 32px)"
                 priority
-                className="h-auto w-full rounded-[1.5rem] object-contain"
+                className="h-auto w-full rounded-[1.5rem] object-contain shadow-[0_18px_48px_rgba(15,23,42,0.08)] [filter:contrast(1.015)_saturate(1.01)_brightness(1.01)]"
               />
             </div>
           </div>

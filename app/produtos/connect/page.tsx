@@ -11,15 +11,17 @@ export default function ConnectProductPage() {
 
       <section className="px-4 pt-28 pb-10 md:px-8 md:pt-36 lg:px-12">
         <div className="mx-auto max-w-7xl">
-          <div className="overflow-hidden rounded-[2rem] border border-black/5 bg-white shadow-[0_20px_80px_rgba(15,23,42,0.06)]">
-            <div className="p-3 md:p-5">
+          <div className="overflow-hidden rounded-[2rem] border border-black/5 bg-white shadow-[0_28px_100px_rgba(15,23,42,0.08)] ring-1 ring-white/70">
+            <div className="bg-[#fafaf8] p-3 md:p-5">
               <Image
                 src="/cos-connect-product-banner.png"
                 alt="COS Connect"
                 width={982}
                 height={1601}
+                quality={95}
+                sizes="(min-width: 1280px) 1280px, (min-width: 768px) calc(100vw - 64px), calc(100vw - 32px)"
                 priority
-                className="h-auto w-full rounded-[1.5rem] object-contain"
+                className="h-auto w-full rounded-[1.5rem] object-contain shadow-[0_18px_48px_rgba(15,23,42,0.08)] [filter:contrast(1.015)_saturate(1.01)_brightness(1.01)]"
               />
             </div>
           </div>
