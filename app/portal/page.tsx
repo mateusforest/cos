@@ -152,7 +152,7 @@ export default function PortalHomePage() {
   const [micState, setMicState] = useState<MicState>("idle")
   const [micPreview, setMicPreview] = useState("")
   const [stats, setStats] = useState(defaultStats)
-  const [recentActivities, setRecentActivities] = useState<Array<{ id: string; action: string; description: string }>>([])
+  const [recentActivities, setRecentActivities] = useState<Array<{ id: string; action: string; actionLabel?: string; description: string }>>([])
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
@@ -183,7 +183,7 @@ export default function PortalHomePage() {
           }),
         )
         setRecentActivities(
-          overviewResult.overview.logs as Array<{ id: string; action: string; description: string }>,
+          overviewResult.overview.logs as Array<{ id: string; action: string; actionLabel?: string; description: string }>,
         )
       }
     }
@@ -540,7 +540,7 @@ export default function PortalHomePage() {
                   <div className="space-y-2">
                     {recentActivities.map((activity) => (
                       <div key={activity.id} className="rounded-xl border border-gray-100 px-4 py-3">
-                        <p className="text-sm font-medium text-[#0a0a0a]">{activity.action}</p>
+                        <p className="text-sm font-medium text-[#0a0a0a]">{activity.actionLabel || activity.action}</p>
                         <p className="text-sm text-muted-foreground">{activity.description}</p>
                       </div>
                     ))}

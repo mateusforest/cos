@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import { getWorkspaceActivityLogsAction } from "@/actions/activity"
 import { useAppInteractions } from "@/components/app/app-interactions"
+import { humanizeActivityAction } from "@/lib/activity/humanize"
 
 type ActivityItem = {
   id: string
@@ -99,20 +100,6 @@ function colorForArea(area: string) {
   if (area === "documents") return { color: "#3b82f6", bgColor: "#dbeafe" }
   if (area === "meetings") return { color: "#ef4444", bgColor: "#fee2e2" }
   return { color: "#6b7280", bgColor: "#f3f4f6" }
-}
-
-function humanizeAction(action: string) {
-  if (actionLabels[action]) {
-    return actionLabels[action]
-  }
-
-  const cleaned = action.replace(/_/g, " ").trim()
-
-  if (!cleaned) {
-    return "Atividade registrada"
-  }
-
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
 }
 
 function humanizeArea(area: string) {
@@ -240,7 +227,7 @@ export default function HistoricoPage() {
                   <Icon className="h-5 w-5" style={{ color: tone.color }} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-[#0a0a0a]">{humanizeAction(log.action)}</p>
+                  <p className="truncate text-sm font-medium text-[#0a0a0a]">{humanizeActivityAction(log.action, log.description)}</p>
                   <p className="truncate text-sm text-gray-500">{log.description}</p>
                 </div>
                 <span className="text-xs text-gray-400">{formatDateTime(log.createdAt)}</span>
@@ -277,7 +264,7 @@ export default function HistoricoPage() {
                     })()}
                   </span>
                   <div>
-                    <h3 className="font-semibold text-[#0a0a0a]">{humanizeAction(selected.action)}</h3>
+                    <h3 className="font-semibold text-[#0a0a0a]">{humanizeActivityAction(selected.action, selected.description)}</h3>
                     <p className="text-sm text-gray-500">{selected.description}</p>
                   </div>
                 </div>

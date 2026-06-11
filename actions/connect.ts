@@ -1,6 +1,7 @@
 "use server"
 
 import { canManageWorkspace, getUserAccessForUser } from "@/lib/auth"
+import { humanizeActivityAction } from "@/lib/activity/humanize"
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server"
 
 export type ConnectSourceStatus =
@@ -985,6 +986,7 @@ export async function getConnectHistoryAction() {
       id: log.id,
       area: log.area || "connect",
       action: log.action || "activity_logged",
+      actionLabel: humanizeActivityAction(log.action, log.description),
       description: log.description || "Atividade registrada.",
       createdAt: log.created_at,
     })),

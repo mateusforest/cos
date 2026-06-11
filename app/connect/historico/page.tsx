@@ -6,6 +6,7 @@ import { Search, SlidersHorizontal, X, Clock, Tag, Plug, Inbox } from "lucide-re
 import { getConnectHistoryAction } from "@/actions/connect"
 import { useConnect } from "@/components/connect/connect-store"
 import { useSupport } from "@/components/support/support-context"
+import { humanizeActivityAction } from "@/lib/activity/humanize"
 
 type HistoryItem = {
   id: string
@@ -13,28 +14,6 @@ type HistoryItem = {
   action: string
   description: string
   createdAt: string | null
-}
-
-function humanizeAction(action: string) {
-  const map: Record<string, string> = {
-    connect_source_created: "Fonte conectada criada",
-    connect_source_updated: "Fonte conectada atualizada",
-    connect_source_deleted: "Fonte conectada removida",
-    connect_section_created: "Sessao do Connect criada",
-    connect_section_updated: "Sessao do Connect atualizada",
-    connect_section_deleted: "Sessao do Connect removida",
-    connect_action_created: "Acao do Connect criada",
-    connect_action_updated: "Acao do Connect atualizada",
-    connect_action_deleted: "Acao do Connect removida",
-    support_ticket_created: "Chamado de suporte aberto",
-    support_message_created: "Mensagem enviada no suporte",
-  }
-
-  if (map[action]) return map[action]
-
-  return action
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
 function formatDate(value: string | null) {
@@ -199,7 +178,7 @@ export default function ConnectHistoricoPage() {
                 <Plug className="h-4 w-4 text-blue-600" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-[#0a0a0a]">{humanizeAction(item.action)}</p>
+                <p className="truncate text-sm font-medium text-[#0a0a0a]">{humanizeActivityAction(item.action, item.description)}</p>
                 <p className="truncate text-xs text-gray-500">{item.description}</p>
               </div>
               <span className="flex-shrink-0 text-xs text-gray-400">{formatDate(item.createdAt)}</span>
@@ -231,7 +210,7 @@ export default function ConnectHistoricoPage() {
                     <Plug className="h-5 w-5 text-blue-600" />
                   </span>
                   <div>
-                    <h3 className="font-semibold text-[#0a0a0a]">{humanizeAction(selected.action)}</h3>
+                    <h3 className="font-semibold text-[#0a0a0a]">{humanizeActivityAction(selected.action, selected.description)}</h3>
                     <p className="text-sm text-gray-500">{selected.description}</p>
                   </div>
                 </div>

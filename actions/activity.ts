@@ -1,6 +1,7 @@
 "use server"
 
 import { getUserAccessForUser } from "@/lib/auth"
+import { humanizeActivityAction } from "@/lib/activity/humanize"
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server"
 
 type ActivityRow = {
@@ -63,6 +64,7 @@ export async function getWorkspaceActivityLogsAction() {
       id: log.id,
       area: log.area || "sistema",
       action: log.action || "activity_logged",
+      actionLabel: humanizeActivityAction(log.action, log.description),
       description: log.description || "Atividade registrada.",
       createdAt: log.created_at,
     })),
@@ -145,6 +147,7 @@ export async function getPortalHomeOverviewAction() {
         id: log.id,
         area: log.area || "sistema",
         action: log.action || "activity_logged",
+        actionLabel: humanizeActivityAction(log.action, log.description),
         description: log.description || "Atividade registrada.",
         createdAt: log.created_at,
       })),

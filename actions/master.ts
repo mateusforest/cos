@@ -1,5 +1,6 @@
 "use server"
 
+import { humanizeActivityAction } from "@/lib/activity/humanize"
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server"
 import { getUserAccessForUser } from "@/lib/auth"
 
@@ -213,7 +214,7 @@ function mapMasterActivities({
   return logs.map((log) => ({
     id: log.id,
     action: log.action || "activity_logged",
-    actionLabel: humanizeMasterActivityAction(log.action),
+    actionLabel: humanizeActivityAction(log.action, log.description),
     category: classifyMasterActivity(log),
     description: log.description || "Atividade registrada.",
     actorName: log.user_id ? profileMap?.get(log.user_id) || "Sistema COS" : "Sistema COS",
