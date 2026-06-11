@@ -85,7 +85,7 @@ export default function OperacoesProductPage() {
       <Header />
 
       <section className="px-4 pt-28 pb-14 md:px-8 md:pt-36 md:pb-20 lg:px-12">
-        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(420px,540px)] lg:items-center lg:gap-14">
+        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(380px,500px)] lg:items-center lg:gap-14">
           <div className="max-w-2xl">
             <div className="inline-flex items-center rounded-full bg-green-50 px-4 py-2 text-sm font-medium text-green-700">
               COS Operações
@@ -131,16 +131,16 @@ export default function OperacoesProductPage() {
             </div>
           </div>
 
-          <div className="relative mx-auto w-full max-w-[540px]">
+          <div className="relative mx-auto w-full max-w-[480px] lg:translate-x-2">
             <div className="absolute inset-x-10 top-12 h-[72%] rounded-full bg-[radial-gradient(circle,_rgba(34,197,94,0.12),_rgba(255,255,255,0)_72%)] blur-3xl" />
             <div className="relative">
               <Image
-                src="/cos-operacoes-mobile-mockup.jpeg"
+                src="/cos-operacoes-hero-mobile-mockup.png"
                 alt="COS Operações mobile"
-                width={738}
-                height={1600}
+                width={3919}
+                height={3919}
                 quality={95}
-                sizes="(min-width: 1280px) 540px, (min-width: 768px) 46vw, 92vw"
+                sizes="(min-width: 1280px) 500px, (min-width: 768px) 42vw, 88vw"
                 priority
                 className="mx-auto h-auto w-full object-contain drop-shadow-[0_26px_70px_rgba(15,23,42,0.16)]"
               />
