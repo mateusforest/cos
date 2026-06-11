@@ -1,14 +1,82 @@
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowRight, CheckCircle2, MessageCircle } from "lucide-react"
+import {
+  ArrowRight,
+  BriefcaseBusiness,
+  CheckCircle2,
+  ClipboardList,
+  FileText,
+  LineChart,
+  MessageCircle,
+  Users,
+  Wallet,
+} from "lucide-react"
 import { Header } from "@/components/cos/header"
 import { Footer } from "@/components/cos/footer"
 
-const highlights = [
-  "Clientes e oportunidades em um só fluxo",
-  "Financeiro, cobranças e documentos organizados",
-  "Tarefas, projetos, reuniões e equipe no mesmo ambiente",
-  "IA que entende e executa a operação",
+const heroBenefits = [
+  "Tudo o que sua operação precisa",
+  "Em um único ambiente",
+  "Com IA que entende e executa",
+  "Sem planilhas espalhadas ou sistemas desconexos",
+]
+
+const capabilities = [
+  {
+    title: "Clientes e oportunidades",
+    description:
+      "Gerencie leads, clientes e oportunidades de negócios do primeiro contato ao fechamento.",
+    icon: Users,
+  },
+  {
+    title: "Financeiro e cobranças",
+    description:
+      "Acompanhe receitas, despesas, cobranças e recebimentos em tempo real.",
+    icon: Wallet,
+  },
+  {
+    title: "Documentos e contratos",
+    description:
+      "Crie, envie, assine e organize documentos e contratos de forma segura.",
+    icon: FileText,
+  },
+  {
+    title: "Tarefas e projetos",
+    description:
+      "Organize tarefas, projetos e entregas com prazos, responsáveis e acompanhamento.",
+    icon: ClipboardList,
+  },
+  {
+    title: "Reuniões e equipe",
+    description:
+      "Agende reuniões, grave, gere relatórios analíticos e acompanhe sua equipe de perto.",
+    icon: BriefcaseBusiness,
+  },
+  {
+    title: "Relatórios e insights",
+    description:
+      "Tenha visão completa do seu negócio com relatórios inteligentes e personalizados.",
+    icon: LineChart,
+  },
+]
+
+const productViews = [
+  {
+    label: "VERSÃO WEB",
+    description: "Converse com o COS direto do navegador e execute ações.",
+    src: "/cos-operacoes-web-mockup.jpeg",
+    alt: "COS Operações versão web",
+    width: 1600,
+    height: 765,
+  },
+  {
+    label: "PORTAL",
+    description: "Gerencie todas as áreas do seu negócio em um único lugar.",
+    src: "/cos-operacoes-portal-mockup.jpeg",
+    alt: "COS Operações portal",
+    width: 1600,
+    height: 762,
+  },
 ]
 
 export default function OperacoesProductPage() {
@@ -16,20 +84,38 @@ export default function OperacoesProductPage() {
     <main className="min-h-screen bg-[#f5f5f3]">
       <Header />
 
-      <section className="px-4 pt-28 pb-10 md:px-8 md:pt-36 lg:px-12">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-8 flex flex-col gap-5 md:mb-10 md:max-w-3xl">
-            <div className="inline-flex w-fit items-center rounded-full bg-green-50 px-4 py-2 text-sm font-medium text-green-700">
+      <section className="px-4 pt-28 pb-14 md:px-8 md:pt-36 md:pb-20 lg:px-12">
+        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(420px,540px)] lg:items-center lg:gap-14">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center rounded-full bg-green-50 px-4 py-2 text-sm font-medium text-green-700">
               COS Operações
             </div>
-            <h1 className="text-3xl font-semibold tracking-tight text-[#0a0a0a] md:text-5xl">
-              O produto principal do COS para operar o seu negócio por conversa.
+
+            <h1 className="mt-6 max-w-xl text-4xl font-semibold tracking-tight text-[#0a0a0a] md:text-6xl md:leading-[1.02]">
+              Gerencie seu negócio por{" "}
+              <span className="text-green-600">conversa.</span>
             </h1>
-            <p className="text-sm leading-7 text-muted-foreground md:text-lg">
-              Centralize clientes, financeiro, documentos, projetos e equipe em um único fluxo conversacional, sem planilhas espalhadas e sem sistemas desconexos.
+
+            <p className="mt-6 max-w-xl text-base leading-8 text-muted-foreground md:text-xl">
+              O produto principal do COS para empresas que querem centralizar
+              clientes, financeiro, documentos, projetos e equipe em um único
+              fluxo conversacional.
             </p>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Link href="/cadastro" className="inline-flex items-center justify-center gap-2 rounded-full bg-green-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-green-700">
+
+            <ul className="mt-8 space-y-4">
+              {heroBenefits.map((item) => (
+                <li key={item} className="flex items-center gap-3 text-sm text-[#0a0a0a] md:text-base">
+                  <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-green-600" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/cadastro"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-green-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-green-700"
+              >
                 Começar agora
                 <ArrowRight className="h-4 w-4" />
               </Link>
@@ -45,31 +131,88 @@ export default function OperacoesProductPage() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-[2rem] border border-black/5 bg-white shadow-[0_28px_100px_rgba(15,23,42,0.08)] ring-1 ring-white/70">
-            <div className="bg-[#fafaf8] p-3 md:p-5">
+          <div className="relative mx-auto w-full max-w-[540px]">
+            <div className="absolute inset-x-10 top-12 h-[72%] rounded-full bg-[radial-gradient(circle,_rgba(34,197,94,0.12),_rgba(255,255,255,0)_72%)] blur-3xl" />
+            <div className="relative">
               <Image
-                src="/cos-operacoes-product-banner.png"
-                alt="COS Operações"
-                width={983}
+                src="/cos-operacoes-mobile-mockup.jpeg"
+                alt="COS Operações mobile"
+                width={738}
                 height={1600}
                 quality={95}
-                sizes="(min-width: 1280px) 1280px, (min-width: 768px) calc(100vw - 64px), calc(100vw - 32px)"
+                sizes="(min-width: 1280px) 540px, (min-width: 768px) 46vw, 92vw"
                 priority
-                className="h-auto w-full rounded-[1.5rem] object-contain shadow-[0_18px_48px_rgba(15,23,42,0.08)] [filter:contrast(1.015)_saturate(1.01)_brightness(1.01)]"
+                className="mx-auto h-auto w-full object-contain drop-shadow-[0_26px_70px_rgba(15,23,42,0.16)]"
               />
             </div>
           </div>
         </div>
       </section>
 
-      <section className="px-4 pb-14 md:px-8 md:pb-20 lg:px-12">
+      <section className="px-4 pb-16 md:px-8 md:pb-24 lg:px-12">
         <div className="mx-auto max-w-7xl">
-          <div className="grid gap-4 md:grid-cols-2">
-            {highlights.map((item) => (
-              <div key={item} className="rounded-3xl border border-border/60 bg-white p-5 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-600" />
-                  <p className="text-sm leading-7 text-[#0a0a0a] md:text-base">{item}</p>
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-sm font-semibold tracking-[0.2em] text-green-600">
+              UMA OPERAÇÃO COMPLETA
+            </p>
+            <h2 className="mt-5 text-3xl font-semibold tracking-tight text-[#0a0a0a] md:text-5xl">
+              Tudo o que sua empresa precisa,
+              <br className="hidden md:block" /> em um só lugar.
+            </h2>
+            <p className="mt-5 text-sm leading-7 text-muted-foreground md:text-lg">
+              Centralize processos, automatize tarefas e tenha controle total
+              da sua operação com a inteligência do COS.
+            </p>
+          </div>
+
+          <div className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {capabilities.map((item) => (
+              <div
+                key={item.title}
+                className="rounded-[2rem] border border-border/60 bg-white p-7 shadow-[0_18px_50px_rgba(15,23,42,0.04)]"
+              >
+                <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-green-50">
+                  <item.icon className="h-7 w-7 text-green-600" />
+                </div>
+                <h3 className="text-xl font-semibold tracking-tight text-[#0a0a0a]">
+                  {item.title}
+                </h3>
+                <p className="mt-3 text-sm leading-7 text-muted-foreground md:text-base">
+                  {item.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-4 pb-16 md:px-8 md:pb-24 lg:px-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid gap-6 lg:grid-cols-2">
+            {productViews.map((view) => (
+              <div
+                key={view.label}
+                className="rounded-[2rem] border border-border/60 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.04)] md:p-7"
+              >
+                <div className="mb-6 text-center">
+                  <p className="text-sm font-semibold tracking-[0.2em] text-green-600">
+                    {view.label}
+                  </p>
+                  <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-muted-foreground md:text-base">
+                    {view.description}
+                  </p>
+                </div>
+
+                <div className="overflow-hidden rounded-[1.5rem] border border-black/5 bg-[#fafaf8] shadow-[0_24px_80px_rgba(15,23,42,0.07)] ring-1 ring-white/70">
+                  <Image
+                    src={view.src}
+                    alt={view.alt}
+                    width={view.width}
+                    height={view.height}
+                    quality={95}
+                    sizes="(min-width: 1024px) 50vw, 100vw"
+                    className="h-auto w-full object-contain"
+                  />
                 </div>
               </div>
             ))}
