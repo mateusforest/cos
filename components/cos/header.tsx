@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { usePathname, useRouter } from "next/navigation"
 import { ArrowRight, Menu, X } from "lucide-react"
 
 const navItems = [
@@ -16,6 +17,8 @@ const navItems = [
 export function Header() {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const pathname = usePathname()
+  const router = useRouter()
 
   useEffect(() => {
     const handleScroll = () => {
@@ -27,6 +30,11 @@ export function Header() {
 
   const scrollToSection = (href: string) => {
     setIsMobileMenuOpen(false)
+    if (pathname !== "/") {
+      router.push(`/${href}`)
+      return
+    }
+
     const element = document.querySelector(href)
     if (element) {
       element.scrollIntoView({ behavior: "smooth" })

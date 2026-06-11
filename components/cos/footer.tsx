@@ -1,6 +1,7 @@
 "use client"
 
 import Image from "next/image"
+import { usePathname, useRouter } from "next/navigation"
 
 const footerLinks = [
   { label: "Produtos", href: "#produtos" },
@@ -10,8 +11,16 @@ const footerLinks = [
 ]
 
 export function Footer() {
+  const pathname = usePathname()
+  const router = useRouter()
+
   const scrollToSection = (href: string) => {
     if (href.startsWith("#")) {
+      if (pathname !== "/") {
+        router.push(`/${href}`)
+        return
+      }
+
       const element = document.querySelector(href)
       if (element) {
         element.scrollIntoView({ behavior: "smooth" })
