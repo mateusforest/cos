@@ -3,7 +3,7 @@
 import { motion } from "framer-motion"
 import { Sparkles, Database, CreditCard, MessageCircle, Mail, Plus, type LucideIcon } from "lucide-react"
 import { MasterHeader } from "@/components/master/master-header"
-import { MasterPageHeader, StatusBadge, PrimaryButton } from "@/components/master/master-ui"
+import { BackendNotice, MasterPageHeader, PrimaryButton, StatusBadge } from "@/components/master/master-ui"
 import { useMaster } from "@/components/master/master-store"
 
 type Integracao = {
@@ -22,7 +22,7 @@ const integracoes: Integracao[] = [
 ]
 
 export default function MasterIntegracoesPage() {
-  const { openModal, showToast } = useMaster()
+  const { showToast } = useMaster()
 
   return (
     <div className="flex-1 flex flex-col h-full">
@@ -31,9 +31,15 @@ export default function MasterIntegracoesPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
           <MasterPageHeader
             title="Integrações"
-            description="Status global das integrações do ecossistema COS."
-            actions={<PrimaryButton icon={Plus} onClick={() => openModal("integracao")}>Nova integração</PrimaryButton>}
+            description="Status global das integracoes do ecossistema COS."
+            actions={<PrimaryButton icon={Plus} onClick={() => showToast("Novas integracoes reais ainda nao sao configuradas por esta tela.")}>Nova integracao</PrimaryButton>}
           />
+
+          <div className="mb-8">
+            <BackendNotice>
+              Esta pagina mostra apenas o estado institucional das integracoes. Nenhuma conexao externa e iniciada por aqui nesta fase.
+            </BackendNotice>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {integracoes.map((it, i) => (
@@ -53,10 +59,10 @@ export default function MasterIntegracoesPage() {
                 <h3 className="font-semibold mb-1">{it.nome}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">{it.descricao}</p>
                 <button
-                  onClick={() => showToast(`Conexão de ${it.nome} disponível após o backend.`)}
+                  onClick={() => showToast(`A integracao ${it.nome} ainda nao pode ser configurada por esta tela.`)}
                   className="w-full py-2.5 bg-gray-100 text-foreground rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
                 >
-                  {it.status === "Desconectado" ? "Conectar" : "Gerenciar"}
+                  Ver status
                 </button>
               </motion.div>
             ))}
@@ -66,3 +72,5 @@ export default function MasterIntegracoesPage() {
     </div>
   )
 }
+
+

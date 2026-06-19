@@ -215,7 +215,11 @@ function mapMasterActivities({
     id: log.id,
     action: log.action || "activity_logged",
     actionLabel: humanizeActivityAction(log.action, log.description),
-    category: classifyMasterActivity(log),
+    category: classifyMasterActivity({
+      action: log.action ?? null,
+      area: log.area ?? null,
+      description: log.description ?? null,
+    }),
     description: log.description || "Atividade registrada.",
     actorName: log.user_id ? profileMap?.get(log.user_id) || "Sistema COS" : "Sistema COS",
     workspaceName: log.workspace_id ? workspaceMap.get(log.workspace_id) || "Workspace sem nome" : "",
@@ -259,7 +263,12 @@ export async function getMasterDashboardStatsAction() {
   const monthlyInvoices = (Array.isArray(invoicesResult.data) ? invoicesResult.data : []).filter((invoice) => {
     const status = typeof invoice.status === "string" ? invoice.status.toLowerCase() : ""
     const paidAt = typeof invoice.paid_at === "string" ? invoice.paid_at : typeof invoice.created_at === "string" ? invoice.created_at : null
-    return status === "paid" && Boolean(paidAt) && paidAt >= start && paidAt < end
+
+    if (!paidAt) {
+      return false
+    }
+
+    return status === "paid" && paidAt >= start && paidAt < end
   })
 
   const monthlyRevenue = monthlyInvoices.reduce((sum, invoice) => {
@@ -378,7 +387,12 @@ export async function getMasterOverviewAction() {
   const monthlyInvoices = (Array.isArray(invoicesResult.data) ? invoicesResult.data : []).filter((invoice) => {
     const status = typeof invoice.status === "string" ? invoice.status.toLowerCase() : ""
     const paidAt = typeof invoice.paid_at === "string" ? invoice.paid_at : typeof invoice.created_at === "string" ? invoice.created_at : null
-    return status === "paid" && Boolean(paidAt) && paidAt >= start && paidAt < end
+
+    if (!paidAt) {
+      return false
+    }
+
+    return status === "paid" && paidAt >= start && paidAt < end
   })
 
   const monthlyRevenue = monthlyInvoices.reduce((sum, invoice) => {

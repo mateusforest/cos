@@ -62,7 +62,7 @@ export default function ConnectSectionChatPage({
         messages: [
           {
             from: "cos",
-            text: "Recebi sua solicitacao. A execucao real sera conectada quando esta fonte tiver integracao ativa.",
+            text: "Esta sessao ja organiza a fonte no Connect, mas ainda nao executa integracoes externas. Use as acoes configuradas como referencia operacional.",
             time: now,
           } satisfies ChatMessage,
         ],

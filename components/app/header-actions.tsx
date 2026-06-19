@@ -27,7 +27,7 @@ const avatarMenu = [
   { icon: ExternalLink, label: "Acessar Portal", href: "/portal" },
 ]
 
-export function HeaderActions() {
+export function HeaderActions({ variant: _variant }: { variant?: "mobile" | "desktop" }) {
   const router = useRouter()
   const { user, profile, clearAuth } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)

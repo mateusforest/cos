@@ -300,8 +300,8 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
 
     setIsSubmitting(false)
     toast({
-      title: `${quickActionConfigs[selectedAction].title} preparado`,
-      description: "Este fluxo ainda sera conectado a uma area operacional futura.",
+      title: "Recurso em preparacao",
+      description: "Este fluxo ainda nao possui persistencia real no Portal.",
     })
     setFormValues({})
     closeModal()
@@ -338,8 +338,8 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
 
   const confirmDelete = () => {
     toast({
-      title: "Remocao pendente",
-      description: "A exclusao sera concluida quando o backend estiver conectado.",
+      title: "Remocao indisponivel",
+      description: "Este atalho ainda nao remove itens reais por aqui.",
     })
     closeModal()
   }
@@ -351,7 +351,7 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
   const applyFilters = () => {
     toast({
       title: "Filtros atualizados",
-      description: "Filtros aplicados localmente. A busca real sera conectada ao backend.",
+      description: "Os filtros desta tela ainda servem apenas como apoio visual e nao executam busca real.",
     })
     closeModal()
   }

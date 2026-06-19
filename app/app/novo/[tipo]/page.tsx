@@ -20,6 +20,7 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
   const [error, setError] = useState("")
 
   const config: NovoConfig | undefined = tipo === "foto" ? fotoConfig : novoConfigs[tipo]
+  const hasRealPersistence = ["cliente", "financeiro", "operacao", "documento", "reuniao"].includes(tipo)
 
   if (!config) {
     return (
@@ -106,7 +107,9 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
       })
     }
 
-    return { success: true }
+    return {
+      error: "Este recurso ainda esta em preparacao e nao possui persistencia real no COS.",
+    }
   }
 
   if (submitted) {
@@ -150,6 +153,12 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
           <p className="text-sm text-gray-500">{config.subtitle}</p>
         </div>
       </div>
+
+      {!hasRealPersistence && (
+        <div className="mb-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
+          Este fluxo ainda esta em preparacao. O preenchimento pode ser revisado, mas nada sera salvo no sistema por enquanto.
+        </div>
+      )}
 
       {error && <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 

@@ -36,12 +36,12 @@ export default function ConnectHomePage() {
     { icon: FileSpreadsheet, label: "Importar planilha", modal: "spreadsheet" as const },
     { icon: Mail, label: "Conectar e-mail", modal: "email" as const },
     { icon: MessageCircle, label: "Conectar WhatsApp", modal: "whatsapp" as const },
-    { icon: LifeBuoy, label: "Suporte", action: openSupport },
+    { icon: LifeBuoy, label: "Suporte", action: () => openSupport() },
   ]
 
   const handleSend = () => {
     if (!message.trim()) return
-    toast("Recebi sua solicitacao. A execucao real sera conectada quando esta fonte tiver integracao ativa.")
+    toast("Esta conversa ainda nao executa integracoes externas. Use as fontes, sessoes e acoes para preparar o Connect.")
     setMessage("")
   }
 
@@ -86,6 +86,9 @@ export default function ConnectHomePage() {
               </button>
             </div>
           </div>
+          <p className="mt-3 text-center text-xs leading-5 text-gray-500">
+            O Connect ja salva fontes, sessoes e acoes. A execucao em sistemas terceiros ainda nao acontece por este campo.
+          </p>
         </motion.div>
 
         <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.15, duration: 0.3 }} className="flex max-w-md flex-wrap justify-center gap-2">
@@ -94,7 +97,7 @@ export default function ConnectHomePage() {
                 { icon: Plug, label: `${summary.totalSources} fontes`, action: () => openModal("system") },
                 { icon: Layers, label: `${summary.totalSections} sessoes`, action: () => openModal("section", { sourceId: sources[0]?.id }) },
                 { icon: Wrench, label: `${summary.totalActions} acoes`, action: () => openModal("action", { sourceId: sources[0]?.id }) },
-                { icon: LifeBuoy, label: "Suporte", action: openSupport },
+                { icon: LifeBuoy, label: "Suporte", action: () => openSupport() },
               ].map((item) => (
                 <button
                   key={item.label}
@@ -108,7 +111,14 @@ export default function ConnectHomePage() {
             : onboardingCtas.map((cta) => (
                 <button
                   key={cta.label}
-                  onClick={() => ("modal" in cta ? openModal(cta.modal) : cta.action())}
+                  onClick={() => {
+                    if ("modal" in cta && cta.modal) {
+                      openModal(cta.modal)
+                      return
+                    }
+
+                    cta.action?.()
+                  }}
                   className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
                 >
                   <cta.icon className="h-3.5 w-3.5" />
@@ -203,7 +213,7 @@ export default function ConnectHomePage() {
                   <FileSpreadsheet className="h-4 w-4" /> Importar planilha
                 </button>
                 <button
-                  onClick={openSupport}
+                  onClick={() => openSupport()}
                   className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 py-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100"
                 >
                   <LifeBuoy className="h-4 w-4" /> Suporte

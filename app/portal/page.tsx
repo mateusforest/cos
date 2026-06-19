@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import {
   Bell,
@@ -35,12 +36,6 @@ type Insight = {
   title: string
   description: string
   action: string
-}
-
-type ChatMessage = {
-  id: string
-  from: "user" | "cos"
-  text: string
 }
 
 type MicState = "idle" | "listening" | "processing" | "unsupported" | "error"
@@ -143,14 +138,15 @@ const RECORD_WAVEFORM = Array.from({ length: 40 }, (_, i) => Math.round((Math.si
 const AUDIO_WAVEFORM = Array.from({ length: 50 }, (_, i) => Math.round((Math.sin(i * 0.9) * 0.5 + 0.5) * 60 + 20))
 
 export default function PortalHomePage() {
+  const router = useRouter()
   const { openQuickActions, openMeeting, openDeleteConfirm } = usePortalInteractions()
   const [chatInput, setChatInput] = useState("")
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [insights, setInsights] = useState(initialInsights)
   const [audioTranscript, setAudioTranscript] = useState("")
   const [audioPlaying, setAudioPlaying] = useState(false)
   const [micState, setMicState] = useState<MicState>("idle")
   const [micPreview, setMicPreview] = useState("")
+  const [isRedirectingToApp, setIsRedirectingToApp] = useState(false)
   const [stats, setStats] = useState(defaultStats)
   const [recentActivities, setRecentActivities] = useState<Array<{ id: string; action: string; actionLabel?: string; description: string }>>([])
 
@@ -317,14 +313,14 @@ export default function PortalHomePage() {
       return
     }
 
-    const message = chatInput.trim()
-    setChatMessages((prev) => [
-      ...prev,
-      { id: `user-${Date.now()}`, from: "user", text: message },
-      { id: `cos-${Date.now()}`, from: "cos", text: "Recebi sua solicitação. A execução real será conectada ao backend." },
-    ])
+    setIsRedirectingToApp(true)
+    toast({
+      title: "Conversa operacional no app",
+      description: "O chat com execucao real do COS acontece em /app. Estamos te levando para la.",
+    })
     setChatInput("")
     setMicPreview("")
+    router.push("/app")
   }
 
   return (
@@ -554,16 +550,6 @@ export default function PortalHomePage() {
 
       <div className="border-t border-gray-100 bg-white p-4">
         <div className="max-w-4xl mx-auto">
-          {chatMessages.length > 0 && (
-            <div className="mb-4 space-y-2">
-              {chatMessages.map((message) => (
-                <div key={message.id} className={`rounded-2xl px-4 py-3 text-sm ${message.from === "user" ? "bg-[#0a0a0a] text-white ml-12" : "bg-gray-50 text-[#0a0a0a] mr-12"}`}>
-                  {message.text}
-                </div>
-              ))}
-            </div>
-          )}
-
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <button onClick={openQuickActions} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
@@ -589,9 +575,16 @@ export default function PortalHomePage() {
                 className="w-full px-4 py-3 bg-gray-50 border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
               />
             </div>
-            <button onClick={submitChat} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${chatInput ? "bg-foreground text-white" : "bg-gray-100 text-muted-foreground"}`}>
+            <button
+              onClick={submitChat}
+              disabled={!chatInput.trim() || isRedirectingToApp}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${chatInput ? "bg-foreground text-white" : "bg-gray-100 text-muted-foreground"} disabled:cursor-not-allowed disabled:opacity-60`}>
               <Send className="w-5 h-5" />
             </button>
+          </div>
+
+          <div className="mt-3 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-xs leading-5 text-muted-foreground">
+            O Portal nao executa conversa operacional por aqui. Para falar com o COS e persistir mensagens reais, use o app.
           </div>
 
           {micState !== "idle" && (
@@ -629,3 +622,6 @@ export default function PortalHomePage() {
     </div>
   )
 }
+
+
+

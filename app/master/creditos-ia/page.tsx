@@ -41,7 +41,7 @@ export default function MasterCreditosIAPage() {
 
           <div className="mb-8">
             <BackendNotice>
-              Os valores de custo e margem serão calculados em tempo real após a integração com a OpenAI.
+              O consumo real de IA ainda nao esta integrado nesta fase. Os cards abaixo permanecem em estado honesto, sem simulacao de uso ou receita.
             </BackendNotice>
           </div>
 
@@ -81,3 +81,4 @@ export default function MasterCreditosIAPage() {
     </div>
   )
 }
+

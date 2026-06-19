@@ -1,8 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import {
   ArrowRight,
@@ -97,6 +98,7 @@ const defaultMeetingForm: MeetingFormState = {
 }
 
 export default function AppHomePage() {
+  const router = useRouter()
   const { user, profile, workspace } = useAuth()
   const { summary, isLoading: isStatsLoading, refreshSummary } = useOperationsDashboard()
   const { openSupport } = useSupport()
@@ -116,7 +118,6 @@ export default function AppHomePage() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
   const micActionRef = useRef<"finalize" | "cancel">("finalize")
-  const routedMessageResetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const shortcutsStorageKey = useMemo(
     () => (workspace?.id ? `cos:operations:shortcuts:${workspace.id}` : null),
@@ -126,9 +127,6 @@ export default function AppHomePage() {
   useEffect(() => {
     return () => {
       recognitionRef.current?.stop()
-      if (routedMessageResetRef.current && typeof window !== "undefined") {
-        window.clearTimeout(routedMessageResetRef.current)
-      }
     }
   }, [])
 
@@ -194,26 +192,8 @@ export default function AppHomePage() {
   )
 
   useEffect(() => {
-    let isMounted = true
-
-    const syncGeneralConversation = async () => {
-      const result = await getOperationsConversationMessagesAction({ area: "general" })
-
-      if (!isMounted) {
-        return
-      }
-
-      if (result.success) {
-        setChatMessages(result.messages)
-      }
-    }
-
-    void syncGeneralConversation()
-
-    return () => {
-      isMounted = false
-    }
-  }, [workspace?.id])
+    void loadGeneralConversation()
+  }, [loadGeneralConversation, workspace?.id])
 
   const quickActions = [
     { icon: Sparkles, label: "Sugerir acao", onClick: () => setModal("sugerir") },
@@ -227,7 +207,7 @@ export default function AppHomePage() {
         setModal("meet")
       },
     },
-    { icon: LifeBuoy, label: "Suporte", onClick: openSupport },
+    { icon: LifeBuoy, label: "Suporte", onClick: () => openSupport() },
   ]
 
   const shortcuts = useMemo(
@@ -284,11 +264,6 @@ export default function AppHomePage() {
   const handleSend = async () => {
     if (!message.trim() || isEngineRunning) return
 
-    if (routedMessageResetRef.current && typeof window !== "undefined") {
-      window.clearTimeout(routedMessageResetRef.current)
-      routedMessageResetRef.current = null
-    }
-
     const nextMessage = message.trim()
     const now = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 
@@ -326,11 +301,12 @@ export default function AppHomePage() {
         await refreshSummary({ silent: true, force: true })
       }
 
-      if (conversationArea !== "general" && typeof window !== "undefined") {
-        routedMessageResetRef.current = window.setTimeout(() => {
-          void loadGeneralConversation()
-          routedMessageResetRef.current = null
-        }, 1800)
+      if (conversationArea === "general") {
+        await loadGeneralConversation()
+      } else if (ctaHref) {
+        startTransition(() => {
+          router.push(ctaHref)
+        })
       }
     } catch {
       const responseTime = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })

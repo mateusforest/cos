@@ -40,7 +40,7 @@ async function resolveClientIdByName(clientName: string) {
 export async function runOperationsEngine(input: OperationsEngineInput): Promise<OperationsEngineResult> {
   const actor = await validateOperationsActor()
 
-  if ("error" in actor) {
+  if ("error" in actor && actor.error) {
     return buildEngineError(actor.error)
   }
 
@@ -135,12 +135,12 @@ export async function runOperationsEngine(input: OperationsEngineInput): Promise
 
       if (clientName) {
         const clientResolution = await resolveClientIdByName(clientName)
-        if ("error" in clientResolution) {
-          return buildEngineError(clientResolution.error, "create_operation")
+        if (!("clientId" in clientResolution)) {
+          return buildEngineError(clientResolution.error || "Nao consegui localizar este cliente agora.", "create_operation")
         }
 
         clientId = clientResolution.clientId
-        resolvedClientName = clientResolution.clientName
+        resolvedClientName = clientResolution.clientName || clientName
       }
 
       const result = await createOperationAction({

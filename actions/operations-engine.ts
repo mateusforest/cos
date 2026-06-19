@@ -13,6 +13,7 @@ import {
 } from "@/lib/cos-engine/operations-conversations"
 import type {
   OperationsEngineInput,
+  OperationsEngineResult,
   PersistedOperationsChatMessage,
 } from "@/lib/cos-engine/types"
 
@@ -33,10 +34,18 @@ type MessageRow = {
   created_at: string | null
 }
 
-async function getOperationsConversationActor() {
+type OperationsConversationActor =
+  | { error: string }
+  | {
+      user: { id: string }
+      access: { workspace: { id: string } }
+      adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>
+    }
+
+async function getOperationsConversationActor(): Promise<OperationsConversationActor> {
   const actor = await validateOperationsActor()
 
-  if ("error" in actor) {
+  if ("error" in actor && actor.error) {
     return actor
   }
 
@@ -47,8 +56,8 @@ async function getOperationsConversationActor() {
   }
 
   return {
-    user: actor.user,
-    access: actor.access,
+    user: { id: actor.user.id },
+    access: { workspace: { id: actor.access.workspace!.id } },
     adminClient,
   }
 }
@@ -187,7 +196,7 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
 
   const conversationResult = await findOrCreateConversation({
     adminClient: actor.adminClient,
-    workspaceId: actor.access.workspace!.id,
+    workspaceId: actor.access.workspace.id,
     userId: actor.user.id,
     area: conversationArea,
     title: conversationTitle,
@@ -214,7 +223,7 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
     },
   })
 
-  let result
+  let result: OperationsEngineResult
 
   try {
     result = await runOperationsEngine(input)
@@ -269,7 +278,7 @@ export async function getOperationsConversationMessagesAction(input?: {
   const { data: conversation, error: conversationError } = await actor.adminClient
     .from("ai_conversations")
     .select("id, workspace_id, user_id, area, title")
-    .eq("workspace_id", actor.access.workspace!.id)
+    .eq("workspace_id", actor.access.workspace.id)
     .eq("user_id", actor.user.id)
     .eq("area", conversationArea)
     .maybeSingle<ConversationRow>()
@@ -303,6 +312,6 @@ export async function getOperationsConversationMessagesAction(input?: {
     conversationArea,
     messages: (rows ?? [])
       .map(mapConversationMessage)
-      .filter((message): message is PersistedOperationsChatMessage => Boolean(message)),
+      .filter((message: PersistedOperationsChatMessage | null): message is PersistedOperationsChatMessage => Boolean(message)),
   }
 }

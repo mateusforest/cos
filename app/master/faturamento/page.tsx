@@ -2,7 +2,7 @@
 
 import { DollarSign, TrendingUp, Repeat, RotateCcw, Download } from "lucide-react"
 import { MasterHeader } from "@/components/master/master-header"
-import { MasterPageHeader, TableCard, KpiCard, SecondaryButton } from "@/components/master/master-ui"
+import { KpiCard, MasterPageHeader, SecondaryButton, TableCard } from "@/components/master/master-ui"
 import { useMaster } from "@/components/master/master-store"
 
 const kpis = [
@@ -32,9 +32,9 @@ export default function MasterFaturamentoPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
           <MasterPageHeader
             title="Faturamento"
-            description="Financeiro da plataforma COS — não confundir com o financeiro dos clientes."
+            description="Financeiro institucional do COS. Os dados reais de cobranca e repasse ainda nao foram ativados nesta fase."
             actions={
-              <SecondaryButton icon={Download} onClick={() => showToast("Exportação disponível após o backend.")}>
+              <SecondaryButton icon={Download} onClick={() => showToast("A exportacao de faturamento real ainda esta em preparacao.")}>
                 Exportar
               </SecondaryButton>
             }
@@ -68,7 +68,7 @@ export default function MasterFaturamentoPage() {
                 {lancamentos.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-5 py-12 text-center text-sm text-muted-foreground">
-                      Nenhum faturamento registrado ainda.
+                      Nenhum faturamento institucional real registrado ainda.
                     </td>
                   </tr>
                 )}
@@ -80,3 +80,6 @@ export default function MasterFaturamentoPage() {
     </div>
   )
 }
+
+
+

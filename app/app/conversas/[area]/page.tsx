@@ -106,15 +106,23 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
               message: input,
               area,
             })
+            const responseText =
+              typeof result.message === "string" && result.message.trim()
+                ? result.message
+                : "Nao consegui executar sua solicitacao agora. Tente novamente em instantes."
+            const ctaLabel =
+              "suggestedLabel" in result && typeof result.suggestedLabel === "string" ? result.suggestedLabel : undefined
+            const ctaHref =
+              "suggestedHref" in result && typeof result.suggestedHref === "string" ? result.suggestedHref : undefined
 
             return {
               messages: [
                 {
                   from: "cos",
-                  text: result.message,
+                  text: responseText,
                   time: now,
-                  ctaLabel: result.suggestedLabel,
-                  ctaHref: result.suggestedHref,
+                  ctaLabel,
+                  ctaHref,
                 },
               ],
             }

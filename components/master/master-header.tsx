@@ -9,7 +9,7 @@ import { useMasterSession } from "./master-session"
 import { UserAvatar } from "@/components/shared/user-avatar"
 
 export function MasterHeader({ placeholder = "Buscar no Master..." }: { placeholder?: string }) {
-  const { setMobileMenuOpen } = useMaster()
+  const { setMobileMenuOpen, showToast } = useMaster()
   const { displayName, displayEmail, initials, avatarUrl, isPending, handleLogout } = useMasterSession()
   const [profileOpen, setProfileOpen] = useState(false)
 
@@ -29,6 +29,8 @@ export function MasterHeader({ placeholder = "Buscar no Master..." }: { placehol
           <input
             type="text"
             placeholder={placeholder}
+            readOnly
+            onFocus={() => showToast("A busca global do Master ainda esta em preparacao nesta fase.")}
             className="w-full pl-10 pr-16 py-2.5 bg-gray-50 border-0 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
           />
           <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-1 text-muted-foreground">

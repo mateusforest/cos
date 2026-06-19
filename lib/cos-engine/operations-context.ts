@@ -1,4 +1,4 @@
-import type { OperationsEngineContext, OperationsEngineInput } from "@/lib/cos-engine/types"
+import type { OperationsEngineContext } from "@/lib/cos-engine/types"
 
 function normalizeSegment(value?: string) {
   return (value || "")
@@ -8,7 +8,7 @@ function normalizeSegment(value?: string) {
     .replace(/[\u0300-\u036f]/g, "")
 }
 
-export function buildOperationsContext(input: OperationsEngineInput): OperationsEngineContext {
+export function buildOperationsContext(input: { area?: string; subArea?: string }): OperationsEngineContext {
   return {
     area: normalizeSegment(input.area),
     subArea: normalizeSegment(input.subArea),

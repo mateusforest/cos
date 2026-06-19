@@ -2,7 +2,7 @@
 
 import { CreditCard, Repeat, XCircle, TrendingUp, Calendar } from "lucide-react"
 import { MasterHeader } from "@/components/master/master-header"
-import { MasterPageHeader, TableCard, StatusBadge, KpiCard, PrimaryButton } from "@/components/master/master-ui"
+import { BackendNotice, KpiCard, MasterPageHeader, PrimaryButton, StatusBadge, TableCard } from "@/components/master/master-ui"
 import { useMaster } from "@/components/master/master-store"
 import { Plus } from "lucide-react"
 
@@ -25,7 +25,7 @@ type Assinatura = {
 const assinaturas: Assinatura[] = []
 
 export default function MasterAssinaturasPage() {
-  const { openModal } = useMaster()
+  const { showToast } = useMaster()
 
   return (
     <div className="flex-1 flex flex-col h-full">
@@ -34,14 +34,20 @@ export default function MasterAssinaturasPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
           <MasterPageHeader
             title="Assinaturas"
-            description="Gestão das assinaturas da plataforma. Integração de cobrança via Stripe."
-            actions={<PrimaryButton icon={Plus} onClick={() => openModal("assinatura")}>Nova assinatura</PrimaryButton>}
+            description="Status institucional das assinaturas da plataforma. A cobranca real ainda nao foi ativada nesta fase."
+            actions={<PrimaryButton icon={Plus} onClick={() => showToast("As assinaturas reais ainda estao em preparacao nesta fase.")}>Nova assinatura</PrimaryButton>}
           />
 
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
             {kpis.map((kpi, i) => (
               <KpiCard key={kpi.label} {...kpi} delay={i * 0.04} />
             ))}
+          </div>
+
+          <div className="mb-8">
+            <BackendNotice>
+              Nenhuma assinatura real esta sendo gerenciada por aqui ainda. Esta pagina foi mantida em estado honesto para evitar numeros ou acoes falsas.
+            </BackendNotice>
           </div>
 
           <TableCard title="Assinaturas">
@@ -68,7 +74,7 @@ export default function MasterAssinaturasPage() {
                 {assinaturas.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-5 py-12 text-center text-sm text-muted-foreground">
-                      Nenhuma assinatura ativa ainda.
+                      Nenhuma assinatura real registrada ainda.
                     </td>
                   </tr>
                 )}
@@ -80,3 +86,5 @@ export default function MasterAssinaturasPage() {
     </div>
   )
 }
+
+
