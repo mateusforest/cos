@@ -100,6 +100,16 @@ export default function VocePage() {
   }
 
   const languages = ["Portugues", "Ingles", "Espanhol"]
+  const showPackagesToast = () =>
+    toast({
+      title: "Pacotes extras em breve",
+      description: "Pacotes extras estarao disponiveis em breve.",
+    })
+  const showSecurityPreparationToast = () =>
+    toast({
+      title: "Seguranca em preparacao",
+      description: "Seguranca por PIN e biometria esta em preparacao.",
+    })
 
   const companyItems = [
     { icon: Building2, label: "Minha empresa", sublabel: workspace?.name || "Nenhuma empresa cadastrada ainda", onClick: openCompany },
@@ -561,7 +571,11 @@ export default function VocePage() {
                           <div className="text-xs text-gray-500">{item.description}</div>
                           <div className="mt-0.5 text-xs text-gray-400">{item.detail}</div>
                         </div>
-                        <button className="flex-shrink-0 rounded-lg bg-[#0a0a0a] px-3 py-1.5 text-xs font-medium text-white">
+                        <button
+                          type="button"
+                          onClick={showPackagesToast}
+                          className="flex-shrink-0 rounded-lg bg-[#0a0a0a] px-3 py-1.5 text-xs font-medium text-white"
+                        >
                           Adicionar
                         </button>
                       </div>
@@ -575,7 +589,12 @@ export default function VocePage() {
                   <SheetHeader title="PIN de acesso" onClose={closeSheet} />
                   <div className="space-y-1">
                     {["Configurar PIN", "Alterar PIN", "Remover PIN"].map((label) => (
-                      <button key={label} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 transition-colors hover:bg-gray-50">
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={showSecurityPreparationToast}
+                        className="flex w-full items-center gap-3 rounded-xl px-4 py-3 transition-colors hover:bg-gray-50"
+                      >
                         <ShieldCheck className="h-5 w-5 text-gray-600" />
                         <span className="flex-1 text-left text-sm font-medium text-[#0a0a0a]">{label}</span>
                         <ChevronRight className="h-4 w-4 text-gray-300" />
@@ -590,7 +609,12 @@ export default function VocePage() {
                   <SheetHeader title="Face ID / Biometria" onClose={closeSheet} />
                   <div className="space-y-1">
                     {["Ativar biometria", "Desativar biometria", "Gerenciar dispositivos"].map((label) => (
-                      <button key={label} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 transition-colors hover:bg-gray-50">
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={showSecurityPreparationToast}
+                        className="flex w-full items-center gap-3 rounded-xl px-4 py-3 transition-colors hover:bg-gray-50"
+                      >
                         <Scan className="h-5 w-5 text-gray-600" />
                         <span className="flex-1 text-left text-sm font-medium text-[#0a0a0a]">{label}</span>
                         <ChevronRight className="h-4 w-4 text-gray-300" />

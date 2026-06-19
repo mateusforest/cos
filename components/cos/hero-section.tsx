@@ -3,6 +3,7 @@
 import { motion } from "framer-motion"
 import Image from "next/image"
 import Link from "next/link"
+import { usePathname, useRouter } from "next/navigation"
 import { ArrowRight, Play, ShoppingBag, Briefcase, Factory, Heart, GraduationCap, Building2, Plane, Truck, MoreHorizontal } from "lucide-react"
 
 const sectors = [
@@ -18,6 +19,21 @@ const sectors = [
 ]
 
 export function HeroSection() {
+  const pathname = usePathname()
+  const router = useRouter()
+
+  const scrollToProducts = () => {
+    if (pathname !== "/") {
+      router.push("/#produtos")
+      return
+    }
+
+    const element = document.querySelector("#produtos")
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" })
+    }
+  }
+
   return (
     <section className="pt-20 md:pt-32 px-4 md:px-8 lg:px-12">
       {/* Mobile Layout - Text First */}
@@ -50,7 +66,7 @@ export function HeroSection() {
               Começar agora
               <ArrowRight className="h-4 w-4" />
             </Link>
-            <button className="inline-flex items-center gap-2 text-sm text-foreground/70 py-2">
+            <button onClick={scrollToProducts} className="inline-flex items-center gap-2 text-sm text-foreground/70 py-2">
               <Play className="h-4 w-4" />
               Conhecer o COS
             </button>
