@@ -1,5 +1,10 @@
 "use server"
 
+import { logAiUsage } from "@/lib/cos-engine/ai-usage"
+import {
+  buildOperationsIdempotencyKey,
+  findRecentDuplicateExecution,
+} from "@/lib/cos-engine/idempotency"
 import { createSupabaseAdminClient } from "@/lib/supabase/server"
 import { runOperationsEngine } from "@/lib/cos-engine/operations-engine"
 import { validateOperationsActor } from "@/lib/cos-engine/operations-actor"
@@ -11,9 +16,11 @@ import {
   formatOperationsConversationTime,
   inferOperationsConversationAreaFromIntent,
 } from "@/lib/cos-engine/operations-conversations"
+import { buildResolvedIntentFromDetected, isSideEffectIntent } from "@/lib/cos-engine/schemas"
 import type {
   OperationsEngineInput,
   OperationsEngineResult,
+  OperationsResolvedIntent,
   PersistedOperationsChatMessage,
 } from "@/lib/cos-engine/types"
 
@@ -34,12 +41,28 @@ type MessageRow = {
   created_at: string | null
 }
 
+type QueryError = { message: string } | null
+
+type SelectChain = {
+  eq: (column: string, value: string) => SelectChain
+  order: (column: string, options: { ascending: boolean }) => SelectChain
+  maybeSingle: () => Promise<unknown>
+}
+
+type InsertSelectChain = {
+  single: () => Promise<unknown>
+}
+
+type OperationsAdminClient = {
+  from: (table: string) => unknown
+}
+
 type OperationsConversationActor =
   | { error: string }
   | {
       user: { id: string }
       access: { workspace: { id: string } }
-      adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>
+      adminClient: OperationsAdminClient
     }
 
 async function getOperationsConversationActor(): Promise<OperationsConversationActor> {
@@ -69,19 +92,27 @@ async function findOrCreateConversation({
   area,
   title,
 }: {
-  adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>
+  adminClient: OperationsAdminClient
   workspaceId: string
   userId: string
   area: string
   title: string
 }) {
-  const { data: existingConversation, error: lookupError } = await adminClient
-    .from("ai_conversations")
+  const conversationsTable = adminClient.from("ai_conversations") as {
+    select: (columns: string) => SelectChain
+    insert: (value: Record<string, unknown>) => {
+      select: (columns: string) => InsertSelectChain
+    }
+  }
+
+  const lookupResult = (await conversationsTable
     .select("id, workspace_id, user_id, area, title")
     .eq("workspace_id", workspaceId)
     .eq("user_id", userId)
     .eq("area", area)
-    .maybeSingle<ConversationRow>()
+    .maybeSingle()) as { data: ConversationRow | null; error: QueryError }
+  const existingConversation = lookupResult.data as ConversationRow | null
+  const lookupError = lookupResult.error as QueryError
 
   if (lookupError) {
     return { error: lookupError.message }
@@ -91,8 +122,7 @@ async function findOrCreateConversation({
     return { conversation: existingConversation }
   }
 
-  const { data: createdConversation, error: insertError } = await adminClient
-    .from("ai_conversations")
+  const insertResult = (await conversationsTable
     .insert({
       workspace_id: workspaceId,
       user_id: userId,
@@ -100,7 +130,9 @@ async function findOrCreateConversation({
       title,
     })
     .select("id, workspace_id, user_id, area, title")
-    .single<ConversationRow>()
+    .single()) as { data: ConversationRow | null; error: QueryError }
+  const createdConversation = insertResult.data as ConversationRow | null
+  const insertError = insertResult.error as QueryError
 
   if (insertError || !createdConversation) {
     return { error: insertError?.message ?? "Nao foi possivel criar a conversa do COS." }
@@ -116,22 +148,28 @@ async function saveConversationMessage({
   content,
   metadata,
 }: {
-  adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>
+  adminClient: OperationsAdminClient
   conversationId: string
   role: "user" | "assistant"
   content: string
   metadata: Record<string, unknown>
 }) {
-  const { error } = await adminClient.from("ai_messages").insert({
+  const messagesTable = adminClient.from("ai_messages") as {
+    insert: (value: Record<string, unknown>) => Promise<unknown>
+  }
+  const { error } = (await messagesTable.insert({
     conversation_id: conversationId,
     role,
     content,
     metadata,
-  })
+  })) as { error: QueryError }
 
   if (error) {
     console.error("[operations-engine] message-persist:", error.message)
+    return { success: false as const, error: error.message }
   }
+
+  return { success: true as const }
 }
 
 function mapConversationMessage(row: MessageRow): PersistedOperationsChatMessage | null {
@@ -178,21 +216,31 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
     area: input.area,
     subArea: input.subArea,
   })
-  const detected = detectOperationsIntent(
+  const detectedIntent = detectOperationsIntent(
     message,
     buildOperationsContext({
       area: input.area,
       subArea: input.subArea,
     }),
   )
+  const resolvedIntent: OperationsResolvedIntent = buildResolvedIntentFromDetected(detectedIntent)
   const conversationArea =
     explicitConversationArea !== "general"
       ? explicitConversationArea
-      : inferOperationsConversationAreaFromIntent(detected)
+      : inferOperationsConversationAreaFromIntent(detectedIntent)
   const conversationTitle = buildOperationsConversationTitle({
     area: conversationArea.split("/")[0],
     subArea: conversationArea.split("/")[1],
   })
+  const idempotencyKey =
+    input.idempotencyKey ||
+    buildOperationsIdempotencyKey({
+      workspaceId: actor.access.workspace.id,
+      userId: actor.user.id,
+      message,
+      area: conversationArea,
+      intent: resolvedIntent.intent,
+    })
 
   const conversationResult = await findOrCreateConversation({
     adminClient: actor.adminClient,
@@ -209,7 +257,7 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
     }
   }
 
-  await saveConversationMessage({
+  const userMessagePersist = await saveConversationMessage({
     adminClient: actor.adminClient,
     conversationId: conversationResult.conversation.id,
     role: "user",
@@ -219,18 +267,71 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
       subArea: input.subArea ?? null,
       source: "operations_engine",
       conversation_area: conversationArea,
-      detected_intent: detected.intent,
+      detected_intent: detectedIntent.intent,
+      idempotencyKey,
+      intentSource: resolvedIntent.source,
     },
   })
+
+  if (!userMessagePersist.success && isSideEffectIntent(resolvedIntent.intent)) {
+    return {
+      ok: false,
+      action: resolvedIntent.intent,
+      message: "Nao consegui registrar sua mensagem com seguranca. Tente novamente em instantes.",
+      error: userMessagePersist.error,
+      executionStatus: "failed",
+      conversationId: conversationResult.conversation.id,
+      conversationArea,
+    }
+  }
+
+  const duplicateExecution = await findRecentDuplicateExecution({
+    adminClient: actor.adminClient,
+    conversationId: conversationResult.conversation.id,
+    idempotencyKey,
+    resolvedIntent,
+  })
+
+  if (duplicateExecution) {
+    await saveConversationMessage({
+      adminClient: actor.adminClient,
+      conversationId: conversationResult.conversation.id,
+      role: "assistant",
+      content: duplicateExecution.message,
+      metadata: {
+        action: duplicateExecution.action ?? null,
+        ok: duplicateExecution.ok,
+        resultId: duplicateExecution.resultId ?? null,
+        source: "operations_engine",
+        area: input.area ?? null,
+        subArea: input.subArea ?? null,
+        conversation_area: conversationArea,
+        detected_intent: detectedIntent.intent,
+        intentSource: resolvedIntent.source,
+        idempotencyKey,
+        executionStatus: duplicateExecution.executionStatus,
+        suggestedLabel: duplicateExecution.suggestedLabel ?? null,
+        suggestedHref: duplicateExecution.suggestedHref ?? null,
+      },
+    })
+
+    return {
+      ...duplicateExecution,
+      conversationId: conversationResult.conversation.id,
+      conversationArea,
+    }
+  }
 
   let result: OperationsEngineResult
 
   try {
-    result = await runOperationsEngine(input)
+    result = await runOperationsEngine(input, resolvedIntent)
   } catch {
     result = {
       ok: false,
       message: "Nao consegui executar sua solicitacao agora. Tente novamente em instantes.",
+      error: "Falha inesperada no Operations Engine.",
+      executionStatus: "failed",
     }
   }
 
@@ -247,9 +348,26 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
       area: input.area ?? null,
       subArea: input.subArea ?? null,
       conversation_area: conversationArea,
-      detected_intent: detected.intent,
+      detected_intent: detectedIntent.intent,
+      intentSource: resolvedIntent.source,
+      idempotencyKey,
+      executionStatus: result.executionStatus,
       suggestedLabel: result.suggestedLabel ?? null,
       suggestedHref: result.suggestedHref ?? null,
+    },
+  })
+
+  await logAiUsage({
+    adminClient: actor.adminClient,
+    workspaceId: actor.access.workspace.id,
+    userId: actor.user.id,
+    model: null,
+    intent: resolvedIntent.intent,
+    source: resolvedIntent.source,
+    metadata: {
+      conversationId: conversationResult.conversation.id,
+      conversationArea,
+      executionStatus: result.executionStatus,
     },
   })
 
@@ -275,13 +393,17 @@ export async function getOperationsConversationMessagesAction(input?: {
     subArea: input?.subArea,
   })
 
-  const { data: conversation, error: conversationError } = await actor.adminClient
-    .from("ai_conversations")
+  const conversationsTable = actor.adminClient.from("ai_conversations") as {
+    select: (columns: string) => SelectChain
+  }
+  const conversationQuery = (await conversationsTable
     .select("id, workspace_id, user_id, area, title")
     .eq("workspace_id", actor.access.workspace.id)
     .eq("user_id", actor.user.id)
     .eq("area", conversationArea)
-    .maybeSingle<ConversationRow>()
+    .maybeSingle()) as { data: ConversationRow | null; error: QueryError }
+  const conversation = conversationQuery.data as ConversationRow | null
+  const conversationError = conversationQuery.error as QueryError
 
   if (conversationError) {
     return { error: "Nao consegui carregar esta conversa agora." }
@@ -295,12 +417,19 @@ export async function getOperationsConversationMessagesAction(input?: {
     }
   }
 
-  const { data: rows, error: messagesError } = await actor.adminClient
-    .from("ai_messages")
+  const messagesTable = actor.adminClient.from("ai_messages") as {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => {
+        order: (column: string, options: { ascending: boolean }) => Promise<unknown>
+      }
+    }
+  }
+  const messagesQuery = (await messagesTable
     .select("id, conversation_id, role, content, metadata, created_at")
     .eq("conversation_id", conversation.id)
-    .order("created_at", { ascending: true })
-    .returns<MessageRow[]>()
+    .order("created_at", { ascending: true })) as { data: MessageRow[] | null; error: QueryError }
+  const rows = messagesQuery.data as MessageRow[] | null
+  const messagesError = messagesQuery.error as QueryError
 
   if (messagesError) {
     return { error: "Nao consegui carregar as mensagens desta conversa agora." }

@@ -15,12 +15,15 @@ export function buildEngineError(message: string, action?: OperationsEngineResul
     ok: false,
     message,
     action,
+    error: message,
+    executionStatus: "failed",
   }
 }
 
-export function buildEngineSuccess(input: Omit<OperationsEngineResult, "ok">): OperationsEngineResult {
+export function buildEngineSuccess(input: Omit<OperationsEngineResult, "ok" | "executionStatus">): OperationsEngineResult {
   return {
     ok: true,
+    executionStatus: "executed",
     ...input,
   }
 }
