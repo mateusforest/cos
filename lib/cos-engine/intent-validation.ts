@@ -31,13 +31,39 @@ function parseAmount(value: string | number | boolean | null | undefined) {
   return Number.isFinite(parsed) ? parsed : Number.NaN
 }
 
-function buildMissingFieldMessage(intent: OperationsResolvedIntent["intent"], missingFields: string[]) {
+function buildFinancialAmountQuestion(resolvedIntent: OperationsResolvedIntent) {
+  const subject = String(resolvedIntent.entities.title || resolvedIntent.entities.description || "")
+    .trim()
+    .toLowerCase()
+
+  if (resolvedIntent.intent === "create_financial_income") {
+    return subject ? `Qual foi o valor da receita com ${subject}?` : "Qual foi o valor da receita?"
+  }
+
+  return subject ? `Qual foi o valor do gasto com ${subject}?` : "Qual foi o valor do gasto?"
+}
+
+function buildMissingFieldMessage(
+  intent: OperationsResolvedIntent["intent"],
+  missingFields: string[],
+  entities?: OperationsResolvedIntent["entities"],
+) {
   if (intent === "create_client" && missingFields.includes("name")) {
     return "Para criar o cliente, preciso pelo menos do nome."
   }
 
   if ((intent === "create_financial_income" || intent === "create_financial_expense") && missingFields.includes("amount")) {
-    return "Para registrar esse lancamento, preciso saber o valor."
+    return buildFinancialAmountQuestion({
+      intent,
+      confidence: 1,
+      entities: entities ?? {},
+      requiresConfirmation: false,
+      missingFields,
+      unsafeReason: null,
+      reply: "",
+      shouldFallbackToHeuristic: false,
+      source: "heuristic",
+    })
   }
 
   if ((intent === "create_financial_income" || intent === "create_financial_expense") && missingFields.includes("title")) {
@@ -93,6 +119,15 @@ export function validateIntentPayload({
     }
   }
 
+  if (resolvedIntent.unsafeReason) {
+    return {
+      ok: false,
+      resolvedIntent,
+      message: "Preciso de uma solicitacao mais clara antes de executar isso.",
+      executionStatus: "validation_failed",
+    }
+  }
+
   const requiredFields = getRequiredFieldsForIntent(resolvedIntent.intent)
   const entities: OperationsResolvedIntent["entities"] = {
     ...resolvedIntent.entities,
@@ -108,7 +143,7 @@ export function validateIntentPayload({
         entities,
         missingFields,
       },
-      message: buildMissingFieldMessage(resolvedIntent.intent, missingFields),
+      message: buildMissingFieldMessage(resolvedIntent.intent, missingFields, entities),
       executionStatus: "validation_failed",
     }
   }
@@ -126,7 +161,10 @@ export function validateIntentPayload({
           entities,
           missingFields: ["amount"],
         },
-        message: "Para registrar esse lancamento, preciso saber o valor.",
+        message: buildFinancialAmountQuestion({
+          ...resolvedIntent,
+          entities,
+        }),
         executionStatus: "validation_failed",
       }
     }

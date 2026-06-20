@@ -5,22 +5,20 @@ import {
   buildOperationsIdempotencyKey,
   findRecentDuplicateExecution,
 } from "@/lib/cos-engine/idempotency"
+import { resolveOperationsIntent } from "@/lib/cos-engine/openai-intent"
 import { createSupabaseAdminClient } from "@/lib/supabase/server"
 import { runOperationsEngine } from "@/lib/cos-engine/operations-engine"
 import { validateOperationsActor } from "@/lib/cos-engine/operations-actor"
-import { buildOperationsContext } from "@/lib/cos-engine/operations-context"
-import { detectOperationsIntent } from "@/lib/cos-engine/operations-intents"
 import {
   buildOperationsConversationArea,
   buildOperationsConversationTitle,
   formatOperationsConversationTime,
   inferOperationsConversationAreaFromIntent,
 } from "@/lib/cos-engine/operations-conversations"
-import { buildResolvedIntentFromDetected, isSideEffectIntent } from "@/lib/cos-engine/schemas"
+import { isSideEffectIntent } from "@/lib/cos-engine/schemas"
 import type {
   OperationsEngineInput,
   OperationsEngineResult,
-  OperationsResolvedIntent,
   PersistedOperationsChatMessage,
 } from "@/lib/cos-engine/types"
 
@@ -216,14 +214,15 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
     area: input.area,
     subArea: input.subArea,
   })
-  const detectedIntent = detectOperationsIntent(
+  const intentResolution = await resolveOperationsIntent({
+    ...input,
     message,
-    buildOperationsContext({
-      area: input.area,
-      subArea: input.subArea,
-    }),
-  )
-  const resolvedIntent: OperationsResolvedIntent = buildResolvedIntentFromDetected(detectedIntent)
+  })
+  const resolvedIntent = intentResolution.resolvedIntent
+  const detectedIntent = {
+    intent: resolvedIntent.intent,
+    entities: resolvedIntent.entities,
+  }
   const conversationArea =
     explicitConversationArea !== "general"
       ? explicitConversationArea
@@ -265,11 +264,19 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
     metadata: {
       area: input.area ?? null,
       subArea: input.subArea ?? null,
-      source: "operations_engine",
+      engine: "operations_engine",
+      source: resolvedIntent.source,
       conversation_area: conversationArea,
       detected_intent: detectedIntent.intent,
+      intent: resolvedIntent.intent,
+      confidence: resolvedIntent.confidence,
       idempotencyKey,
       intentSource: resolvedIntent.source,
+      fallbackUsed: intentResolution.fallbackUsed,
+      fallbackReason: intentResolution.fallbackReason ?? null,
+      missingFields: resolvedIntent.missingFields,
+      unsafeReason: resolvedIntent.unsafeReason ?? null,
+      latencyMs: intentResolution.latencyMs,
     },
   })
 
@@ -302,13 +309,21 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
         action: duplicateExecution.action ?? null,
         ok: duplicateExecution.ok,
         resultId: duplicateExecution.resultId ?? null,
-        source: "operations_engine",
+        engine: "operations_engine",
+        source: resolvedIntent.source,
         area: input.area ?? null,
         subArea: input.subArea ?? null,
         conversation_area: conversationArea,
         detected_intent: detectedIntent.intent,
+        intent: resolvedIntent.intent,
+        confidence: resolvedIntent.confidence,
         intentSource: resolvedIntent.source,
         idempotencyKey,
+        fallbackUsed: intentResolution.fallbackUsed,
+        fallbackReason: intentResolution.fallbackReason ?? null,
+        missingFields: resolvedIntent.missingFields,
+        unsafeReason: resolvedIntent.unsafeReason ?? null,
+        latencyMs: intentResolution.latencyMs,
         executionStatus: duplicateExecution.executionStatus,
         suggestedLabel: duplicateExecution.suggestedLabel ?? null,
         suggestedHref: duplicateExecution.suggestedHref ?? null,
@@ -344,13 +359,21 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
       action: result.action ?? null,
       ok: result.ok,
       resultId: result.resultId ?? null,
-      source: "operations_engine",
+      engine: "operations_engine",
+      source: resolvedIntent.source,
       area: input.area ?? null,
       subArea: input.subArea ?? null,
       conversation_area: conversationArea,
       detected_intent: detectedIntent.intent,
+      intent: resolvedIntent.intent,
+      confidence: resolvedIntent.confidence,
       intentSource: resolvedIntent.source,
       idempotencyKey,
+      fallbackUsed: intentResolution.fallbackUsed,
+      fallbackReason: intentResolution.fallbackReason ?? null,
+      missingFields: resolvedIntent.missingFields,
+      unsafeReason: resolvedIntent.unsafeReason ?? null,
+      latencyMs: intentResolution.latencyMs,
       executionStatus: result.executionStatus,
       suggestedLabel: result.suggestedLabel ?? null,
       suggestedHref: result.suggestedHref ?? null,
@@ -361,12 +384,22 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
     adminClient: actor.adminClient,
     workspaceId: actor.access.workspace.id,
     userId: actor.user.id,
-    model: null,
+    feature: "operations_engine_intent",
+    provider: "openai",
+    model: intentResolution.model,
     intent: resolvedIntent.intent,
     source: resolvedIntent.source,
+    promptTokens: intentResolution.usage?.promptTokens ?? null,
+    completionTokens: intentResolution.usage?.completionTokens ?? null,
+    totalTokens: intentResolution.usage?.totalTokens ?? null,
+    latencyMs: intentResolution.latencyMs,
+    success: !intentResolution.fallbackUsed || intentResolution.fallbackReason === "openai_low_confidence",
+    errorMessage: intentResolution.errorMessage ?? null,
     metadata: {
       conversationId: conversationResult.conversation.id,
       conversationArea,
+      fallbackUsed: intentResolution.fallbackUsed,
+      fallbackReason: intentResolution.fallbackReason ?? null,
       executionStatus: result.executionStatus,
     },
   })

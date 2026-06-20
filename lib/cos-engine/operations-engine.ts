@@ -1,9 +1,8 @@
 import { validateOperationsActor } from "@/lib/cos-engine/operations-actor"
 import { buildOperationsContext } from "@/lib/cos-engine/operations-context"
 import { executeResolvedIntent } from "@/lib/cos-engine/execution"
-import { detectOperationsIntent } from "@/lib/cos-engine/operations-intents"
 import { validateIntentPayload } from "@/lib/cos-engine/intent-validation"
-import { buildResolvedIntentFromDetected } from "@/lib/cos-engine/schemas"
+import { resolveOperationsIntent } from "@/lib/cos-engine/openai-intent"
 import type {
   OperationsEngineInput,
   OperationsEngineResult,
@@ -37,7 +36,7 @@ export async function runOperationsEngine(
 
   const context = buildOperationsContext(input)
   const nextResolvedIntent =
-    resolvedIntent ?? buildResolvedIntentFromDetected(detectOperationsIntent(message, context))
+    resolvedIntent ?? (await resolveOperationsIntent({ ...input, message, area: context.area, subArea: context.subArea })).resolvedIntent
   const validation = validateIntentPayload({
     resolvedIntent: nextResolvedIntent,
     message,

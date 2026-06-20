@@ -12,6 +12,15 @@ export type OperationsEngineIntent =
   | "unknown"
 
 export type OperationsIntentSource = "heuristic" | "openai" | "fallback"
+export type OperationsIntentFallbackReason =
+  | "openai_not_configured"
+  | "openai_request_failed"
+  | "openai_timeout"
+  | "openai_invalid_json"
+  | "openai_invalid_schema"
+  | "openai_low_confidence"
+  | "openai_unknown_intent"
+  | "openai_requested_fallback"
 
 export type OperationsEngineInput = {
   message: string
@@ -58,6 +67,12 @@ export type DetectedIntent = {
   entities: Record<string, string | number | boolean | null | undefined>
 }
 
+export type OperationsIntentUsage = {
+  promptTokens?: number | null
+  completionTokens?: number | null
+  totalTokens?: number | null
+}
+
 export type OperationsResolvedIntent = {
   intent: OperationsEngineIntent
   confidence: number
@@ -68,6 +83,16 @@ export type OperationsResolvedIntent = {
   reply: string
   shouldFallbackToHeuristic: boolean
   source: OperationsIntentSource
+}
+
+export type OperationsIntentResolution = {
+  resolvedIntent: OperationsResolvedIntent
+  model: string | null
+  latencyMs: number | null
+  fallbackUsed: boolean
+  fallbackReason?: OperationsIntentFallbackReason | null
+  usage?: OperationsIntentUsage
+  errorMessage?: string | null
 }
 
 export type ValidateIntentPayloadInput = {
