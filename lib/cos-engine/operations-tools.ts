@@ -67,11 +67,64 @@ function stripLeadingCommand(value: string) {
     .trim()
 }
 
+function sanitizeClientNameCandidate(value: string) {
+  return value
+    .replace(/\bcomo cliente\b/giu, " ")
+    .replace(/\bcliente\b/giu, " ")
+    .replace(/\bcom email\b.*$/iu, "")
+    .replace(/\bemail\b.*$/iu, "")
+    .replace(/\btelefone\b.*$/iu, "")
+    .replace(/\?+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function isLikelyClientName(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+
+  const normalized = normalizeEngineText(trimmed)
+  if (
+    /^(crie|criar|cadastre|cadastrar|cliente|novo|nova|um|uma|como)$/.test(normalized) ||
+    normalized.includes("registrar gasto") ||
+    normalized.includes("registrar receita")
+  ) {
+    return false
+  }
+
+  return /^[\p{L}][\p{L}\p{M}'’-]*(?:\s+[\p{L}][\p{L}\p{M}'’-]*)*$/u.test(trimmed)
+}
+
+function extractClientNameByPatterns(message: string) {
+  const patterns = [
+    /^(?:crie|criar|cadastre|cadastrar)\s+(.+?)\s+como\s+cliente$/iu,
+    /^(?:crie|criar|cadastre|cadastrar)\s+(?:um\s+|uma\s+)?cliente\s+(.+)$/iu,
+    /^(?:crie|criar|cadastre|cadastrar)\s+cliente\s+(.+)$/iu,
+    /^cliente\s+(.+)$/iu,
+  ]
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern)
+    const candidate = sanitizeClientNameCandidate(match?.[1] || "")
+
+    if (candidate && isLikelyClientName(candidate)) {
+      return toTitleCase(candidate)
+    }
+  }
+
+  return ""
+}
+
 export function extractClientName(message: string, context: OperationsEngineContext) {
   const email = extractEmail(message)
   const phone = extractPhone(message)
   const withoutEmail = email ? message.replace(email, " ") : message
   const withoutPhone = phone ? withoutEmail.replace(phone, " ") : withoutEmail
+  const patternedName = extractClientNameByPatterns(withoutPhone)
+
+  if (patternedName) {
+    return patternedName
+  }
 
   const direct = extractAfterKeyword(withoutPhone, [
     "cliente chamado",
@@ -89,13 +142,20 @@ export function extractClientName(message: string, context: OperationsEngineCont
 
   if (!raw) return ""
 
-  const cleaned = raw
-    .replace(/\bcom email\b.*$/i, "")
-    .replace(/\bemail\b.*$/i, "")
-    .replace(/\btelefone\b.*$/i, "")
-    .trim()
+  const cleaned = sanitizeClientNameCandidate(raw)
+
+  if (!isLikelyClientName(cleaned)) {
+    return ""
+  }
 
   return toTitleCase(cleaned)
+}
+
+export function recoverClientNameFromMessage(message: string) {
+  return extractClientName(message, {
+    area: "",
+    subArea: "",
+  })
 }
 
 export function inferFinancialType(message: string, context: OperationsEngineContext) {

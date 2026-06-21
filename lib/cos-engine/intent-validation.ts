@@ -1,4 +1,5 @@
 import { futureMinimumIntentConfidence, getRequiredFieldsForIntent } from "@/lib/cos-engine/schemas"
+import { normalizeEngineText, recoverClientNameFromMessage } from "@/lib/cos-engine/operations-tools"
 import type {
   OperationsResolvedIntent,
   ValidateIntentPayloadInput,
@@ -93,6 +94,59 @@ function buildMissingFieldMessage(
   return "Preciso de mais informacoes para executar essa solicitacao."
 }
 
+function isRecoverableClientNameUnsafeReason(unsafeReason: string | null | undefined) {
+  const normalized = normalizeEngineText(unsafeReason || "")
+
+  if (!normalized) {
+    return false
+  }
+
+  return [
+    "special character",
+    "encoding",
+    "question mark",
+    "accent",
+    "acento",
+    "typo",
+    "caractere especial",
+  ].some((term) => normalized.includes(normalizeEngineText(term)))
+}
+
+function recoverClientIntentIfSafe({
+  resolvedIntent,
+  message,
+}: {
+  resolvedIntent: OperationsResolvedIntent
+  message: string
+}) {
+  if (resolvedIntent.intent !== "create_client" || resolvedIntent.confidence < 0.75) {
+    return resolvedIntent
+  }
+
+  const recoveredName = recoverClientNameFromMessage(message)
+  if (!recoveredName) {
+    return resolvedIntent
+  }
+
+  const currentName = String(resolvedIntent.entities.name || "").trim()
+  const nameLooksBroken = !currentName || currentName.includes("?")
+  const unsafeReasonIsRecoverable = isRecoverableClientNameUnsafeReason(resolvedIntent.unsafeReason)
+
+  if (!nameLooksBroken && !unsafeReasonIsRecoverable && !resolvedIntent.missingFields.includes("name")) {
+    return resolvedIntent
+  }
+
+  return {
+    ...resolvedIntent,
+    entities: {
+      ...resolvedIntent.entities,
+      name: recoveredName,
+    },
+    missingFields: resolvedIntent.missingFields.filter((field) => field !== "name"),
+    unsafeReason: unsafeReasonIsRecoverable ? null : resolvedIntent.unsafeReason,
+  }
+}
+
 export function validateIntentPayload({
   resolvedIntent,
   message,
@@ -119,19 +173,24 @@ export function validateIntentPayload({
     }
   }
 
-  if (resolvedIntent.unsafeReason) {
+  const normalizedResolvedIntent = recoverClientIntentIfSafe({
+    resolvedIntent,
+    message,
+  })
+
+  if (normalizedResolvedIntent.unsafeReason) {
     return {
       ok: false,
-      resolvedIntent,
+      resolvedIntent: normalizedResolvedIntent,
       message: "Preciso de uma solicitacao mais clara antes de executar isso.",
       executionStatus: "validation_failed",
     }
   }
 
-  const requiredFields = getRequiredFieldsForIntent(resolvedIntent.intent)
+  const requiredFields = getRequiredFieldsForIntent(normalizedResolvedIntent.intent)
   const entities: OperationsResolvedIntent["entities"] = {
-    ...resolvedIntent.entities,
-    description: resolvedIntent.entities.description ?? message,
+    ...normalizedResolvedIntent.entities,
+    description: normalizedResolvedIntent.entities.description ?? message,
   }
 
   const missingFields = requiredFields.filter((field) => !hasMeaningfulValue(entities[field]))
@@ -139,30 +198,30 @@ export function validateIntentPayload({
     return {
       ok: false,
       resolvedIntent: {
-        ...resolvedIntent,
+        ...normalizedResolvedIntent,
         entities,
         missingFields,
       },
-      message: buildMissingFieldMessage(resolvedIntent.intent, missingFields, entities),
+      message: buildMissingFieldMessage(normalizedResolvedIntent.intent, missingFields, entities),
       executionStatus: "validation_failed",
     }
   }
 
   if (
-    resolvedIntent.intent === "create_financial_income" ||
-    resolvedIntent.intent === "create_financial_expense"
+    normalizedResolvedIntent.intent === "create_financial_income" ||
+    normalizedResolvedIntent.intent === "create_financial_expense"
   ) {
     const parsedAmount = parseAmount(entities.amount)
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       return {
         ok: false,
         resolvedIntent: {
-          ...resolvedIntent,
+          ...normalizedResolvedIntent,
           entities,
           missingFields: ["amount"],
         },
         message: buildFinancialAmountQuestion({
-          ...resolvedIntent,
+          ...normalizedResolvedIntent,
           entities,
         }),
         executionStatus: "validation_failed",
@@ -173,7 +232,7 @@ export function validateIntentPayload({
   return {
     ok: true,
     resolvedIntent: {
-      ...resolvedIntent,
+      ...normalizedResolvedIntent,
       entities,
       missingFields: [],
     },
