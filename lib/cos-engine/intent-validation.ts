@@ -1,5 +1,9 @@
 import { futureMinimumIntentConfidence, getRequiredFieldsForIntent } from "@/lib/cos-engine/schemas"
-import { normalizeEngineText, recoverClientNameFromMessage } from "@/lib/cos-engine/operations-tools"
+import {
+  classifyUnsupportedOperationsRequest,
+  normalizeEngineText,
+  recoverClientNameFromMessage,
+} from "@/lib/cos-engine/operations-tools"
 import type {
   OperationsResolvedIntent,
   ValidateIntentPayloadInput,
@@ -50,7 +54,7 @@ function buildMissingFieldMessage(
   entities?: OperationsResolvedIntent["entities"],
 ) {
   if (intent === "create_client" && missingFields.includes("name")) {
-    return "Para criar o cliente, preciso pelo menos do nome."
+    return "Qual e o nome do cliente?"
   }
 
   if ((intent === "create_financial_income" || intent === "create_financial_expense") && missingFields.includes("amount")) {
@@ -68,27 +72,27 @@ function buildMissingFieldMessage(
   }
 
   if ((intent === "create_financial_income" || intent === "create_financial_expense") && missingFields.includes("title")) {
-    return "Para registrar esse lancamento, preciso da descricao."
+    return "Como voce quer descrever esse lancamento?"
   }
 
   if (intent === "create_operation" && missingFields.includes("title")) {
-    return "Para criar a operacao, preciso do titulo."
+    return "Qual sera o titulo da operacao?"
   }
 
   if (intent === "create_document" && missingFields.includes("title")) {
-    return "Para criar o documento, preciso do titulo."
+    return "Qual sera o titulo do documento?"
   }
 
   if (intent === "create_meeting" && missingFields.includes("title")) {
-    return "Para criar a reuniao, preciso do titulo."
+    return "Qual sera o titulo da reuniao?"
   }
 
   if (intent === "create_support_ticket" && missingFields.includes("subject")) {
-    return "Para abrir o chamado, preciso do assunto."
+    return "Qual e o assunto do chamado?"
   }
 
   if (intent === "create_support_ticket" && missingFields.includes("description")) {
-    return "Para abrir o chamado, preciso da descricao do problema."
+    return "Pode me descrever o problema para eu abrir o chamado?"
   }
 
   return "Preciso de mais informacoes para executar essa solicitacao."
@@ -151,6 +155,20 @@ export function validateIntentPayload({
   resolvedIntent,
   message,
 }: ValidateIntentPayloadInput): ValidateIntentPayloadResult {
+  const unsupportedRequest = classifyUnsupportedOperationsRequest(message)
+
+  if (unsupportedRequest) {
+    return {
+      ok: false,
+      resolvedIntent: {
+        ...resolvedIntent,
+        unsafeReason: unsupportedRequest.kind,
+      },
+      message: unsupportedRequest.message,
+      executionStatus: "not_executed",
+    }
+  }
+
   if (resolvedIntent.intent === "unknown") {
     return {
       ok: false,

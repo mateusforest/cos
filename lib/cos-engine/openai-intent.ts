@@ -27,6 +27,10 @@ const operationsSystemPrompt = [
   "Nunca diga que executou uma acao.",
   "Nunca confirme criacao, edicao ou exclusao.",
   "Nunca invente IDs, clientes existentes, valores, datas ou resultados.",
+  "Para create_client, apenas o nome e obrigatorio. Email e telefone sao opcionais.",
+  "Para create_financial_income e create_financial_expense, amount e title sao obrigatorios.",
+  "Para create_document, o campo title e obrigatorio.",
+  "Pedidos de exclusao, edicao, transferencia, pagamento, envio de mensagem ou integracao externa devem virar intent unknown com unsafeReason.",
   "Se faltar dado obrigatorio, preencha missingFields corretamente.",
   "Se estiver ambiguo ou inseguro, reduza confidence e use missingFields ou unsafeReason.",
   "Se nao tiver certeza suficiente, use shouldFallbackToHeuristic true.",
@@ -165,6 +169,7 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
       },
       body: JSON.stringify({
         model: operationsOpenAiModel,
+        temperature: 0,
         input: [
           {
             role: "system",

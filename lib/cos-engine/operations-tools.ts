@@ -277,6 +277,40 @@ export function isRecentActivityQuery(message: string) {
   return /\b(listar ultimas atividades|ultimas atividades|ultimos registros|mostrar historico)\b/.test(normalized)
 }
 
+export function classifyUnsupportedOperationsRequest(message: string) {
+  const normalized = normalizeEngineText(message)
+
+  if (/\b(exclu|delet|apag|remov)/.test(normalized)) {
+    return {
+      kind: "destructive" as const,
+      message: "Essa acao de exclusao ainda nao esta disponivel por conversa no COS.",
+    }
+  }
+
+  if (/\b(transf|pix|ted)\b/.test(normalized)) {
+    return {
+      kind: "financial_transfer" as const,
+      message: "Transferencias e pagamentos ainda nao podem ser executados pelo COS.",
+    }
+  }
+
+  if (/\b(envi|mand)/.test(normalized) && /\b(mensagem|whatsapp|email|e-mail)\b/.test(normalized)) {
+    return {
+      kind: "external_message" as const,
+      message: "O envio de mensagens externas ainda nao esta disponivel pelo COS.",
+    }
+  }
+
+  if (/\b(edite|editar|altere|alterar|atualize|atualizar)\b/.test(normalized)) {
+    return {
+      kind: "edit" as const,
+      message: "Edicoes por conversa ainda nao estao disponiveis no COS.",
+    }
+  }
+
+  return null
+}
+
 export function looksLikeCreateClient(message: string, context: OperationsEngineContext) {
   const normalized = normalizeEngineText(message)
   if (/\b(cliente)\b/.test(normalized) && /\b(crie|criar|novo|nova|cadastrar|cadastre)\b/.test(normalized)) return true
