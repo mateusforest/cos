@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { AnimatePresence, motion } from "framer-motion"
@@ -23,10 +23,7 @@ import {
   X,
 } from "lucide-react"
 import { createMeetingAction } from "@/actions/meetings"
-import {
-  getOperationsConversationMessagesAction,
-  runOperationsEngineAction,
-} from "@/actions/operations-engine"
+import { runOperationsEngineAction } from "@/actions/operations-engine"
 import { useOperationsDashboard } from "@/components/app/operations-dashboard-store"
 import { useAuth } from "@/components/auth/auth-provider"
 import type { ChatMessage } from "@/components/app/area-chat"
@@ -135,7 +132,6 @@ export default function AppHomePage() {
   const [message, setMessage] = useState("")
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [activeConversation, setActiveConversation] = useState<ActiveConversation>(generalConversation)
-  const [isLoadingConversation, setIsLoadingConversation] = useState(true)
   const [balanceOpen, setBalanceOpen] = useState(false)
   const [modal, setModal] = useState<ModalType>(null)
   const [shortcutPreferences, setShortcutPreferences] = useState<Record<string, boolean> | null>(null)
@@ -161,23 +157,6 @@ export default function AppHomePage() {
     return () => {
       recognitionRef.current?.stop()
     }
-  }, [])
-
-  const loadConversation = useCallback(async (conversation: ActiveConversation) => {
-    setIsLoadingConversation(true)
-
-    const result = await getOperationsConversationMessagesAction({
-      area: conversation.area,
-      subArea: conversation.subArea,
-    })
-
-    if (result.success) {
-      setChatMessages(result.messages)
-    } else {
-      setChatMessages([])
-    }
-
-    setIsLoadingConversation(false)
   }, [])
 
   useEffect(() => {
@@ -235,8 +214,8 @@ export default function AppHomePage() {
 
   useEffect(() => {
     setActiveConversation(generalConversation)
-    void loadConversation(generalConversation)
-  }, [loadConversation, workspace?.id])
+    setChatMessages([])
+  }, [workspace?.id])
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -244,7 +223,7 @@ export default function AppHomePage() {
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [chatMessages, isEngineRunning, isLoadingConversation])
+  }, [chatMessages, isEngineRunning])
 
   const quickActions = [
     { icon: Sparkles, label: "Sugerir acao", onClick: () => setModal("sugerir") },
@@ -328,6 +307,8 @@ export default function AppHomePage() {
     try {
       const result = await runOperationsEngineAction({
         message: nextMessage,
+        area: activeConversation.area !== "general" ? activeConversation.area : undefined,
+        subArea: activeConversation.subArea,
       })
 
       const responseTime = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
@@ -358,7 +339,6 @@ export default function AppHomePage() {
 
       const nextConversation = parseConversationArea(conversationArea)
       setActiveConversation(nextConversation)
-      await loadConversation(nextConversation)
     } catch {
       const responseTime = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
       setChatMessages((prev) => [
@@ -574,7 +554,7 @@ export default function AppHomePage() {
                   type="button"
                   onClick={() => {
                     setActiveConversation(generalConversation)
-                    void loadConversation(generalConversation)
+                    setChatMessages([])
                   }}
                   className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
                 >
@@ -584,7 +564,7 @@ export default function AppHomePage() {
             )}
           </AnimatePresence>
 
-          {chatMessages.length === 0 && !isLoadingConversation ? (
+          {chatMessages.length === 0 ? (
             <div className="flex min-h-full flex-col justify-center py-6">
               <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3 }} className="mb-4 self-center">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100">
@@ -714,12 +694,6 @@ export default function AppHomePage() {
               </motion.div>
             )}
           </AnimatePresence>
-
-          {isLoadingConversation && chatMessages.length === 0 && (
-            <div className="rounded-2xl border border-gray-100 bg-white px-4 py-3 text-sm text-gray-500">
-              Carregando conversa...
-            </div>
-          )}
 
           <div ref={messagesEndRef} />
         </div>
