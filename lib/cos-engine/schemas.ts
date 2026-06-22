@@ -5,6 +5,18 @@ import type {
   OperationsResolvedIntent,
   OperationsIntentSource,
 } from "@/lib/cos-engine/types"
+import {
+  operationalActionTypeValues,
+  type OperationalActionType,
+} from "@/lib/cos-engine/action-registry"
+import {
+  operationalAreaValues,
+  type OperationalArea,
+} from "@/lib/cos-engine/entity-registry"
+import {
+  operationalEntityTypeValues,
+  type OperationalEntityType,
+} from "@/lib/cos-engine/entity-fields"
 import { z } from "zod"
 
 export const operationsIntentValues = [
@@ -38,6 +50,20 @@ export const operationsIntentEntityKeys = [
   "documentType",
   "type",
   "subject",
+  "client",
+  "value",
+  "priority",
+  "status",
+  "role",
+  "department",
+  "period",
+  "stage",
+  "responsible",
+  "participants",
+  "severity",
+  "source",
+  "sku",
+  "url",
 ] as const
 
 const defaultReplies: Record<OperationsEngineIntent, string> = {
@@ -71,6 +97,22 @@ export const operationsOpenAiTimeoutMs = 10000
 
 const nullableEntityValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()])
 
+function normalizeOperationalArea(value: string | null | undefined): OperationalArea | null {
+  return value && operationalAreaValues.includes(value as OperationalArea) ? (value as OperationalArea) : null
+}
+
+function normalizeOperationalEntityType(value: string | null | undefined): OperationalEntityType | null {
+  return value && operationalEntityTypeValues.includes(value as OperationalEntityType)
+    ? (value as OperationalEntityType)
+    : null
+}
+
+function normalizeOperationalActionType(value: string | null | undefined): OperationalActionType | null {
+  return value && operationalActionTypeValues.includes(value as OperationalActionType)
+    ? (value as OperationalActionType)
+    : null
+}
+
 export const operationsResolvedIntentSchema = z.object({
   intent: z.enum(operationsIntentValues),
   confidence: z.number().min(0).max(1),
@@ -81,6 +123,12 @@ export const operationsResolvedIntentSchema = z.object({
   reply: z.string(),
   shouldFallbackToHeuristic: z.boolean(),
   source: z.enum(["heuristic", "openai", "fallback"]),
+  area: z.string().nullable().optional(),
+  entityType: z.string().nullable().optional(),
+  actionType: z.string().nullable().optional(),
+  clarificationQuestion: z.string().nullable().optional(),
+  unsupportedReason: z.string().nullable().optional(),
+  unresolvedReference: z.string().nullable().optional(),
 })
 
 export const operationsOpenAiResponseSchema = operationsResolvedIntentSchema.extend({
@@ -103,6 +151,12 @@ export const operationsOpenAiJsonSchema = {
       "reply",
       "shouldFallbackToHeuristic",
       "source",
+      "area",
+      "entityType",
+      "actionType",
+      "clarificationQuestion",
+      "unsupportedReason",
+      "unresolvedReference",
     ],
     properties: {
       intent: {
@@ -149,6 +203,24 @@ export const operationsOpenAiJsonSchema = {
         type: "string",
         enum: ["openai"],
       },
+      area: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      entityType: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      actionType: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      clarificationQuestion: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      unsupportedReason: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      unresolvedReference: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
     },
   },
 } as const
@@ -188,6 +260,12 @@ export function buildResolvedIntentFromDetected(
     reply: defaultReplies[detected.intent] ?? defaultReplies.unknown,
     shouldFallbackToHeuristic: source !== "heuristic",
     source,
+    area: detected.area ?? null,
+    entityType: detected.entityType ?? null,
+    actionType: detected.actionType ?? null,
+    clarificationQuestion: detected.clarificationQuestion ?? null,
+    unsupportedReason: detected.unsupportedReason ?? null,
+    unresolvedReference: detected.unresolvedReference ?? null,
   }
 }
 
@@ -208,10 +286,30 @@ export function createEmptyIntentEntities() {
     documentType: null,
     type: null,
     subject: null,
+    client: null,
+    value: null,
+    priority: null,
+    status: null,
+    role: null,
+    department: null,
+    period: null,
+    stage: null,
+    responsible: null,
+    participants: null,
+    severity: null,
+    source: null,
+    sku: null,
+    url: null,
   } satisfies Record<(typeof operationsIntentEntityKeys)[number], string | number | boolean | null>
 }
 
-export function normalizeResolvedIntent(input: OperationsResolvedIntent): OperationsResolvedIntent {
+export function normalizeResolvedIntent(
+  input: Omit<OperationsResolvedIntent, "area" | "entityType" | "actionType"> & {
+    area?: string | null
+    entityType?: string | null
+    actionType?: string | null
+  },
+): OperationsResolvedIntent {
   return {
     ...input,
     confidence: Number.isFinite(input.confidence) ? Math.max(0, Math.min(1, input.confidence)) : 0,
@@ -230,6 +328,12 @@ export function normalizeResolvedIntent(input: OperationsResolvedIntent): Operat
     missingFields: Array.from(new Set(input.missingFields.filter(Boolean))),
     unsafeReason: input.unsafeReason ?? null,
     reply: input.reply?.trim() || defaultReplies[input.intent] || defaultReplies.unknown,
+    area: normalizeOperationalArea(input.area),
+    entityType: normalizeOperationalEntityType(input.entityType),
+    actionType: normalizeOperationalActionType(input.actionType),
+    clarificationQuestion: input.clarificationQuestion ?? null,
+    unsupportedReason: input.unsupportedReason ?? null,
+    unresolvedReference: input.unresolvedReference ?? null,
   }
 }
 

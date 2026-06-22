@@ -52,6 +52,12 @@ export async function runOperationsEngine(
       error: validation.message,
       executionStatus: validation.executionStatus,
       resolvedIntent: validation.resolvedIntent,
+      area: validation.resolvedIntent.area ?? null,
+      entityType: validation.resolvedIntent.entityType ?? null,
+      actionType: validation.resolvedIntent.actionType ?? null,
+      clarificationQuestion: validation.resolvedIntent.clarificationQuestion ?? null,
+      unsupportedReason: validation.resolvedIntent.unsupportedReason ?? null,
+      unresolvedReference: validation.resolvedIntent.unresolvedReference ?? null,
       entities: validation.resolvedIntent.entities,
     }
   }

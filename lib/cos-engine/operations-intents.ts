@@ -13,6 +13,7 @@ import {
   extractOperationClientName,
   extractOperationTitle,
   extractPhone,
+  inferOperationalEntitiesFromMessage,
   extractSupportSubject,
   inferFinancialType,
   isClientsCountQuery,
@@ -33,15 +34,33 @@ export function detectOperationsIntent(
   conversationMemory?: OperationsConversationMemory,
 ): DetectedIntent {
   if (isClientsCountQuery(message)) {
-    return { intent: "get_clients_count", entities: {} }
+    return {
+      intent: "get_clients_count",
+      entities: {},
+      area: "cadastros",
+      entityType: "client",
+      actionType: "count",
+    }
   }
 
   if (isFinancialSummaryQuery(message)) {
-    return { intent: "get_financial_summary", entities: {} }
+    return {
+      intent: "get_financial_summary",
+      entities: {},
+      area: "financeiro",
+      entityType: "cash_flow",
+      actionType: "summarize",
+    }
   }
 
   if (isRecentActivityQuery(message)) {
-    return { intent: "get_recent_activity", entities: {} }
+    return {
+      intent: "get_recent_activity",
+      entities: {},
+      area: "sistema",
+      entityType: "system_log",
+      actionType: "summarize",
+    }
   }
 
   if (looksLikeCreateClient(message, context)) {
@@ -52,6 +71,9 @@ export function detectOperationsIntent(
         email: extractEmail(message),
         phone: extractPhone(message),
       },
+      area: "cadastros",
+      entityType: "client",
+      actionType: "create",
     }
   }
 
@@ -80,6 +102,10 @@ export function detectOperationsIntent(
     return {
       intent: "update_client",
       entities: resolved.entities,
+      area: "cadastros",
+      entityType: "client",
+      actionType: "update",
+      unresolvedReference: resolved.unresolvedReference ?? null,
     }
   }
 
@@ -91,6 +117,9 @@ export function detectOperationsIntent(
         amount: extractMoneyValue(message),
         title: extractFinancialTitle(message),
       },
+      area: "financeiro",
+      entityType: type === "income" ? "income" : "expense",
+      actionType: "create",
     }
   }
 
@@ -101,6 +130,9 @@ export function detectOperationsIntent(
         title: extractOperationTitle(message, context),
         clientName: extractOperationClientName(message),
       },
+      area: "operacoes",
+      entityType: "project",
+      actionType: "create",
     }
   }
 
@@ -111,6 +143,9 @@ export function detectOperationsIntent(
         title: extractDocumentTitle(message, context),
         type: detectDocumentType(message),
       },
+      area: "documentos",
+      entityType: "document",
+      actionType: "create",
     }
   }
 
@@ -120,6 +155,9 @@ export function detectOperationsIntent(
       entities: {
         title: extractMeetingTitle(message, context),
       },
+      area: "reunioes",
+      entityType: "meeting",
+      actionType: "create",
     }
   }
 
@@ -130,8 +168,22 @@ export function detectOperationsIntent(
         category: detectSupportCategory(message, context),
         subject: extractSupportSubject(message),
       },
+      area: "suporte",
+      entityType: "ticket",
+      actionType: "open",
     }
   }
 
-  return { intent: "unknown", entities: {} }
+  const operationalFallback = inferOperationalEntitiesFromMessage(message, context)
+
+  return {
+    intent: "unknown",
+    entities: operationalFallback.entities,
+    area: operationalFallback.area,
+    entityType: operationalFallback.entityType,
+    actionType: operationalFallback.actionType,
+    clarificationQuestion: operationalFallback.clarificationQuestion,
+    unsupportedReason: operationalFallback.unsupportedReason,
+    unresolvedReference: operationalFallback.unresolvedReference,
+  }
 }

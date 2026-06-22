@@ -108,6 +108,10 @@ export function resolveIntentReferences({
 
   return {
     ...resolvedIntent,
+    unresolvedReference:
+      hasClientPronounReference(message) && !conversationMemory?.lastClient && !entities.clientName
+        ? "client_reference_not_resolved"
+        : resolvedIntent.unresolvedReference ?? null,
     entities: {
       ...entities,
       name: extractedName || entities.name || null,

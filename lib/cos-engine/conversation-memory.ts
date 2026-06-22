@@ -1,5 +1,10 @@
 import type { ConversationContextMessageRow } from "@/lib/cos-engine/context-window"
-import type { OperationsConversationClient, OperationsConversationMemory, OperationsEngineIntent } from "@/lib/cos-engine/types"
+import type {
+  OperationsConversationClient,
+  OperationsConversationEntity,
+  OperationsConversationMemory,
+  OperationsEngineIntent,
+} from "@/lib/cos-engine/types"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
@@ -49,6 +54,32 @@ function extractClientFromMetadata(metadata: Record<string, unknown>): Operation
   }
 }
 
+function extractGenericEntityFromMetadata(metadata: Record<string, unknown>): OperationsConversationEntity | null {
+  const entities = readEntities(metadata)
+  const targetId = readString(metadata.targetId) ?? readString(metadata.resultId)
+  const targetName =
+    readString(metadata.targetName) ??
+    readString(entities.name) ??
+    readString(entities.title) ??
+    readString(entities.subject) ??
+    readString(entities.clientName)
+  const entityType = readString(metadata.targetType) ?? readString(metadata.entityType)
+  const area = readString(metadata.area)
+  const executionStatus = readString(metadata.executionStatus)
+
+  if (executionStatus !== "executed" || !targetId || !targetName) {
+    return null
+  }
+
+  return {
+    id: targetId,
+    name: targetName,
+    entityType: (entityType as OperationsConversationEntity["entityType"]) ?? null,
+    area: (area as OperationsConversationEntity["area"]) ?? null,
+    fields: entities,
+  }
+}
+
 function extractSuccessfulAction(metadata: Record<string, unknown>) {
   const executionStatus = readString(metadata.executionStatus)
   const action = readString(metadata.action)
@@ -66,6 +97,10 @@ export function createEmptyConversationMemory(): OperationsConversationMemory {
     lastResultId: null,
     lastEntities: {},
     lastClient: null,
+    lastEntity: null,
+    lastEntityType: null,
+    lastEntityArea: null,
+    recentEntities: [],
   }
 }
 
@@ -94,7 +129,27 @@ export function buildConversationMemory(rows: ConversationContextMessageRow[]): 
       memory.lastClient = extractClientFromMetadata(metadata)
     }
 
-    if (memory.lastSuccessfulAction && memory.lastResultId && memory.lastClient) {
+    const extractedEntity = extractGenericEntityFromMetadata(metadata)
+
+    if (extractedEntity) {
+      if (!memory.lastEntity) {
+        memory.lastEntity = extractedEntity
+      }
+
+      if (!memory.lastEntityType) {
+        memory.lastEntityType = extractedEntity.entityType
+      }
+
+      if (!memory.lastEntityArea) {
+        memory.lastEntityArea = extractedEntity.area
+      }
+
+      if (!memory.recentEntities.some((entity) => entity.id === extractedEntity.id)) {
+        memory.recentEntities.push(extractedEntity)
+      }
+    }
+
+    if (memory.lastSuccessfulAction && memory.lastResultId && memory.lastClient && memory.lastEntity) {
       break
     }
   }

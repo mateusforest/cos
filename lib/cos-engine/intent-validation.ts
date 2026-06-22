@@ -1,5 +1,10 @@
 import { futureMinimumIntentConfidence, getRequiredFieldsForIntent } from "@/lib/cos-engine/schemas"
 import {
+  buildOperationalClarificationQuestion,
+  buildOperationalMissingFields,
+  buildOperationalUnsupportedReply,
+} from "@/lib/cos-engine/operational-model"
+import {
   classifyUnsupportedOperationsRequest,
   normalizeEngineText,
   recoverClientNameFromMessage,
@@ -175,7 +180,11 @@ export function validateIntentPayload({
   })
   const unsupportedRequest = classifyUnsupportedOperationsRequest(message)
 
-  if (unsupportedRequest && normalizedResolvedIntent.intent !== "update_client") {
+  if (
+    unsupportedRequest &&
+    normalizedResolvedIntent.intent !== "update_client" &&
+    !(normalizedResolvedIntent.intent === "unknown" && normalizedResolvedIntent.entityType && normalizedResolvedIntent.actionType)
+  ) {
     return {
       ok: false,
       resolvedIntent: {
@@ -188,10 +197,39 @@ export function validateIntentPayload({
   }
 
   if (normalizedResolvedIntent.intent === "unknown") {
+    const derivedMissingFields =
+      normalizedResolvedIntent.missingFields.length > 0
+        ? normalizedResolvedIntent.missingFields
+        : buildOperationalMissingFields({
+            entityType: normalizedResolvedIntent.entityType ?? null,
+            actionType: normalizedResolvedIntent.actionType ?? null,
+            entities: normalizedResolvedIntent.entities,
+          })
+    const clarificationQuestion =
+      normalizedResolvedIntent.clarificationQuestion ||
+      buildOperationalClarificationQuestion({
+        entityType: normalizedResolvedIntent.entityType ?? null,
+        actionType: normalizedResolvedIntent.actionType ?? null,
+        missingFields: derivedMissingFields,
+      })
+    const unsupportedReply =
+      normalizedResolvedIntent.unsupportedReason ||
+      buildOperationalUnsupportedReply({
+        entityType: normalizedResolvedIntent.entityType ?? null,
+        actionType: normalizedResolvedIntent.actionType ?? null,
+      })
+
     return {
       ok: false,
-      resolvedIntent: normalizedResolvedIntent,
+      resolvedIntent: {
+        ...normalizedResolvedIntent,
+        missingFields: derivedMissingFields,
+        clarificationQuestion: clarificationQuestion ?? null,
+        unsupportedReason: unsupportedReply ?? normalizedResolvedIntent.unsupportedReason ?? null,
+      },
       message:
+        clarificationQuestion ||
+        unsupportedReply ||
         "Ainda nao consigo executar essa solicitacao, mas posso ajudar com clientes, financeiro, operacoes, documentos, reunioes e suporte.",
       executionStatus: "not_executed",
     }

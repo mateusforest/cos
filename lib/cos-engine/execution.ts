@@ -48,6 +48,12 @@ function buildExecutionSuccess(input: Omit<OperationsEngineResult, "ok" | "execu
   return {
     ok: true,
     executionStatus: "executed",
+    area: input.area ?? input.resolvedIntent?.area ?? null,
+    entityType: input.entityType ?? input.resolvedIntent?.entityType ?? null,
+    actionType: input.actionType ?? input.resolvedIntent?.actionType ?? null,
+    clarificationQuestion: input.clarificationQuestion ?? input.resolvedIntent?.clarificationQuestion ?? null,
+    unsupportedReason: input.unsupportedReason ?? input.resolvedIntent?.unsupportedReason ?? null,
+    unresolvedReference: input.unresolvedReference ?? input.resolvedIntent?.unresolvedReference ?? null,
     ...input,
   }
 }
@@ -56,6 +62,7 @@ function buildExecutionFailure(
   message: string,
   action?: OperationsResolvedIntent["intent"],
   executionStatus: OperationsEngineResult["executionStatus"] = "failed",
+  resolvedIntent?: OperationsResolvedIntent,
 ): OperationsEngineResult {
   return {
     ok: false,
@@ -63,6 +70,14 @@ function buildExecutionFailure(
     action,
     message,
     error: message,
+    resolvedIntent,
+    area: resolvedIntent?.area ?? null,
+    entityType: resolvedIntent?.entityType ?? null,
+    actionType: resolvedIntent?.actionType ?? null,
+    clarificationQuestion: resolvedIntent?.clarificationQuestion ?? null,
+    unsupportedReason: resolvedIntent?.unsupportedReason ?? null,
+    unresolvedReference: resolvedIntent?.unresolvedReference ?? null,
+    entities: resolvedIntent?.entities,
   }
 }
 
@@ -87,7 +102,7 @@ export async function executeResolvedIntent(input: {
       })
 
       if (result.error) {
-        return buildExecutionFailure("Nao consegui criar o cliente agora. Tente novamente em instantes.", "create_client")
+        return buildExecutionFailure("Nao consegui criar o cliente agora. Tente novamente em instantes.", "create_client", "failed", resolvedIntent)
       }
 
       return buildExecutionSuccess({
@@ -134,6 +149,7 @@ export async function executeResolvedIntent(input: {
             clientResult.error || "Nao encontrei esse cliente para atualizar.",
             "update_client",
             "validation_failed",
+            resolvedIntent,
           )
         }
 
@@ -141,14 +157,19 @@ export async function executeResolvedIntent(input: {
       } else if (directClientName) {
         const clientResolution = await resolveClientByName(directClientName)
         if ("error" in clientResolution) {
-          return buildExecutionFailure(clientResolution.error || "Nao encontrei esse cliente para atualizar.", "update_client", "validation_failed")
+          return buildExecutionFailure(
+            clientResolution.error || "Nao encontrei esse cliente para atualizar.",
+            "update_client",
+            "validation_failed",
+            resolvedIntent,
+          )
         }
 
         targetClient = clientResolution.client
       }
 
       if (!targetClient) {
-        return buildExecutionFailure("Qual cliente voce quer atualizar?", "update_client", "validation_failed")
+        return buildExecutionFailure("Qual cliente voce quer atualizar?", "update_client", "validation_failed", resolvedIntent)
       }
 
       const result = await updateClientAction({
@@ -162,7 +183,7 @@ export async function executeResolvedIntent(input: {
       })
 
       if (result.error) {
-        return buildExecutionFailure("Nao consegui atualizar o cliente agora. Tente novamente em instantes.", "update_client")
+        return buildExecutionFailure("Nao consegui atualizar o cliente agora. Tente novamente em instantes.", "update_client", "failed", resolvedIntent)
       }
 
       const currentTargetName = targetClient.name
@@ -223,6 +244,8 @@ export async function executeResolvedIntent(input: {
         return buildExecutionFailure(
           "Nao consegui registrar o lancamento agora. Tente novamente em instantes.",
           resolvedIntent.intent,
+          "failed",
+          resolvedIntent,
         )
       }
 
@@ -271,7 +294,7 @@ export async function executeResolvedIntent(input: {
       })
 
       if (result.error) {
-        return buildExecutionFailure("Nao consegui criar a operacao agora. Tente novamente em instantes.", "create_operation")
+        return buildExecutionFailure("Nao consegui criar a operacao agora. Tente novamente em instantes.", "create_operation", "failed", resolvedIntent)
       }
 
       return buildExecutionSuccess({
@@ -299,7 +322,7 @@ export async function executeResolvedIntent(input: {
       })
 
       if (result.error) {
-        return buildExecutionFailure("Nao consegui criar o documento agora. Tente novamente em instantes.", "create_document")
+        return buildExecutionFailure("Nao consegui criar o documento agora. Tente novamente em instantes.", "create_document", "failed", resolvedIntent)
       }
 
       return buildExecutionSuccess({
@@ -322,7 +345,7 @@ export async function executeResolvedIntent(input: {
       })
 
       if (result.error) {
-        return buildExecutionFailure("Nao consegui criar a reuniao agora. Tente novamente em instantes.", "create_meeting")
+        return buildExecutionFailure("Nao consegui criar a reuniao agora. Tente novamente em instantes.", "create_meeting", "failed", resolvedIntent)
       }
 
       return buildExecutionSuccess({
@@ -347,7 +370,7 @@ export async function executeResolvedIntent(input: {
       })
 
       if (result.error) {
-        return buildExecutionFailure("Nao consegui abrir o chamado agora. Tente novamente em instantes.", "create_support_ticket")
+        return buildExecutionFailure("Nao consegui abrir o chamado agora. Tente novamente em instantes.", "create_support_ticket", "failed", resolvedIntent)
       }
 
       return buildExecutionSuccess({
@@ -364,7 +387,7 @@ export async function executeResolvedIntent(input: {
     case "get_clients_count": {
       const result = await getClientsAction()
       if (result.error) {
-        return buildExecutionFailure("Nao consegui consultar seus clientes agora.", "get_clients_count")
+        return buildExecutionFailure("Nao consegui consultar seus clientes agora.", "get_clients_count", "failed", resolvedIntent)
       }
 
       const clientsCount = (result.clients ?? []).filter((client) => client.status !== "archived").length
@@ -379,7 +402,7 @@ export async function executeResolvedIntent(input: {
     case "get_financial_summary": {
       const result = await getFinancialSummaryAction()
       if (result.error || !result.summary) {
-        return buildExecutionFailure("Nao consegui consultar seu resumo financeiro agora.", "get_financial_summary")
+        return buildExecutionFailure("Nao consegui consultar seu resumo financeiro agora.", "get_financial_summary", "failed", resolvedIntent)
       }
 
       return buildExecutionSuccess({
@@ -395,7 +418,7 @@ export async function executeResolvedIntent(input: {
     case "get_recent_activity": {
       const result = await getWorkspaceActivityLogsAction()
       if (result.error) {
-        return buildExecutionFailure("Nao consegui consultar as ultimas atividades agora.", "get_recent_activity")
+        return buildExecutionFailure("Nao consegui consultar as ultimas atividades agora.", "get_recent_activity", "failed", resolvedIntent)
       }
 
       const recentLogs = (result.logs ?? []).slice(0, 3)
@@ -427,6 +450,7 @@ export async function executeResolvedIntent(input: {
         "Ainda nao consigo executar essa solicitacao, mas posso ajudar com clientes, financeiro, operacoes, documentos, reunioes e suporte.",
         "unknown",
         "not_executed",
+        resolvedIntent,
       )
   }
 }

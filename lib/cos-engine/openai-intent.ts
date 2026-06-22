@@ -12,6 +12,7 @@ import {
   operationsOpenAiResponseSchema,
   operationsOpenAiTimeoutMs,
 } from "@/lib/cos-engine/schemas"
+import { summarizeOperationalModelForPrompt } from "@/lib/cos-engine/operational-model"
 import type {
   OperationsConversationMemory,
   OperationsEngineContext,
@@ -25,6 +26,8 @@ const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 const operationsSystemPrompt = [
   "Voce e o resolvedor de intencao do COS, um software operacional conversacional.",
   "Sua unica funcao e interpretar a mensagem do usuario e responder somente JSON valido.",
+  "O COS organiza o sistema em areas como cadastros, operacoes, vendas, financeiro, equipe, documentos, reunioes, suporte e sistema.",
+  "Sempre tente identificar area, entityType e actionType.",
   "Nunca diga que executou uma acao.",
   "Nunca confirme criacao, edicao ou exclusao.",
   "Nunca invente IDs, clientes existentes, valores, datas ou resultados.",
@@ -33,6 +36,7 @@ const operationsSystemPrompt = [
   "Para update_client, use clientId apenas se ele estiver presente no contexto fornecido. Caso contrario, use clientName ou missingFields.",
   "Para create_financial_income e create_financial_expense, amount e title sao obrigatorios.",
   "Para create_document, o campo title e obrigatorio.",
+  "Quando a intencao for compreensivel mas a execucao ainda nao existir, use intent unknown e preencha area, entityType, actionType e unsupportedReason.",
   "Edicao segura de cliente e permitida apenas via intent update_client.",
   "Pedidos de exclusao, transferencia, pagamento, envio de mensagem ou integracao externa devem virar intent unknown com unsafeReason.",
   "Se faltar dado obrigatorio, preencha missingFields corretamente.",
@@ -88,12 +92,17 @@ function buildUserPrompt(message: string, context: OperationsEngineContext, conv
               lastSuccessfulAction: conversationMemory.lastSuccessfulAction,
               lastResultId: conversationMemory.lastResultId,
               lastClient: conversationMemory.lastClient,
+              lastEntity: conversationMemory.lastEntity,
+              lastEntityType: conversationMemory.lastEntityType,
+              lastEntityArea: conversationMemory.lastEntityArea,
+              recentEntities: conversationMemory.recentEntities,
               lastEntities: conversationMemory.lastEntities,
             }
           : null,
       },
       message,
       requiredEntityKeys: Object.keys(createEmptyIntentEntities()),
+      operationalModel: summarizeOperationalModelForPrompt(),
       guidance: {
         create_client: ["name"],
         update_client: ["clientId_or_clientName", "one_or_more_of_name_email_phone_company_notes"],
@@ -103,6 +112,7 @@ function buildUserPrompt(message: string, context: OperationsEngineContext, conv
         create_document: ["title"],
         create_meeting: ["title"],
         create_support_ticket: ["subject", "description"],
+        unknown: ["area", "entityType", "actionType", "unsupportedReason_or_clarificationQuestion_when_applicable"],
       },
     },
     null,
@@ -251,7 +261,21 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
       })
     }
 
-    if (!isAllowedOperationsIntent(resolvedIntent.intent) || resolvedIntent.intent === "unknown") {
+    if (!isAllowedOperationsIntent(resolvedIntent.intent)) {
+      return buildFallbackResolution(message, context, conversationMemory, "openai_unknown_intent", {
+        model: operationsOpenAiModel,
+        latencyMs,
+        usage,
+      })
+    }
+
+    if (
+      resolvedIntent.intent === "unknown" &&
+      !resolvedIntent.area &&
+      !resolvedIntent.entityType &&
+      !resolvedIntent.actionType &&
+      !resolvedIntent.clarificationQuestion
+    ) {
       return buildFallbackResolution(message, context, conversationMemory, "openai_unknown_intent", {
         model: operationsOpenAiModel,
         latencyMs,

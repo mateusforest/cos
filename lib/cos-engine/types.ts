@@ -1,3 +1,9 @@
+import type {
+  OperationalActionType as CosActionType,
+} from "@/lib/cos-engine/action-registry"
+import type { OperationalArea as CosArea } from "@/lib/cos-engine/entity-registry"
+import type { OperationalEntityType as CosEntityType } from "@/lib/cos-engine/entity-fields"
+
 export type OperationsEngineIntent =
   | "create_client"
   | "update_client"
@@ -58,6 +64,12 @@ export type OperationsEngineResult = {
   targetId?: string
   targetName?: string
   updatedFields?: string[]
+  area?: CosArea | null
+  entityType?: CosEntityType | null
+  actionType?: CosActionType | null
+  clarificationQuestion?: string | null
+  unsupportedReason?: string | null
+  unresolvedReference?: string | null
   entities?: Record<string, string | number | boolean | null | undefined>
 }
 
@@ -73,6 +85,12 @@ export type PersistedOperationsChatMessage = {
 export type DetectedIntent = {
   intent: OperationsEngineIntent
   entities: Record<string, string | number | boolean | null | undefined>
+  area?: CosArea | null
+  entityType?: CosEntityType | null
+  actionType?: CosActionType | null
+  clarificationQuestion?: string | null
+  unsupportedReason?: string | null
+  unresolvedReference?: string | null
 }
 
 export type OperationsIntentUsage = {
@@ -91,6 +109,12 @@ export type OperationsResolvedIntent = {
   reply: string
   shouldFallbackToHeuristic: boolean
   source: OperationsIntentSource
+  area?: CosArea | null
+  entityType?: CosEntityType | null
+  actionType?: CosActionType | null
+  clarificationQuestion?: string | null
+  unsupportedReason?: string | null
+  unresolvedReference?: string | null
 }
 
 export type OperationsConversationClient = {
@@ -102,11 +126,23 @@ export type OperationsConversationClient = {
   notes?: string | null
 }
 
+export type OperationsConversationEntity = {
+  id: string
+  name: string
+  entityType: CosEntityType | null
+  area: CosArea | null
+  fields: Record<string, string | number | boolean | null | undefined>
+}
+
 export type OperationsConversationMemory = {
   lastSuccessfulAction: OperationsEngineIntent | null
   lastResultId: string | null
   lastEntities: Record<string, string | number | boolean | null | undefined>
   lastClient: OperationsConversationClient | null
+  lastEntity: OperationsConversationEntity | null
+  lastEntityType: CosEntityType | null
+  lastEntityArea: CosArea | null
+  recentEntities: OperationsConversationEntity[]
 }
 
 export type OperationsIntentResolution = {

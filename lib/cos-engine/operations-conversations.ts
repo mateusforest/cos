@@ -16,6 +16,9 @@ const areaTitles: Record<string, string> = {
   projetos: "Projetos",
   ordens: "Ordens",
   processos: "Processos",
+  vendas: "Vendas",
+  propostas: "Propostas",
+  negociacoes: "Negociacoes",
   documentos: "Documentos",
   contratos: "Contratos",
   arquivos: "Arquivos",
@@ -54,6 +57,24 @@ export function buildOperationsConversationArea(input: { area?: string; subArea?
 }
 
 export function inferOperationsConversationAreaFromIntent(detected: DetectedIntent) {
+  if (detected.area && detected.entityType) {
+    if (detected.area === "cadastros" && detected.entityType === "client") return "cadastros/clientes"
+    if (detected.area === "cadastros" && detected.entityType === "lead") return "cadastros/leads"
+    if (detected.area === "cadastros" && detected.entityType === "product") return "cadastros/produtos"
+    if (detected.area === "cadastros" && detected.entityType === "service") return "cadastros/servicos"
+    if (detected.area === "operacoes" && detected.entityType === "project") return "operacoes/projetos"
+    if (detected.area === "operacoes" && detected.entityType === "order") return "operacoes/ordens"
+    if (detected.area === "operacoes" && detected.entityType === "process") return "operacoes/processos"
+    if (detected.area === "vendas" && detected.entityType === "proposal") return "vendas/propostas"
+    if (detected.area === "vendas" && detected.entityType === "negotiation") return "vendas/negociacoes"
+    if (detected.area === "financeiro" && detected.entityType === "income") return "financeiro/ganhos"
+    if (detected.area === "financeiro" && detected.entityType === "expense") return "financeiro/gastos"
+    if (detected.area === "documentos" && detected.entityType === "contract") return "documentos/contratos"
+    if (detected.area === "documentos" && detected.entityType === "file") return "documentos/arquivos"
+    if (detected.area === "documentos" && detected.entityType === "report") return "documentos/relatorios"
+    return detected.area
+  }
+
   switch (detected.intent) {
     case "create_client":
     case "update_client":

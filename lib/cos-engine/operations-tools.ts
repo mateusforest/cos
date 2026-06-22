@@ -1,5 +1,9 @@
 import type { OperationsEngineContext } from "@/lib/cos-engine/types"
 import {
+  buildOperationalModelMetadata,
+  classifyOperationalRequest,
+} from "@/lib/cos-engine/operational-model"
+import {
   isClientsContext,
   isDocumentsContext,
   isFinancialContext,
@@ -48,6 +52,29 @@ export function extractAfterKeyword(message: string, keywords: string[]) {
     const index = normalized.indexOf(keyword)
     if (index >= 0) {
       return message.slice(index + keyword.length).trim()
+    }
+  }
+
+  return ""
+}
+
+function extractNamedEntity(message: string, aliases: string[]) {
+  const escapedAliases = aliases
+    .map((alias) => alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .sort((left, right) => right.length - left.length)
+  const aliasPattern = escapedAliases.join("|")
+  const patterns = [
+    new RegExp(`(?:crie|criar|cadastre|cadastrar|gere|gerar|abra|abrir|registre|registrar)\\s+(?:um\\s+|uma\\s+)?(?:${aliasPattern})\\s+(?:chamad[oa]\\s+)?(.+)$`, "iu"),
+    new RegExp(`(?:${aliasPattern})\\s+chamad[oa]\\s+(.+)$`, "iu"),
+    new RegExp(`(?:${aliasPattern})\\s+(.+)$`, "iu"),
+  ]
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern)
+    const candidate = match?.[1]?.trim()
+
+    if (candidate) {
+      return toTitleCase(cleanupEntityTail(candidate))
     }
   }
 
@@ -185,6 +212,18 @@ export function extractFinancialTitle(message: string) {
   return toTitleCase(stripLeadingCommand(cleanupEntityTail(remainder)))
 }
 
+export function extractLeadName(message: string) {
+  return extractNamedEntity(message, ["lead", "leads"])
+}
+
+export function extractProductName(message: string) {
+  return extractNamedEntity(message, ["produto", "produtos"])
+}
+
+export function extractServiceName(message: string) {
+  return extractNamedEntity(message, ["servico", "servicos", "serviço", "serviços"])
+}
+
 export function extractOperationTitle(message: string, context: OperationsEngineContext) {
   const direct = extractAfterKeyword(message, [
     "chamada ",
@@ -198,6 +237,18 @@ export function extractOperationTitle(message: string, context: OperationsEngine
 
   const raw = stripLeadingCommand(cleanupEntityTail(direct || (isOperationsContext(context) ? message : "")))
   return toTitleCase(raw)
+}
+
+export function extractProjectTitle(message: string) {
+  return extractNamedEntity(message, ["projeto", "projetos"])
+}
+
+export function extractOrderTitle(message: string) {
+  return extractNamedEntity(message, ["ordem", "ordens", "ordem de servico", "ordem de serviço"])
+}
+
+export function extractProcessTitle(message: string) {
+  return extractNamedEntity(message, ["processo", "processos"])
 }
 
 export function extractOperationClientName(message: string) {
@@ -223,6 +274,14 @@ export function extractDocumentTitle(message: string, context: OperationsEngineC
 
   const raw = stripLeadingCommand(cleanupEntityTail(direct || (isDocumentsContext(context) ? message : "")))
   return toTitleCase(raw)
+}
+
+export function extractProposalTitle(message: string) {
+  return extractNamedEntity(message, ["proposta", "propostas"])
+}
+
+export function extractNegotiationTitle(message: string) {
+  return extractNamedEntity(message, ["negociacao", "negociações", "negociacoes", "negociação"])
 }
 
 export function extractMeetingTitle(message: string, context: OperationsEngineContext) {
@@ -264,7 +323,9 @@ export function extractSupportSubject(message: string) {
 
 export function isFinancialSummaryQuery(message: string) {
   const normalized = normalizeEngineText(message)
-  return /\b(qual meu saldo|mostrar resumo financeiro|resumo financeiro|saldo atual|quanto tenho em caixa)\b/.test(normalized)
+  return /\b(qual meu saldo|mostrar resumo financeiro|resumo financeiro|saldo atual|quanto tenho em caixa|qual o saldo final|qual o balanco deste mes|qual o balanco do mes|balanco do mes|gastos do mes|ganhos do mes)\b/.test(
+    normalized,
+  )
 }
 
 export function isClientsCountQuery(message: string) {
@@ -274,7 +335,7 @@ export function isClientsCountQuery(message: string) {
 
 export function isRecentActivityQuery(message: string) {
   const normalized = normalizeEngineText(message)
-  return /\b(listar ultimas atividades|ultimas atividades|ultimos registros|mostrar historico)\b/.test(normalized)
+  return /\b(listar ultimas atividades|ultimas atividades|ultimos registros|mostrar historico|o que fiz hoje)\b/.test(normalized)
 }
 
 export function classifyUnsupportedOperationsRequest(message: string) {
@@ -309,6 +370,82 @@ export function classifyUnsupportedOperationsRequest(message: string) {
   }
 
   return null
+}
+
+export function inferOperationalEntitiesFromMessage(message: string, context: OperationsEngineContext) {
+  const classification = classifyOperationalRequest(message, context)
+  const metadata = buildOperationalModelMetadata(message, context)
+  const price = extractMoneyValue(message)
+  const titleCandidates = {
+    client: extractClientName(message, context),
+    lead: extractLeadName(message),
+    product: extractProductName(message),
+    service: extractServiceName(message),
+    project: extractProjectTitle(message),
+    order: extractOrderTitle(message),
+    process: extractProcessTitle(message),
+    proposal: extractProposalTitle(message),
+    negotiation: extractNegotiationTitle(message),
+    document: extractDocumentTitle(message, context),
+    meeting: extractMeetingTitle(message, context),
+    ticket: extractSupportSubject(message),
+  } as const
+
+  const inferredTitle =
+    (classification.entityType && titleCandidates[classification.entityType as keyof typeof titleCandidates]) || ""
+
+  return {
+    ...metadata,
+    entities: {
+      name:
+        classification.entityType === "client"
+          ? titleCandidates.client
+          : classification.entityType === "lead"
+            ? titleCandidates.lead
+            : classification.entityType === "product"
+              ? titleCandidates.product
+              : classification.entityType === "service"
+                ? titleCandidates.service
+                : null,
+      title:
+        classification.entityType === "project"
+          ? titleCandidates.project
+          : classification.entityType === "order"
+            ? titleCandidates.order
+            : classification.entityType === "process"
+              ? titleCandidates.process
+              : classification.entityType === "proposal"
+                ? titleCandidates.proposal
+                : classification.entityType === "negotiation"
+                  ? titleCandidates.negotiation
+                  : classification.entityType === "document" ||
+                      classification.entityType === "meeting" ||
+                      classification.entityType === "ticket"
+                    ? inferredTitle
+                    : null,
+      amount:
+        classification.entityType === "expense" || classification.entityType === "income" || classification.entityType === "cash_flow"
+          ? price
+          : null,
+      value:
+        classification.entityType === "proposal" || classification.entityType === "negotiation" || classification.entityType === "contract"
+          ? price
+          : null,
+      email: extractEmail(message),
+      phone: extractPhone(message),
+      subject: classification.entityType === "ticket" ? extractSupportSubject(message) : null,
+      category: classification.entityType === "ticket" ? detectSupportCategory(message, context) : null,
+      type:
+        classification.entityType === "document" ||
+        classification.entityType === "contract" ||
+        classification.entityType === "file" ||
+        classification.entityType === "report"
+          ? detectDocumentType(message)
+          : null,
+      clientName: extractOperationClientName(message),
+      description: message.trim(),
+    },
+  }
 }
 
 function hasClientReference(message: string) {
