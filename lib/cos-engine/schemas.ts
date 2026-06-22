@@ -5,6 +5,7 @@ import type {
   OperationsResolvedIntent,
   OperationsIntentSource,
 } from "@/lib/cos-engine/types"
+import type { AssistedActionSuggestion } from "@/lib/cos-engine/assisted-actions"
 import {
   operationalActionTypeValues,
   type OperationalActionType,
@@ -17,6 +18,12 @@ import {
   operationalEntityTypeValues,
   type OperationalEntityType,
 } from "@/lib/cos-engine/entity-fields"
+import {
+  operationsDocumentTypeValues,
+  operationsIntakeTypeValues,
+  type OperationsDocumentType,
+  type OperationsIntakeType,
+} from "@/lib/cos-engine/intake-registry"
 import { z } from "zod"
 
 export const operationsIntentValues = [
@@ -64,6 +71,8 @@ export const operationsIntentEntityKeys = [
   "source",
   "sku",
   "url",
+  "fileName",
+  "fileMimeType",
 ] as const
 
 const defaultReplies: Record<OperationsEngineIntent, string> = {
@@ -113,6 +122,80 @@ function normalizeOperationalActionType(value: string | null | undefined): Opera
     : null
 }
 
+function normalizeIntakeType(value: string | null | undefined) {
+  return value && operationsIntakeTypeValues.includes(value as OperationsIntakeType) ? (value as OperationsIntakeType) : null
+}
+
+function normalizeDocumentType(value: string | null | undefined) {
+  return value && operationsDocumentTypeValues.includes(value as OperationsDocumentType)
+    ? (value as OperationsDocumentType)
+    : null
+}
+
+function normalizeExtractionStatus(value: string | null | undefined) {
+  return value && ["awaiting_file", "classified_only", "preview_ready", "needs_review"].includes(value)
+    ? (value as "awaiting_file" | "classified_only" | "preview_ready" | "needs_review")
+    : null
+}
+
+function normalizeSuggestedActions(value: unknown): AssistedActionSuggestion[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return []
+    }
+
+    const record = item as Record<string, unknown>
+    const actionType = typeof record.actionType === "string" ? normalizeOperationalActionType(record.actionType) : null
+    const entityType = typeof record.entityType === "string" ? normalizeOperationalEntityType(record.entityType) : null
+    const label = typeof record.label === "string" ? record.label.trim() : ""
+    const confidence = typeof record.confidence === "number" ? Math.max(0, Math.min(1, record.confidence)) : 0
+    const requiresConfirmation = record.requiresConfirmation === true
+    const status =
+      record.status === "executable" || record.status === "unsupported_connected_action" || record.status === "blocked"
+        ? record.status
+        : "blocked"
+    const missingFields = Array.isArray(record.missingFields)
+      ? record.missingFields.filter((field): field is string => typeof field === "string" && field.trim().length > 0)
+      : []
+    const extractedFields =
+      record.extractedFields && typeof record.extractedFields === "object" && !Array.isArray(record.extractedFields)
+        ? (record.extractedFields as Record<string, string | number | boolean | null | undefined>)
+        : {}
+
+    if (!label || !actionType || !requiresConfirmation) {
+      return []
+    }
+
+    return [
+      {
+        label,
+        actionType,
+        entityType,
+        extractedFields,
+        missingFields,
+        confidence,
+        requiresConfirmation: true,
+        status,
+      } satisfies AssistedActionSuggestion,
+    ]
+  })
+}
+
+const assistedActionSchema = z.object({
+  label: z.string(),
+  actionType: z.string(),
+  entityType: z.string().nullable(),
+  extractedFields: z.record(z.string(), nullableEntityValueSchema),
+  missingFields: z.array(z.string()),
+  confidence: z.number().min(0).max(1),
+  requiresConfirmation: z.literal(true),
+  status: z.enum(["executable", "unsupported_connected_action", "blocked"]),
+})
+
 export const operationsResolvedIntentSchema = z.object({
   intent: z.enum(operationsIntentValues),
   confidence: z.number().min(0).max(1),
@@ -129,6 +212,15 @@ export const operationsResolvedIntentSchema = z.object({
   clarificationQuestion: z.string().nullable().optional(),
   unsupportedReason: z.string().nullable().optional(),
   unresolvedReference: z.string().nullable().optional(),
+  intakeType: z.string().nullable().optional(),
+  documentType: z.string().nullable().optional(),
+  extractedEntityTypes: z.array(z.string()).optional(),
+  suggestedActions: z.array(assistedActionSchema).optional(),
+  extractionStatus: z.enum(["awaiting_file", "classified_only", "preview_ready", "needs_review"]).nullable().optional(),
+  externalSendIntent: z.boolean().optional(),
+  externalSendBlockedReason: z.string().nullable().optional(),
+  fileName: z.string().nullable().optional(),
+  fileMimeType: z.string().nullable().optional(),
 })
 
 export const operationsOpenAiResponseSchema = operationsResolvedIntentSchema.extend({
@@ -157,6 +249,15 @@ export const operationsOpenAiJsonSchema = {
       "clarificationQuestion",
       "unsupportedReason",
       "unresolvedReference",
+      "intakeType",
+      "documentType",
+      "extractedEntityTypes",
+      "suggestedActions",
+      "extractionStatus",
+      "externalSendIntent",
+      "externalSendBlockedReason",
+      "fileName",
+      "fileMimeType",
     ],
     properties: {
       intent: {
@@ -221,6 +322,77 @@ export const operationsOpenAiJsonSchema = {
       unresolvedReference: {
         anyOf: [{ type: "string" }, { type: "null" }],
       },
+      intakeType: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      documentType: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      extractedEntityTypes: {
+        type: "array",
+        items: {
+          type: "string",
+        },
+      },
+      suggestedActions: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "label",
+            "actionType",
+            "entityType",
+            "extractedFields",
+            "missingFields",
+            "confidence",
+            "requiresConfirmation",
+            "status",
+          ],
+          properties: {
+            label: { type: "string" },
+            actionType: { type: "string" },
+            entityType: { anyOf: [{ type: "string" }, { type: "null" }] },
+            extractedFields: {
+              type: "object",
+              additionalProperties: {
+                anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }],
+              },
+            },
+            missingFields: {
+              type: "array",
+              items: { type: "string" },
+            },
+            confidence: {
+              type: "number",
+              minimum: 0,
+              maximum: 1,
+            },
+            requiresConfirmation: {
+              type: "boolean",
+            },
+            status: {
+              type: "string",
+              enum: ["executable", "unsupported_connected_action", "blocked"],
+            },
+          },
+        },
+      },
+      extractionStatus: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      externalSendIntent: {
+        type: "boolean",
+      },
+      externalSendBlockedReason: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      fileName: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      fileMimeType: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
     },
   },
 } as const
@@ -254,7 +426,8 @@ export function buildResolvedIntentFromDetected(
     intent: detected.intent,
     confidence: detected.intent === "unknown" ? 0 : 1,
     entities: detected.entities,
-    requiresConfirmation: false,
+    requiresConfirmation:
+      (detected.suggestedActions?.length ?? 0) > 0 || detected.externalSendIntent === true,
     missingFields: [],
     unsafeReason: null,
     reply: defaultReplies[detected.intent] ?? defaultReplies.unknown,
@@ -266,6 +439,15 @@ export function buildResolvedIntentFromDetected(
     clarificationQuestion: detected.clarificationQuestion ?? null,
     unsupportedReason: detected.unsupportedReason ?? null,
     unresolvedReference: detected.unresolvedReference ?? null,
+    intakeType: detected.intakeType ?? null,
+    documentType: detected.documentType ?? null,
+    extractedEntityTypes: detected.extractedEntityTypes ?? [],
+    suggestedActions: detected.suggestedActions ?? [],
+    extractionStatus: detected.extractionStatus ?? null,
+    externalSendIntent: detected.externalSendIntent ?? false,
+    externalSendBlockedReason: detected.externalSendBlockedReason ?? null,
+    fileName: detected.fileName ?? null,
+    fileMimeType: detected.fileMimeType ?? null,
   }
 }
 
@@ -300,14 +482,31 @@ export function createEmptyIntentEntities() {
     source: null,
     sku: null,
     url: null,
+    fileName: null,
+    fileMimeType: null,
   } satisfies Record<(typeof operationsIntentEntityKeys)[number], string | number | boolean | null>
 }
 
 export function normalizeResolvedIntent(
-  input: Omit<OperationsResolvedIntent, "area" | "entityType" | "actionType"> & {
+  input: Omit<
+    OperationsResolvedIntent,
+    | "area"
+    | "entityType"
+    | "actionType"
+    | "intakeType"
+    | "documentType"
+    | "extractionStatus"
+    | "extractedEntityTypes"
+    | "suggestedActions"
+  > & {
     area?: string | null
     entityType?: string | null
     actionType?: string | null
+    intakeType?: string | null
+    documentType?: string | null
+    extractionStatus?: string | null
+    extractedEntityTypes?: string[]
+    suggestedActions?: unknown
   },
 ): OperationsResolvedIntent {
   return {
@@ -328,12 +527,24 @@ export function normalizeResolvedIntent(
     missingFields: Array.from(new Set(input.missingFields.filter(Boolean))),
     unsafeReason: input.unsafeReason ?? null,
     reply: input.reply?.trim() || defaultReplies[input.intent] || defaultReplies.unknown,
+    requiresConfirmation: input.requiresConfirmation ?? false,
     area: normalizeOperationalArea(input.area),
     entityType: normalizeOperationalEntityType(input.entityType),
     actionType: normalizeOperationalActionType(input.actionType),
     clarificationQuestion: input.clarificationQuestion ?? null,
     unsupportedReason: input.unsupportedReason ?? null,
     unresolvedReference: input.unresolvedReference ?? null,
+    intakeType: normalizeIntakeType(input.intakeType),
+    documentType: normalizeDocumentType(input.documentType),
+    extractedEntityTypes: (input.extractedEntityTypes ?? []).filter((value): value is OperationalEntityType =>
+      operationalEntityTypeValues.includes(value as OperationalEntityType),
+    ),
+    suggestedActions: normalizeSuggestedActions(input.suggestedActions),
+    extractionStatus: normalizeExtractionStatus(input.extractionStatus),
+    externalSendIntent: input.externalSendIntent ?? false,
+    externalSendBlockedReason: input.externalSendBlockedReason ?? null,
+    fileName: input.fileName ?? null,
+    fileMimeType: input.fileMimeType ?? null,
   }
 }
 

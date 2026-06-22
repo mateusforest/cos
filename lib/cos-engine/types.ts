@@ -3,6 +3,8 @@ import type {
 } from "@/lib/cos-engine/action-registry"
 import type { OperationalArea as CosArea } from "@/lib/cos-engine/entity-registry"
 import type { OperationalEntityType as CosEntityType } from "@/lib/cos-engine/entity-fields"
+import type { AssistedActionSuggestion } from "@/lib/cos-engine/assisted-actions"
+import type { OperationsDocumentType, OperationsIntakeType } from "@/lib/cos-engine/intake-registry"
 
 export type OperationsEngineIntent =
   | "create_client"
@@ -35,6 +37,8 @@ export type OperationsEngineInput = {
   subArea?: string
   idempotencyKey?: string
   conversationMemory?: OperationsConversationMemory
+  fileName?: string
+  fileMimeType?: string
 }
 
 export type OperationsEngineContext = {
@@ -70,6 +74,16 @@ export type OperationsEngineResult = {
   clarificationQuestion?: string | null
   unsupportedReason?: string | null
   unresolvedReference?: string | null
+  intakeType?: OperationsIntakeType | null
+  documentType?: OperationsDocumentType | null
+  fileName?: string | null
+  fileMimeType?: string | null
+  extractedEntityTypes?: CosEntityType[]
+  suggestedActions?: AssistedActionSuggestion[]
+  extractionStatus?: "awaiting_file" | "classified_only" | "preview_ready" | "needs_review" | null
+  externalSendIntent?: boolean
+  externalSendBlockedReason?: string | null
+  requiresConfirmation?: boolean
   entities?: Record<string, string | number | boolean | null | undefined>
 }
 
@@ -91,6 +105,15 @@ export type DetectedIntent = {
   clarificationQuestion?: string | null
   unsupportedReason?: string | null
   unresolvedReference?: string | null
+  intakeType?: OperationsIntakeType | null
+  documentType?: OperationsDocumentType | null
+  extractedEntityTypes?: CosEntityType[]
+  suggestedActions?: AssistedActionSuggestion[]
+  extractionStatus?: "awaiting_file" | "classified_only" | "preview_ready" | "needs_review" | null
+  externalSendIntent?: boolean
+  externalSendBlockedReason?: string | null
+  fileName?: string | null
+  fileMimeType?: string | null
 }
 
 export type OperationsIntentUsage = {
@@ -115,6 +138,15 @@ export type OperationsResolvedIntent = {
   clarificationQuestion?: string | null
   unsupportedReason?: string | null
   unresolvedReference?: string | null
+  intakeType?: OperationsIntakeType | null
+  documentType?: OperationsDocumentType | null
+  extractedEntityTypes?: CosEntityType[]
+  suggestedActions?: AssistedActionSuggestion[]
+  extractionStatus?: "awaiting_file" | "classified_only" | "preview_ready" | "needs_review" | null
+  externalSendIntent?: boolean
+  externalSendBlockedReason?: string | null
+  fileName?: string | null
+  fileMimeType?: string | null
 }
 
 export type OperationsConversationClient = {

@@ -109,6 +109,10 @@ function buildMissingFieldMessage(
     return "Pode me descrever o problema para eu abrir o chamado?"
   }
 
+  if (missingFields.includes("file")) {
+    return "Envie o arquivo, documento ou foto para eu preparar a analise."
+  }
+
   return "Preciso de mais informacoes para executar essa solicitacao."
 }
 
@@ -197,6 +201,16 @@ export function validateIntentPayload({
   }
 
   if (normalizedResolvedIntent.intent === "unknown") {
+    if (normalizedResolvedIntent.externalSendIntent && normalizedResolvedIntent.externalSendBlockedReason) {
+      return {
+        ok: false,
+        resolvedIntent: normalizedResolvedIntent,
+        message:
+          "Entendi que voce quer enviar este documento, mas o envio externo ainda nao esta conectado. Posso preparar a acao e indicar os dados necessarios.",
+        executionStatus: "not_executed",
+      }
+    }
+
     const derivedMissingFields =
       normalizedResolvedIntent.missingFields.length > 0
         ? normalizedResolvedIntent.missingFields
@@ -205,12 +219,19 @@ export function validateIntentPayload({
             actionType: normalizedResolvedIntent.actionType ?? null,
             entities: normalizedResolvedIntent.entities,
           })
+    const intakeMissingFields =
+      normalizedResolvedIntent.extractionStatus === "awaiting_file" ||
+      ((!normalizedResolvedIntent.intakeType || normalizedResolvedIntent.intakeType === "unknown") &&
+        (normalizedResolvedIntent.documentType || normalizedResolvedIntent.suggestedActions?.length))
+          ? ["file"]
+          : []
+    const mergedMissingFields = Array.from(new Set([...derivedMissingFields, ...intakeMissingFields]))
     const clarificationQuestion =
       normalizedResolvedIntent.clarificationQuestion ||
       buildOperationalClarificationQuestion({
         entityType: normalizedResolvedIntent.entityType ?? null,
         actionType: normalizedResolvedIntent.actionType ?? null,
-        missingFields: derivedMissingFields,
+        missingFields: mergedMissingFields,
       })
     const unsupportedReply =
       normalizedResolvedIntent.unsupportedReason ||
@@ -223,7 +244,7 @@ export function validateIntentPayload({
       ok: false,
       resolvedIntent: {
         ...normalizedResolvedIntent,
-        missingFields: derivedMissingFields,
+        missingFields: mergedMissingFields,
         clarificationQuestion: clarificationQuestion ?? null,
         unsupportedReason: unsupportedReply ?? normalizedResolvedIntent.unsupportedReason ?? null,
       },

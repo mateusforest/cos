@@ -58,6 +58,16 @@ export async function runOperationsEngine(
       clarificationQuestion: validation.resolvedIntent.clarificationQuestion ?? null,
       unsupportedReason: validation.resolvedIntent.unsupportedReason ?? null,
       unresolvedReference: validation.resolvedIntent.unresolvedReference ?? null,
+      intakeType: validation.resolvedIntent.intakeType ?? null,
+      documentType: validation.resolvedIntent.documentType ?? null,
+      fileName: validation.resolvedIntent.fileName ?? null,
+      fileMimeType: validation.resolvedIntent.fileMimeType ?? null,
+      extractedEntityTypes: validation.resolvedIntent.extractedEntityTypes ?? [],
+      suggestedActions: validation.resolvedIntent.suggestedActions ?? [],
+      extractionStatus: validation.resolvedIntent.extractionStatus ?? null,
+      externalSendIntent: validation.resolvedIntent.externalSendIntent ?? false,
+      externalSendBlockedReason: validation.resolvedIntent.externalSendBlockedReason ?? null,
+      requiresConfirmation: validation.resolvedIntent.requiresConfirmation ?? false,
       entities: validation.resolvedIntent.entities,
     }
   }

@@ -3,6 +3,8 @@ import {
   buildOperationalModelMetadata,
   classifyOperationalRequest,
 } from "@/lib/cos-engine/operational-model"
+import { classifyFileIntake } from "@/lib/cos-engine/file-intake"
+import { findQuickActionByLabel } from "@/lib/cos-engine/intake-registry"
 import {
   isClientsContext,
   isDocumentsContext,
@@ -321,6 +323,16 @@ export function extractSupportSubject(message: string) {
   return toTitleCase(raw)
 }
 
+export function extractQuotedOrTrailingTarget(message: string, aliases: string[]) {
+  const named = extractNamedEntity(message, aliases)
+  if (named) {
+    return named
+  }
+
+  const cleaned = cleanupEntityTail(message)
+  return cleaned ? toTitleCase(cleaned) : ""
+}
+
 export function isFinancialSummaryQuery(message: string) {
   const normalized = normalizeEngineText(message)
   return /\b(qual meu saldo|mostrar resumo financeiro|resumo financeiro|saldo atual|quanto tenho em caixa|qual o saldo final|qual o balanco deste mes|qual o balanco do mes|balanco do mes|gastos do mes|ganhos do mes)\b/.test(
@@ -362,6 +374,14 @@ export function classifyUnsupportedOperationsRequest(message: string) {
     }
   }
 
+  if (/\b(envie|enviar|mande|mandar|compartilhe|compartilhar)\b/.test(normalized) && /\b(contrato|documento|relatorio|relatório|email|e-mail|whatsapp)\b/.test(normalized)) {
+    return {
+      kind: "external_send_requires_confirmation" as const,
+      message:
+        "Entendi que voce quer enviar este documento, mas o envio externo ainda nao esta conectado. Posso preparar a acao e indicar os dados necessarios.",
+    }
+  }
+
   if (/\b(edite|editar|altere|alterar|atualize|atualizar)\b/.test(normalized)) {
     return {
       kind: "edit" as const,
@@ -372,9 +392,36 @@ export function classifyUnsupportedOperationsRequest(message: string) {
   return null
 }
 
-export function inferOperationalEntitiesFromMessage(message: string, context: OperationsEngineContext) {
+export function inferOperationalEntitiesFromMessage(
+  message: string,
+  context: OperationsEngineContext,
+  attachment?: { fileName?: string | null; fileMimeType?: string | null },
+): {
+  area: ReturnType<typeof classifyOperationalRequest>["area"]
+  entityType: ReturnType<typeof classifyOperationalRequest>["entityType"]
+  actionType: ReturnType<typeof classifyOperationalRequest>["actionType"]
+  clarificationQuestion: string | null
+  unsupportedReason: string | null
+  unresolvedReference?: string | null
+  entities: Record<string, string | number | boolean | null | undefined>
+  intakeType: import("@/lib/cos-engine/intake-registry").OperationsIntakeType
+  documentType: import("@/lib/cos-engine/intake-registry").OperationsDocumentType
+  extractedEntityTypes: import("@/lib/cos-engine/entity-fields").OperationalEntityType[]
+  suggestedActions: import("@/lib/cos-engine/assisted-actions").AssistedActionSuggestion[]
+  extractionStatus: "awaiting_file" | "classified_only" | "preview_ready" | "needs_review"
+  externalSendIntent: boolean
+  externalSendBlockedReason: string | null
+  fileName: string | null
+  fileMimeType: string | null
+} {
   const classification = classifyOperationalRequest(message, context)
   const metadata = buildOperationalModelMetadata(message, context)
+  const intake = classifyFileIntake({
+    message,
+    fileName: attachment?.fileName ?? null,
+    fileMimeType: attachment?.fileMimeType ?? null,
+    entities: {},
+  })
   const price = extractMoneyValue(message)
   const titleCandidates = {
     client: extractClientName(message, context),
@@ -445,7 +492,43 @@ export function inferOperationalEntitiesFromMessage(message: string, context: Op
       clientName: extractOperationClientName(message),
       description: message.trim(),
     },
+    intakeType: intake.intakeType,
+    documentType: intake.documentType,
+    extractedEntityTypes: intake.extractedEntityTypes,
+    suggestedActions: intake.suggestedActions,
+    extractionStatus: intake.extractionStatus,
+    externalSendIntent: intake.externalSendIntent,
+    externalSendBlockedReason: intake.externalSendBlockedReason,
+    fileName: attachment?.fileName ?? null,
+    fileMimeType: attachment?.fileMimeType ?? null,
   }
+}
+
+export function looksLikeFileIntake(message: string) {
+  const normalized = normalizeEngineText(message)
+
+  return /\b(analisar arquivo|analisar contrato|ler documento|extrair dados|anexar arquivo|anexar uma foto|cadastrar foto|documento anexado|arquivo anexado)\b/.test(
+    normalized,
+  )
+}
+
+export function looksLikeExternalSend(message: string) {
+  const normalized = normalizeEngineText(message)
+
+  return /\b(envie|enviar|mande|mandar|compartilhe|compartilhar)\b/.test(normalized) && /\b(email|e-mail|whatsapp|contrato|documento|relatorio|relatório)\b/.test(normalized)
+}
+
+export function inferQuickActionFromMessage(message: string) {
+  const labels = ["cliente", "operacao", "contrato", "financeiro", "reuniao", "equipe", "arquivo", "foto", "documento", "tarefa", "relatorio", "formulario", "marketing", "integracao", "suporte"]
+
+  for (const label of labels) {
+    const action = findQuickActionByLabel(label)
+    if (action && normalizeEngineText(message).includes(normalizeEngineText(label))) {
+      return action
+    }
+  }
+
+  return null
 }
 
 function hasClientReference(message: string) {

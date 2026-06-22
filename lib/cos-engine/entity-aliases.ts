@@ -20,6 +20,7 @@ export const operationalEntityAliases = {
   process: ["processo", "processos", "onboarding"],
   proposal: ["proposta", "propostas"],
   negotiation: ["negociacao", "negociação", "negociacoes", "negociações", "funil"],
+  task: ["tarefa", "tarefas", "to-do", "todo"],
   income: ["ganho", "ganhos", "receita", "receitas", "entrada", "entradas", "faturamento", "venda", "vendas"],
   expense: ["gasto", "gastos", "despesa", "despesas", "conta", "contas"],
   cash_flow: ["fluxo de caixa", "caixa", "saldo", "balanco", "balanço"],
@@ -27,11 +28,13 @@ export const operationalEntityAliases = {
   document: ["documento", "documentos"],
   contract: ["contrato", "contratos"],
   file: ["arquivo", "arquivos"],
+  form: ["formulario", "formulário", "formularios", "formulários"],
   report: ["relatorio", "relatório", "relatorios", "relatórios"],
   meeting: ["reuniao", "reunião", "reunioes", "reuniões", "meet"],
   ticket: ["chamado", "chamados", "suporte", "ticket", "tickets"],
   system_log: ["log", "logs", "alerta", "alertas"],
   integration: ["integracao", "integração", "integracoes", "integrações"],
+  marketing_action: ["marketing", "campanha", "campanhas", "acao de marketing", "ação de marketing"],
 } as const
 
 export const operationalReferenceAliases = [

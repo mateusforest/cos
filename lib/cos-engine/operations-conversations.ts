@@ -65,12 +65,15 @@ export function inferOperationsConversationAreaFromIntent(detected: DetectedInte
     if (detected.area === "operacoes" && detected.entityType === "project") return "operacoes/projetos"
     if (detected.area === "operacoes" && detected.entityType === "order") return "operacoes/ordens"
     if (detected.area === "operacoes" && detected.entityType === "process") return "operacoes/processos"
+    if (detected.area === "operacoes" && detected.entityType === "task") return "operacoes"
     if (detected.area === "vendas" && detected.entityType === "proposal") return "vendas/propostas"
     if (detected.area === "vendas" && detected.entityType === "negotiation") return "vendas/negociacoes"
+    if (detected.area === "vendas" && detected.entityType === "marketing_action") return "vendas"
     if (detected.area === "financeiro" && detected.entityType === "income") return "financeiro/ganhos"
     if (detected.area === "financeiro" && detected.entityType === "expense") return "financeiro/gastos"
     if (detected.area === "documentos" && detected.entityType === "contract") return "documentos/contratos"
     if (detected.area === "documentos" && detected.entityType === "file") return "documentos/arquivos"
+    if (detected.area === "documentos" && detected.entityType === "form") return "documentos"
     if (detected.area === "documentos" && detected.entityType === "report") return "documentos/relatorios"
     return detected.area
   }

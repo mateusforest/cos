@@ -12,6 +12,8 @@ import {
   operationsOpenAiResponseSchema,
   operationsOpenAiTimeoutMs,
 } from "@/lib/cos-engine/schemas"
+import { buildIntakePromptSummary } from "@/lib/cos-engine/file-intake"
+import { intakeQuickActionRegistry } from "@/lib/cos-engine/intake-registry"
 import { summarizeOperationalModelForPrompt } from "@/lib/cos-engine/operational-model"
 import type {
   OperationsConversationMemory,
@@ -28,6 +30,11 @@ const operationsSystemPrompt = [
   "Sua unica funcao e interpretar a mensagem do usuario e responder somente JSON valido.",
   "O COS organiza o sistema em areas como cadastros, operacoes, vendas, financeiro, equipe, documentos, reunioes, suporte e sistema.",
   "Sempre tente identificar area, entityType e actionType.",
+  "O COS tambem entende intake de arquivos, fotos, documentos anexados e acoes do modal +.",
+  "Voce pode classificar intakeType, documentType, extractedEntityTypes e suggestedActions, mas nunca deve dizer que salvou ou enviou algo.",
+  "Se for intake de arquivo, foto ou documento, a resposta deve priorizar preview, confirmacao e acoes assistidas.",
+  "Nenhum dado extraido pode ser salvo automaticamente.",
+  "Envio externo por email ou WhatsApp nunca deve executar automaticamente e deve exigir confirmacao e integracao ativa.",
   "Nunca diga que executou uma acao.",
   "Nunca confirme criacao, edicao ou exclusao.",
   "Nunca invente IDs, clientes existentes, valores, datas ou resultados.",
@@ -37,6 +44,7 @@ const operationsSystemPrompt = [
   "Para create_financial_income e create_financial_expense, amount e title sao obrigatorios.",
   "Para create_document, o campo title e obrigatorio.",
   "Quando a intencao for compreensivel mas a execucao ainda nao existir, use intent unknown e preencha area, entityType, actionType e unsupportedReason.",
+  "Se o pedido envolver arquivo, contrato, foto, documento, extracao ou envio externo, voce pode manter intent unknown e retornar metadata estruturada de intake.",
   "Edicao segura de cliente e permitida apenas via intent update_client.",
   "Pedidos de exclusao, transferencia, pagamento, envio de mensagem ou integracao externa devem virar intent unknown com unsafeReason.",
   "Se faltar dado obrigatorio, preencha missingFields corretamente.",
@@ -51,9 +59,15 @@ function buildFallbackResolution(
   context: OperationsEngineContext,
   conversationMemory: OperationsConversationMemory | undefined,
   fallbackReason: OperationsIntentResolution["fallbackReason"],
-  input?: Partial<Pick<OperationsIntentResolution, "model" | "latencyMs" | "errorMessage" | "usage">>,
+  input?: Partial<Pick<OperationsIntentResolution, "model" | "latencyMs" | "errorMessage" | "usage">> & {
+    fileName?: string | null
+    fileMimeType?: string | null
+  },
 ): OperationsIntentResolution {
-  const detectedIntent = detectOperationsIntent(message, context, conversationMemory)
+  const detectedIntent = detectOperationsIntent(message, context, conversationMemory, {
+    fileName: input?.fileName ?? null,
+    fileMimeType: input?.fileMimeType ?? null,
+  })
 
   return {
     resolvedIntent: buildResolvedIntentFromDetected(detectedIntent, "fallback"),
@@ -66,7 +80,12 @@ function buildFallbackResolution(
   }
 }
 
-function buildUserPrompt(message: string, context: OperationsEngineContext, conversationMemory?: OperationsConversationMemory) {
+function buildUserPrompt(
+  message: string,
+  context: OperationsEngineContext,
+  conversationMemory?: OperationsConversationMemory,
+  attachment?: { fileName?: string; fileMimeType?: string },
+) {
   return JSON.stringify(
     {
       task: "Interpretar a intencao operacional do usuario para o COS.",
@@ -101,8 +120,22 @@ function buildUserPrompt(message: string, context: OperationsEngineContext, conv
           : null,
       },
       message,
+      attachment: {
+        fileName: attachment?.fileName ?? null,
+        fileMimeType: attachment?.fileMimeType ?? null,
+      },
       requiredEntityKeys: Object.keys(createEmptyIntentEntities()),
       operationalModel: summarizeOperationalModelForPrompt(),
+      intakeModel: {
+        quickActions: Object.entries(intakeQuickActionRegistry).map(([key, value]) => ({
+          key,
+          ...value,
+        })),
+        promptHints: buildIntakePromptSummary({
+          intakeType: null,
+          documentType: null,
+        }),
+      },
       guidance: {
         create_client: ["name"],
         update_client: ["clientId_or_clientName", "one_or_more_of_name_email_phone_company_notes"],
@@ -113,6 +146,15 @@ function buildUserPrompt(message: string, context: OperationsEngineContext, conv
         create_meeting: ["title"],
         create_support_ticket: ["subject", "description"],
         unknown: ["area", "entityType", "actionType", "unsupportedReason_or_clarificationQuestion_when_applicable"],
+        intake: [
+          "intakeType",
+          "documentType",
+          "extractedEntityTypes",
+          "suggestedActions",
+          "requiresConfirmation",
+          "externalSendIntent",
+          "externalSendBlockedReason",
+        ],
       },
     },
     null,
@@ -178,7 +220,10 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
   const conversationMemory = input.conversationMemory
 
   if (!isOperationsOpenAiConfigured()) {
-    return buildFallbackResolution(message, context, conversationMemory, "openai_not_configured")
+    return buildFallbackResolution(message, context, conversationMemory, "openai_not_configured", {
+      fileName: input.fileName ?? null,
+      fileMimeType: input.fileMimeType ?? null,
+    })
   }
 
   const controller = new AbortController()
@@ -203,7 +248,15 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
           },
           {
             role: "user",
-            content: [{ type: "input_text", text: buildUserPrompt(message, context, conversationMemory) }],
+            content: [
+              {
+                type: "input_text",
+                text: buildUserPrompt(message, context, conversationMemory, {
+                  fileName: input.fileName,
+                  fileMimeType: input.fileMimeType,
+                }),
+              },
+            ],
           },
         ],
         text: {
@@ -224,6 +277,8 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
         model: operationsOpenAiModel,
         latencyMs,
         usage,
+        fileName: input.fileName ?? null,
+        fileMimeType: input.fileMimeType ?? null,
         errorMessage:
           typeof payload.error === "object" &&
           payload.error &&
@@ -239,6 +294,8 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
         model: operationsOpenAiModel,
         latencyMs,
         usage,
+        fileName: input.fileName ?? null,
+        fileMimeType: input.fileMimeType ?? null,
         errorMessage: "OpenAI nao retornou output_text valido.",
       })
     }
@@ -249,6 +306,8 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
         model: operationsOpenAiModel,
         latencyMs,
         usage,
+        fileName: input.fileName ?? null,
+        fileMimeType: input.fileMimeType ?? null,
         errorMessage: "OpenAI retornou JSON fora do contrato esperado.",
       })
     }
@@ -258,6 +317,8 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
         model: operationsOpenAiModel,
         latencyMs,
         usage,
+        fileName: input.fileName ?? null,
+        fileMimeType: input.fileMimeType ?? null,
       })
     }
 
@@ -266,6 +327,8 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
         model: operationsOpenAiModel,
         latencyMs,
         usage,
+        fileName: input.fileName ?? null,
+        fileMimeType: input.fileMimeType ?? null,
       })
     }
 
@@ -280,6 +343,8 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
         model: operationsOpenAiModel,
         latencyMs,
         usage,
+        fileName: input.fileName ?? null,
+        fileMimeType: input.fileMimeType ?? null,
       })
     }
 
@@ -288,6 +353,8 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
         model: operationsOpenAiModel,
         latencyMs,
         usage,
+        fileName: input.fileName ?? null,
+        fileMimeType: input.fileMimeType ?? null,
       })
     }
 
@@ -308,6 +375,8 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
       return buildFallbackResolution(message, context, conversationMemory, "openai_timeout", {
         model: operationsOpenAiModel,
         latencyMs,
+        fileName: input.fileName ?? null,
+        fileMimeType: input.fileMimeType ?? null,
         errorMessage,
       })
     }
@@ -315,6 +384,8 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
     return buildFallbackResolution(message, context, conversationMemory, "openai_request_failed", {
       model: operationsOpenAiModel,
       latencyMs,
+      fileName: input.fileName ?? null,
+      fileMimeType: input.fileMimeType ?? null,
       errorMessage,
     })
   } finally {

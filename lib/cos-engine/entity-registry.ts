@@ -107,6 +107,14 @@ export const operationalEntityRegistry: Record<OperationalEntityType, Operationa
     supportedActionKinds: ["create", "update", "read", "list", "search"],
     executableActionKinds: [],
   },
+  task: {
+    label: "tarefa",
+    area: "operacoes",
+    aliases: operationalEntityAliases.task,
+    fields: operationalEntityFields.task,
+    supportedActionKinds: ["create", "update", "read", "list", "search"],
+    executableActionKinds: [],
+  },
   income: {
     label: "ganho",
     area: "financeiro",
@@ -163,6 +171,14 @@ export const operationalEntityRegistry: Record<OperationalEntityType, Operationa
     supportedActionKinds: ["create", "update", "read", "list"],
     executableActionKinds: [],
   },
+  form: {
+    label: "formulario",
+    area: "documentos",
+    aliases: operationalEntityAliases.form,
+    fields: operationalEntityFields.form,
+    supportedActionKinds: ["create", "update", "read", "list", "generate"],
+    executableActionKinds: [],
+  },
   report: {
     label: "relatorio",
     area: "documentos",
@@ -201,6 +217,14 @@ export const operationalEntityRegistry: Record<OperationalEntityType, Operationa
     aliases: operationalEntityAliases.integration,
     fields: operationalEntityFields.integration,
     supportedActionKinds: ["read", "list", "search", "open"],
+    executableActionKinds: [],
+  },
+  marketing_action: {
+    label: "acao de marketing",
+    area: "vendas",
+    aliases: operationalEntityAliases.marketing_action,
+    fields: operationalEntityFields.marketing_action,
+    supportedActionKinds: ["create", "update", "read", "list"],
     executableActionKinds: [],
   },
 }

@@ -14,6 +14,7 @@ import {
   extractOperationTitle,
   extractPhone,
   inferOperationalEntitiesFromMessage,
+  inferQuickActionFromMessage,
   extractSupportSubject,
   inferFinancialType,
   isClientsCountQuery,
@@ -25,6 +26,8 @@ import {
   looksLikeCreateMeeting,
   looksLikeCreateOperation,
   looksLikeCreateSupportTicket,
+  looksLikeExternalSend,
+  looksLikeFileIntake,
   looksLikeUpdateClient,
 } from "@/lib/cos-engine/operations-tools"
 
@@ -32,6 +35,7 @@ export function detectOperationsIntent(
   message: string,
   context: OperationsEngineContext,
   conversationMemory?: OperationsConversationMemory,
+  attachment?: { fileName?: string | null; fileMimeType?: string | null },
 ): DetectedIntent {
   if (isClientsCountQuery(message)) {
     return {
@@ -174,7 +178,31 @@ export function detectOperationsIntent(
     }
   }
 
-  const operationalFallback = inferOperationalEntitiesFromMessage(message, context)
+  const operationalFallback = inferOperationalEntitiesFromMessage(message, context, attachment)
+  const quickAction = inferQuickActionFromMessage(message)
+
+  if (looksLikeFileIntake(message) || looksLikeExternalSend(message) || quickAction) {
+    return {
+      intent: "unknown",
+      entities: operationalFallback.entities,
+      area: quickAction?.entityType === "ticket" ? "suporte" : operationalFallback.area,
+      entityType: quickAction?.entityType ?? operationalFallback.entityType,
+      actionType: quickAction?.actionType ?? operationalFallback.actionType,
+      clarificationQuestion: operationalFallback.clarificationQuestion,
+      unsupportedReason:
+        quickAction?.status === "unsupported_connected_action"
+          ? `Entendi a acao ${quickAction.label}, mas essa execucao ainda nao esta conectada.`
+          : operationalFallback.unsupportedReason,
+      unresolvedReference: operationalFallback.unresolvedReference,
+      intakeType: operationalFallback.intakeType,
+      documentType: operationalFallback.documentType,
+      extractedEntityTypes: operationalFallback.extractedEntityTypes,
+      suggestedActions: operationalFallback.suggestedActions,
+      extractionStatus: operationalFallback.extractionStatus,
+      externalSendIntent: operationalFallback.externalSendIntent,
+      externalSendBlockedReason: operationalFallback.externalSendBlockedReason,
+    }
+  }
 
   return {
     intent: "unknown",
@@ -185,5 +213,12 @@ export function detectOperationsIntent(
     clarificationQuestion: operationalFallback.clarificationQuestion,
     unsupportedReason: operationalFallback.unsupportedReason,
     unresolvedReference: operationalFallback.unresolvedReference,
+    intakeType: operationalFallback.intakeType,
+    documentType: operationalFallback.documentType,
+    extractedEntityTypes: operationalFallback.extractedEntityTypes,
+    suggestedActions: operationalFallback.suggestedActions,
+    extractionStatus: operationalFallback.extractionStatus,
+    externalSendIntent: operationalFallback.externalSendIntent,
+    externalSendBlockedReason: operationalFallback.externalSendBlockedReason,
   }
 }

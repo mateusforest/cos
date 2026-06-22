@@ -11,6 +11,7 @@ export const operationalActionAliases = {
   extract: ["extrair", "extraia"],
   generate: ["gere", "gerar"],
   open: ["abra", "abrir", "iniciar", "inicie"],
+  send: ["envie", "enviar", "mande", "mandar", "compartilhe", "compartilhar"],
   classify: ["classifique", "classificar"],
   ask_clarification: ["qual", "quais", "sobre qual", "de qual"],
 } as const

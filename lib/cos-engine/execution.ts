@@ -54,6 +54,17 @@ function buildExecutionSuccess(input: Omit<OperationsEngineResult, "ok" | "execu
     clarificationQuestion: input.clarificationQuestion ?? input.resolvedIntent?.clarificationQuestion ?? null,
     unsupportedReason: input.unsupportedReason ?? input.resolvedIntent?.unsupportedReason ?? null,
     unresolvedReference: input.unresolvedReference ?? input.resolvedIntent?.unresolvedReference ?? null,
+    intakeType: input.intakeType ?? input.resolvedIntent?.intakeType ?? null,
+    documentType: input.documentType ?? input.resolvedIntent?.documentType ?? null,
+    fileName: input.fileName ?? input.resolvedIntent?.fileName ?? null,
+    fileMimeType: input.fileMimeType ?? input.resolvedIntent?.fileMimeType ?? null,
+    extractedEntityTypes: input.extractedEntityTypes ?? input.resolvedIntent?.extractedEntityTypes ?? [],
+    suggestedActions: input.suggestedActions ?? input.resolvedIntent?.suggestedActions ?? [],
+    extractionStatus: input.extractionStatus ?? input.resolvedIntent?.extractionStatus ?? null,
+    externalSendIntent: input.externalSendIntent ?? input.resolvedIntent?.externalSendIntent ?? false,
+    externalSendBlockedReason:
+      input.externalSendBlockedReason ?? input.resolvedIntent?.externalSendBlockedReason ?? null,
+    requiresConfirmation: input.requiresConfirmation ?? input.resolvedIntent?.requiresConfirmation ?? false,
     ...input,
   }
 }
@@ -77,6 +88,16 @@ function buildExecutionFailure(
     clarificationQuestion: resolvedIntent?.clarificationQuestion ?? null,
     unsupportedReason: resolvedIntent?.unsupportedReason ?? null,
     unresolvedReference: resolvedIntent?.unresolvedReference ?? null,
+    intakeType: resolvedIntent?.intakeType ?? null,
+    documentType: resolvedIntent?.documentType ?? null,
+    fileName: resolvedIntent?.fileName ?? null,
+    fileMimeType: resolvedIntent?.fileMimeType ?? null,
+    extractedEntityTypes: resolvedIntent?.extractedEntityTypes ?? [],
+    suggestedActions: resolvedIntent?.suggestedActions ?? [],
+    extractionStatus: resolvedIntent?.extractionStatus ?? null,
+    externalSendIntent: resolvedIntent?.externalSendIntent ?? false,
+    externalSendBlockedReason: resolvedIntent?.externalSendBlockedReason ?? null,
+    requiresConfirmation: resolvedIntent?.requiresConfirmation ?? false,
     entities: resolvedIntent?.entities,
   }
 }
