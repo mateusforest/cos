@@ -1,5 +1,6 @@
 export type OperationsEngineIntent =
   | "create_client"
+  | "update_client"
   | "create_financial_income"
   | "create_financial_expense"
   | "create_operation"
@@ -27,6 +28,7 @@ export type OperationsEngineInput = {
   area?: string
   subArea?: string
   idempotencyKey?: string
+  conversationMemory?: OperationsConversationMemory
 }
 
 export type OperationsEngineContext = {
@@ -51,6 +53,12 @@ export type OperationsEngineResult = {
   conversationArea?: string
   error?: string
   executionStatus: OperationsExecutionStatus
+  resolvedIntent?: OperationsResolvedIntent
+  targetType?: "client" | null
+  targetId?: string
+  targetName?: string
+  updatedFields?: string[]
+  entities?: Record<string, string | number | boolean | null | undefined>
 }
 
 export type PersistedOperationsChatMessage = {
@@ -85,6 +93,22 @@ export type OperationsResolvedIntent = {
   source: OperationsIntentSource
 }
 
+export type OperationsConversationClient = {
+  id: string
+  name: string
+  email?: string | null
+  phone?: string | null
+  company?: string | null
+  notes?: string | null
+}
+
+export type OperationsConversationMemory = {
+  lastSuccessfulAction: OperationsEngineIntent | null
+  lastResultId: string | null
+  lastEntities: Record<string, string | number | boolean | null | undefined>
+  lastClient: OperationsConversationClient | null
+}
+
 export type OperationsIntentResolution = {
   resolvedIntent: OperationsResolvedIntent
   model: string | null
@@ -98,6 +122,7 @@ export type OperationsIntentResolution = {
 export type ValidateIntentPayloadInput = {
   resolvedIntent: OperationsResolvedIntent
   message: string
+  conversationMemory?: OperationsConversationMemory
 }
 
 export type ValidateIntentPayloadResult =

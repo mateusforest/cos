@@ -5,6 +5,8 @@ import {
   buildOperationsIdempotencyKey,
   findRecentDuplicateExecution,
 } from "@/lib/cos-engine/idempotency"
+import { buildConversationMemory } from "@/lib/cos-engine/conversation-memory"
+import { buildConversationContextWindow } from "@/lib/cos-engine/context-window"
 import { resolveOperationsIntent } from "@/lib/cos-engine/openai-intent"
 import { createSupabaseAdminClient } from "@/lib/supabase/server"
 import { runOperationsEngine } from "@/lib/cos-engine/operations-engine"
@@ -44,6 +46,7 @@ type QueryError = { message: string } | null
 type SelectChain = {
   eq: (column: string, value: string) => SelectChain
   order: (column: string, options: { ascending: boolean }) => SelectChain
+  limit?: (value: number) => Promise<unknown>
   maybeSingle: () => Promise<unknown>
 }
 
@@ -139,6 +142,69 @@ async function findOrCreateConversation({
   return { conversation: createdConversation }
 }
 
+async function findConversation({
+  adminClient,
+  workspaceId,
+  userId,
+  area,
+}: {
+  adminClient: OperationsAdminClient
+  workspaceId: string
+  userId: string
+  area: string
+}) {
+  const conversationsTable = adminClient.from("ai_conversations") as {
+    select: (columns: string) => SelectChain
+  }
+
+  const lookupResult = (await conversationsTable
+    .select("id, workspace_id, user_id, area, title")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", userId)
+    .eq("area", area)
+    .maybeSingle()) as { data: ConversationRow | null; error: QueryError }
+
+  if (lookupResult.error) {
+    return { error: lookupResult.error.message }
+  }
+
+  return { conversation: lookupResult.data as ConversationRow | null }
+}
+
+async function getRecentConversationRows({
+  adminClient,
+  conversationId,
+  limit = 10,
+}: {
+  adminClient: OperationsAdminClient
+  conversationId: string
+  limit?: number
+}) {
+  const messagesTable = adminClient.from("ai_messages") as {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => {
+        order: (column: string, options: { ascending: boolean }) => {
+          limit: (value: number) => Promise<unknown>
+        }
+      }
+    }
+  }
+
+  const messagesQuery = (await messagesTable
+    .select("id, conversation_id, role, content, metadata, created_at")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(limit)) as { data: MessageRow[] | null; error: QueryError }
+
+  if (messagesQuery.error) {
+    return { error: messagesQuery.error.message }
+  }
+
+  return {
+    rows: [...(messagesQuery.data ?? [])].reverse(),
+  }
+}
+
 async function saveConversationMessage({
   adminClient,
   conversationId,
@@ -214,9 +280,39 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
     area: input.area,
     subArea: input.subArea,
   })
+  const existingConversationResult = await findConversation({
+    adminClient: actor.adminClient,
+    workspaceId: actor.access.workspace.id,
+    userId: actor.user.id,
+    area: explicitConversationArea,
+  })
+
+  if ("error" in existingConversationResult) {
+    return {
+      ok: false,
+      message: "Nao consegui recuperar o contexto desta conversa agora. Tente novamente em instantes.",
+    }
+  }
+
+  const recentRowsResult = existingConversationResult.conversation
+    ? await getRecentConversationRows({
+        adminClient: actor.adminClient,
+        conversationId: existingConversationResult.conversation.id,
+      })
+    : { rows: [] as MessageRow[] }
+
+  if ("error" in recentRowsResult) {
+    return {
+      ok: false,
+      message: "Nao consegui recuperar o contexto recente desta conversa agora. Tente novamente em instantes.",
+    }
+  }
+
+  const conversationMemory = buildConversationMemory(buildConversationContextWindow(recentRowsResult.rows))
   const intentResolution = await resolveOperationsIntent({
     ...input,
     message,
+    conversationMemory,
   })
   const resolvedIntent = intentResolution.resolvedIntent
   const detectedIntent = {
@@ -281,6 +377,7 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
       missingFields: resolvedIntent.missingFields,
       unsafeReason: resolvedIntent.unsafeReason ?? null,
       latencyMs: intentResolution.latencyMs,
+      entities: resolvedIntent.entities,
     },
   })
 
@@ -335,6 +432,7 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
         executionStatus: duplicateExecution.executionStatus,
         suggestedLabel: duplicateExecution.suggestedLabel ?? null,
         suggestedHref: duplicateExecution.suggestedHref ?? null,
+        entities: resolvedIntent.entities,
       },
     })
 
@@ -348,7 +446,13 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
   let result: OperationsEngineResult
 
   try {
-    result = await runOperationsEngine(input, resolvedIntent)
+    result = await runOperationsEngine(
+      {
+        ...input,
+        conversationMemory,
+      },
+      resolvedIntent,
+    )
   } catch {
     result = {
       ok: false,
@@ -357,6 +461,8 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
       executionStatus: "failed",
     }
   }
+
+  const assistantIntent = result.resolvedIntent ?? resolvedIntent
 
   await saveConversationMessage({
     adminClient: actor.adminClient,
@@ -368,14 +474,14 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
       ok: result.ok,
       resultId: result.resultId ?? null,
       engine: "operations_engine",
-      source: resolvedIntent.source,
+      source: assistantIntent.source,
       area: input.area ?? null,
       subArea: input.subArea ?? null,
       conversation_area: conversationArea,
       detected_intent: detectedIntent.intent,
-      intent: resolvedIntent.intent,
-      confidence: resolvedIntent.confidence,
-      intentSource: resolvedIntent.source,
+      intent: assistantIntent.intent,
+      confidence: assistantIntent.confidence,
+      intentSource: assistantIntent.source,
       model: intentResolution.model,
       promptTokens: intentResolution.usage?.promptTokens ?? null,
       completionTokens: intentResolution.usage?.completionTokens ?? null,
@@ -383,12 +489,17 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
       idempotencyKey,
       fallbackUsed: intentResolution.fallbackUsed,
       fallbackReason: intentResolution.fallbackReason ?? null,
-      missingFields: resolvedIntent.missingFields,
-      unsafeReason: resolvedIntent.unsafeReason ?? null,
+      missingFields: assistantIntent.missingFields,
+      unsafeReason: assistantIntent.unsafeReason ?? null,
       latencyMs: intentResolution.latencyMs,
       executionStatus: result.executionStatus,
       suggestedLabel: result.suggestedLabel ?? null,
       suggestedHref: result.suggestedHref ?? null,
+      targetType: result.targetType ?? null,
+      targetId: result.targetId ?? null,
+      targetName: result.targetName ?? null,
+      updatedFields: result.updatedFields ?? [],
+      entities: result.entities ?? assistantIntent.entities,
     },
   })
 

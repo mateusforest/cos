@@ -56,6 +56,7 @@ export function buildOperationsConversationArea(input: { area?: string; subArea?
 export function inferOperationsConversationAreaFromIntent(detected: DetectedIntent) {
   switch (detected.intent) {
     case "create_client":
+    case "update_client":
     case "get_clients_count":
       return "cadastros/clientes"
     case "create_financial_income":

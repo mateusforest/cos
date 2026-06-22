@@ -279,7 +279,7 @@ export async function updateClientAction({
     description: "cliente atualizado",
   })
 
-  return { success: true }
+  return { success: true, clientId: resolved.client.id, clientName: trimmedName }
 }
 
 export async function deleteClientAction({ clientId }: { clientId: string }) {

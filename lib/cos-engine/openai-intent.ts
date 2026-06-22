@@ -13,6 +13,7 @@ import {
   operationsOpenAiTimeoutMs,
 } from "@/lib/cos-engine/schemas"
 import type {
+  OperationsConversationMemory,
   OperationsEngineContext,
   OperationsEngineInput,
   OperationsIntentResolution,
@@ -28,9 +29,12 @@ const operationsSystemPrompt = [
   "Nunca confirme criacao, edicao ou exclusao.",
   "Nunca invente IDs, clientes existentes, valores, datas ou resultados.",
   "Para create_client, apenas o nome e obrigatorio. Email e telefone sao opcionais.",
+  "Para update_client, so sao permitidos os campos name, email, phone, company e notes.",
+  "Para update_client, use clientId apenas se ele estiver presente no contexto fornecido. Caso contrario, use clientName ou missingFields.",
   "Para create_financial_income e create_financial_expense, amount e title sao obrigatorios.",
   "Para create_document, o campo title e obrigatorio.",
-  "Pedidos de exclusao, edicao, transferencia, pagamento, envio de mensagem ou integracao externa devem virar intent unknown com unsafeReason.",
+  "Edicao segura de cliente e permitida apenas via intent update_client.",
+  "Pedidos de exclusao, transferencia, pagamento, envio de mensagem ou integracao externa devem virar intent unknown com unsafeReason.",
   "Se faltar dado obrigatorio, preencha missingFields corretamente.",
   "Se estiver ambiguo ou inseguro, reduza confidence e use missingFields ou unsafeReason.",
   "Se nao tiver certeza suficiente, use shouldFallbackToHeuristic true.",
@@ -41,10 +45,11 @@ const operationsSystemPrompt = [
 function buildFallbackResolution(
   message: string,
   context: OperationsEngineContext,
+  conversationMemory: OperationsConversationMemory | undefined,
   fallbackReason: OperationsIntentResolution["fallbackReason"],
   input?: Partial<Pick<OperationsIntentResolution, "model" | "latencyMs" | "errorMessage" | "usage">>,
 ): OperationsIntentResolution {
-  const detectedIntent = detectOperationsIntent(message, context)
+  const detectedIntent = detectOperationsIntent(message, context, conversationMemory)
 
   return {
     resolvedIntent: buildResolvedIntentFromDetected(detectedIntent, "fallback"),
@@ -57,12 +62,13 @@ function buildFallbackResolution(
   }
 }
 
-function buildUserPrompt(message: string, context: OperationsEngineContext) {
+function buildUserPrompt(message: string, context: OperationsEngineContext, conversationMemory?: OperationsConversationMemory) {
   return JSON.stringify(
     {
       task: "Interpretar a intencao operacional do usuario para o COS.",
       allowedIntents: [
         "create_client",
+        "update_client",
         "create_financial_income",
         "create_financial_expense",
         "create_operation",
@@ -77,11 +83,20 @@ function buildUserPrompt(message: string, context: OperationsEngineContext) {
       context: {
         area: context.area || null,
         subArea: context.subArea || null,
+        conversationMemory: conversationMemory
+          ? {
+              lastSuccessfulAction: conversationMemory.lastSuccessfulAction,
+              lastResultId: conversationMemory.lastResultId,
+              lastClient: conversationMemory.lastClient,
+              lastEntities: conversationMemory.lastEntities,
+            }
+          : null,
       },
       message,
       requiredEntityKeys: Object.keys(createEmptyIntentEntities()),
       guidance: {
         create_client: ["name"],
+        update_client: ["clientId_or_clientName", "one_or_more_of_name_email_phone_company_notes"],
         create_financial_income: ["amount", "title"],
         create_financial_expense: ["amount", "title"],
         create_operation: ["title"],
@@ -150,9 +165,10 @@ export function isOperationsOpenAiConfigured() {
 export async function resolveOperationsIntent(input: OperationsEngineInput): Promise<OperationsIntentResolution> {
   const message = input.message.trim()
   const context = buildOperationsContext(input)
+  const conversationMemory = input.conversationMemory
 
   if (!isOperationsOpenAiConfigured()) {
-    return buildFallbackResolution(message, context, "openai_not_configured")
+    return buildFallbackResolution(message, context, conversationMemory, "openai_not_configured")
   }
 
   const controller = new AbortController()
@@ -177,7 +193,7 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
           },
           {
             role: "user",
-            content: [{ type: "input_text", text: buildUserPrompt(message, context) }],
+            content: [{ type: "input_text", text: buildUserPrompt(message, context, conversationMemory) }],
           },
         ],
         text: {
@@ -194,7 +210,7 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
     const usage = extractUsageFromOpenAiResponse(payload.usage)
 
     if (!response.ok) {
-      return buildFallbackResolution(message, context, "openai_request_failed", {
+      return buildFallbackResolution(message, context, conversationMemory, "openai_request_failed", {
         model: operationsOpenAiModel,
         latencyMs,
         usage,
@@ -209,7 +225,7 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
 
     const outputText = tryReadOutputText(payload)
     if (!outputText) {
-      return buildFallbackResolution(message, context, "openai_invalid_json", {
+      return buildFallbackResolution(message, context, conversationMemory, "openai_invalid_json", {
         model: operationsOpenAiModel,
         latencyMs,
         usage,
@@ -219,7 +235,7 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
 
     const resolvedIntent = parseResolvedIntentPayload(outputText)
     if (!resolvedIntent) {
-      return buildFallbackResolution(message, context, "openai_invalid_schema", {
+      return buildFallbackResolution(message, context, conversationMemory, "openai_invalid_schema", {
         model: operationsOpenAiModel,
         latencyMs,
         usage,
@@ -228,7 +244,7 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
     }
 
     if (resolvedIntent.shouldFallbackToHeuristic) {
-      return buildFallbackResolution(message, context, "openai_requested_fallback", {
+      return buildFallbackResolution(message, context, conversationMemory, "openai_requested_fallback", {
         model: operationsOpenAiModel,
         latencyMs,
         usage,
@@ -236,7 +252,7 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
     }
 
     if (!isAllowedOperationsIntent(resolvedIntent.intent) || resolvedIntent.intent === "unknown") {
-      return buildFallbackResolution(message, context, "openai_unknown_intent", {
+      return buildFallbackResolution(message, context, conversationMemory, "openai_unknown_intent", {
         model: operationsOpenAiModel,
         latencyMs,
         usage,
@@ -244,7 +260,7 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
     }
 
     if (resolvedIntent.confidence < futureMinimumIntentConfidence) {
-      return buildFallbackResolution(message, context, "openai_low_confidence", {
+      return buildFallbackResolution(message, context, conversationMemory, "openai_low_confidence", {
         model: operationsOpenAiModel,
         latencyMs,
         usage,
@@ -265,14 +281,14 @@ export async function resolveOperationsIntent(input: OperationsEngineInput): Pro
     const errorMessage = error instanceof Error ? error.message : "Falha desconhecida na OpenAI."
 
     if (error instanceof Error && error.name === "AbortError") {
-      return buildFallbackResolution(message, context, "openai_timeout", {
+      return buildFallbackResolution(message, context, conversationMemory, "openai_timeout", {
         model: operationsOpenAiModel,
         latencyMs,
         errorMessage,
       })
     }
 
-    return buildFallbackResolution(message, context, "openai_request_failed", {
+    return buildFallbackResolution(message, context, conversationMemory, "openai_request_failed", {
       model: operationsOpenAiModel,
       latencyMs,
       errorMessage,

@@ -1,7 +1,9 @@
-import type { DetectedIntent, OperationsEngineContext } from "@/lib/cos-engine/types"
+import type { DetectedIntent, OperationsConversationMemory, OperationsEngineContext } from "@/lib/cos-engine/types"
+import { resolveIntentReferences } from "@/lib/cos-engine/reference-resolution"
 import {
   detectDocumentType,
   detectSupportCategory,
+  extractClientUpdateEntities,
   extractClientName,
   extractDocumentTitle,
   extractEmail,
@@ -22,9 +24,14 @@ import {
   looksLikeCreateMeeting,
   looksLikeCreateOperation,
   looksLikeCreateSupportTicket,
+  looksLikeUpdateClient,
 } from "@/lib/cos-engine/operations-tools"
 
-export function detectOperationsIntent(message: string, context: OperationsEngineContext): DetectedIntent {
+export function detectOperationsIntent(
+  message: string,
+  context: OperationsEngineContext,
+  conversationMemory?: OperationsConversationMemory,
+): DetectedIntent {
   if (isClientsCountQuery(message)) {
     return { intent: "get_clients_count", entities: {} }
   }
@@ -45,6 +52,34 @@ export function detectOperationsIntent(message: string, context: OperationsEngin
         email: extractEmail(message),
         phone: extractPhone(message),
       },
+    }
+  }
+
+  if (looksLikeUpdateClient(message, context)) {
+    const detected = {
+      intent: "update_client" as const,
+      entities: extractClientUpdateEntities(message),
+    }
+
+    const resolved = resolveIntentReferences({
+      resolvedIntent: {
+        intent: detected.intent,
+        confidence: 1,
+        entities: detected.entities,
+        requiresConfirmation: false,
+        missingFields: [],
+        unsafeReason: null,
+        reply: "Vou atualizar esse cliente para voce.",
+        shouldFallbackToHeuristic: false,
+        source: "heuristic",
+      },
+      message,
+      conversationMemory,
+    })
+
+    return {
+      intent: "update_client",
+      entities: resolved.entities,
     }
   }
 

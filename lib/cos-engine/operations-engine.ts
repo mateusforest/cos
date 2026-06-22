@@ -36,10 +36,12 @@ export async function runOperationsEngine(
 
   const context = buildOperationsContext(input)
   const nextResolvedIntent =
-    resolvedIntent ?? (await resolveOperationsIntent({ ...input, message, area: context.area, subArea: context.subArea })).resolvedIntent
+    resolvedIntent ??
+    (await resolveOperationsIntent({ ...input, message, area: context.area, subArea: context.subArea })).resolvedIntent
   const validation = validateIntentPayload({
     resolvedIntent: nextResolvedIntent,
     message,
+    conversationMemory: input.conversationMemory,
   })
 
   if (!validation.ok) {
@@ -49,6 +51,8 @@ export async function runOperationsEngine(
       message: validation.message,
       error: validation.message,
       executionStatus: validation.executionStatus,
+      resolvedIntent: validation.resolvedIntent,
+      entities: validation.resolvedIntent.entities,
     }
   }
 

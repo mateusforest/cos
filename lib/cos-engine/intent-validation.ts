@@ -4,6 +4,7 @@ import {
   normalizeEngineText,
   recoverClientNameFromMessage,
 } from "@/lib/cos-engine/operations-tools"
+import { resolveIntentReferences } from "@/lib/cos-engine/reference-resolution"
 import type {
   OperationsResolvedIntent,
   ValidateIntentPayloadInput,
@@ -55,6 +56,14 @@ function buildMissingFieldMessage(
 ) {
   if (intent === "create_client" && missingFields.includes("name")) {
     return "Qual e o nome do cliente?"
+  }
+
+  if (intent === "update_client" && missingFields.includes("client")) {
+    return "Qual cliente voce quer atualizar?"
+  }
+
+  if (intent === "update_client" && missingFields.includes("update_fields")) {
+    return "O que voce quer atualizar nesse cliente?"
   }
 
   if ((intent === "create_financial_income" || intent === "create_financial_expense") && missingFields.includes("amount")) {
@@ -154,14 +163,23 @@ function recoverClientIntentIfSafe({
 export function validateIntentPayload({
   resolvedIntent,
   message,
+  conversationMemory,
 }: ValidateIntentPayloadInput): ValidateIntentPayloadResult {
+  const normalizedResolvedIntent = resolveIntentReferences({
+    resolvedIntent: recoverClientIntentIfSafe({
+      resolvedIntent,
+      message,
+    }),
+    message,
+    conversationMemory,
+  })
   const unsupportedRequest = classifyUnsupportedOperationsRequest(message)
 
-  if (unsupportedRequest) {
+  if (unsupportedRequest && normalizedResolvedIntent.intent !== "update_client") {
     return {
       ok: false,
       resolvedIntent: {
-        ...resolvedIntent,
+        ...normalizedResolvedIntent,
         unsafeReason: unsupportedRequest.kind,
       },
       message: unsupportedRequest.message,
@@ -169,32 +187,27 @@ export function validateIntentPayload({
     }
   }
 
-  if (resolvedIntent.intent === "unknown") {
+  if (normalizedResolvedIntent.intent === "unknown") {
     return {
       ok: false,
-      resolvedIntent,
+      resolvedIntent: normalizedResolvedIntent,
       message:
         "Ainda nao consigo executar essa solicitacao, mas posso ajudar com clientes, financeiro, operacoes, documentos, reunioes e suporte.",
       executionStatus: "not_executed",
     }
   }
 
-  if (resolvedIntent.source === "openai" && resolvedIntent.confidence < futureMinimumIntentConfidence) {
+  if (normalizedResolvedIntent.source === "openai" && normalizedResolvedIntent.confidence < futureMinimumIntentConfidence) {
     return {
       ok: false,
       resolvedIntent: {
-        ...resolvedIntent,
+        ...normalizedResolvedIntent,
         unsafeReason: "low_confidence",
       },
       message: "Nao consegui interpretar essa solicitacao com seguranca. Pode reformular?",
       executionStatus: "validation_failed",
     }
   }
-
-  const normalizedResolvedIntent = recoverClientIntentIfSafe({
-    resolvedIntent,
-    message,
-  })
 
   if (normalizedResolvedIntent.unsafeReason) {
     return {
@@ -209,6 +222,29 @@ export function validateIntentPayload({
   const entities: OperationsResolvedIntent["entities"] = {
     ...normalizedResolvedIntent.entities,
     description: normalizedResolvedIntent.entities.description ?? message,
+  }
+
+  if (normalizedResolvedIntent.intent === "update_client") {
+    const hasClientTarget = hasMeaningfulValue(entities.clientId) || hasMeaningfulValue(entities.clientName)
+    const hasUpdateField = ["name", "email", "phone", "company", "notes"].some((field) => hasMeaningfulValue(entities[field]))
+
+    const missingFields = [
+      ...(!hasClientTarget ? ["client"] : []),
+      ...(!hasUpdateField ? ["update_fields"] : []),
+    ]
+
+    if (missingFields.length > 0) {
+      return {
+        ok: false,
+        resolvedIntent: {
+          ...normalizedResolvedIntent,
+          entities,
+          missingFields,
+        },
+        message: buildMissingFieldMessage("update_client", missingFields, entities),
+        executionStatus: "validation_failed",
+      }
+    }
   }
 
   const missingFields = requiredFields.filter((field) => !hasMeaningfulValue(entities[field]))

@@ -311,6 +311,65 @@ export function classifyUnsupportedOperationsRequest(message: string) {
   return null
 }
 
+function hasClientReference(message: string) {
+  const normalized = normalizeEngineText(message)
+
+  return /\b(cliente|dele|dela|nele|nela|desse cliente|dessa cliente|esse cliente|essa cliente|ultimo cliente|ultima cliente)\b/.test(
+    normalized,
+  )
+}
+
+function hasClientUpdateField(message: string) {
+  const normalized = normalizeEngineText(message)
+
+  return /\b(telefone|celular|email|e-mail|nome|empresa|companhia|observacao|observacao|nota)\b/.test(normalized)
+}
+
+function extractUpdatedClientName(message: string) {
+  const match = message.match(/(?:mude|altere|atualize|troque)\s+o?\s*nome(?:\s+dele|\s+dela|\s+do cliente\s+.+?|\s+da cliente\s+.+?)?\s+para\s+(.+)$/iu)
+  return match?.[1] ? toTitleCase(match[1].trim()) : ""
+}
+
+function extractExplicitTargetClientNameForUpdate(message: string) {
+  const patterns = [
+    /(?:do|da)\s+cliente\s+(.+?)\s+para\s+(?:\d{8,15}|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/iu,
+    /(?:do|da)\s+cliente\s+(.+?)\s+(?:com\s+email|com\s+telefone)/iu,
+    /cliente\s+(.+?)\s+para\s+(?:\d{8,15}|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/iu,
+  ]
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern)
+    const candidate = match?.[1]?.trim()
+
+    if (candidate) {
+      return toTitleCase(candidate)
+    }
+  }
+
+  return ""
+}
+
+function extractUpdatedCompany(message: string) {
+  const match = message.match(/(?:empresa|companhia)(?:\s+dele|\s+dela|\s+do cliente\s+.+?|\s+da cliente\s+.+?)?\s+para\s+(.+)$/iu)
+  return match?.[1] ? match[1].trim() : ""
+}
+
+function extractUpdatedNotes(message: string) {
+  const match = message.match(/(?:observacao|observa[cç][aã]o|nota)(?:\s+dele|\s+dela|\s+do cliente\s+.+?|\s+da cliente\s+.+?)?\s+para\s+(.+)$/iu)
+  return match?.[1] ? match[1].trim() : ""
+}
+
+export function extractClientUpdateEntities(message: string) {
+  return {
+    clientName: extractExplicitTargetClientNameForUpdate(message),
+    name: extractUpdatedClientName(message),
+    email: extractEmail(message),
+    phone: extractPhone(message),
+    company: extractUpdatedCompany(message),
+    notes: extractUpdatedNotes(message),
+  }
+}
+
 export function looksLikeCreateClient(message: string, context: OperationsEngineContext) {
   const normalized = normalizeEngineText(message)
   if (/\b(cliente)\b/.test(normalized) && /\b(crie|criar|novo|nova|cadastrar|cadastre)\b/.test(normalized)) return true
@@ -350,4 +409,26 @@ export function looksLikeCreateSupportTicket(message: string, context: Operation
   const normalized = normalizeEngineText(message)
   if (/\b(chamado|suporte|ajuda|problema|cobranca|atendimento)\b/.test(normalized)) return true
   return isSupportContext(context)
+}
+
+export function looksLikeUpdateClient(message: string, context: OperationsEngineContext) {
+  const normalized = normalizeEngineText(message)
+
+  if (!hasClientUpdateField(message)) {
+    return false
+  }
+
+  if (/\b(mude|altere|atualize|troque)\b/.test(normalized) && hasClientReference(message)) {
+    return true
+  }
+
+  if (/\b(adicione|adicione o|adicione a|cadastre|registre)\b/.test(normalized) && hasClientReference(message)) {
+    return true
+  }
+
+  if (isClientsContext(context) && hasClientReference(message)) {
+    return true
+  }
+
+  return false
 }

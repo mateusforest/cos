@@ -9,6 +9,7 @@ import { z } from "zod"
 
 export const operationsIntentValues = [
   "create_client",
+  "update_client",
   "create_financial_income",
   "create_financial_expense",
   "create_operation",
@@ -25,11 +26,14 @@ export const operationsIntentEntityKeys = [
   "name",
   "email",
   "phone",
+  "company",
+  "notes",
   "amount",
   "description",
   "title",
   "category",
   "date",
+  "clientId",
   "clientName",
   "documentType",
   "type",
@@ -38,6 +42,7 @@ export const operationsIntentEntityKeys = [
 
 const defaultReplies: Record<OperationsEngineIntent, string> = {
   create_client: "Vou criar esse cliente para voce.",
+  update_client: "Vou atualizar esse cliente para voce.",
   create_financial_income: "Vou registrar essa receita para voce.",
   create_financial_expense: "Vou registrar esse gasto para voce.",
   create_operation: "Vou criar essa operacao para voce.",
@@ -159,6 +164,7 @@ export function isAllowedOperationsIntent(value: string): value is OperationsEng
 export function isSideEffectIntent(intent: OperationsEngineIntent) {
   return [
     "create_client",
+    "update_client",
     "create_financial_income",
     "create_financial_expense",
     "create_operation",
@@ -190,11 +196,14 @@ export function createEmptyIntentEntities() {
     name: null,
     email: null,
     phone: null,
+    company: null,
+    notes: null,
     amount: null,
     description: null,
     title: null,
     category: null,
     date: null,
+    clientId: null,
     clientName: null,
     documentType: null,
     type: null,

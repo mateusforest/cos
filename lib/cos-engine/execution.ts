@@ -1,4 +1,4 @@
-import { createClientAction, getClientsAction } from "@/actions/clients"
+import { createClientAction, getClientByIdAction, getClientsAction, updateClientAction } from "@/actions/clients"
 import { createDocumentAction } from "@/actions/documents"
 import { createFinancialEntryAction, getFinancialSummaryAction } from "@/actions/financial"
 import { createMeetingAction } from "@/actions/meetings"
@@ -9,7 +9,18 @@ import { formatCurrencyBRL, humanizeActivityAction } from "@/lib/cos-engine/oper
 import { toTitleCase } from "@/lib/cos-engine/operations-tools"
 import type { OperationsEngineResult, OperationsResolvedIntent } from "@/lib/cos-engine/types"
 
-async function resolveClientIdByName(clientName: string) {
+type ResolvedClientRecord = {
+  id: string
+  name: string
+  email: string
+  phone: string
+  company: string
+  notes: string
+  status: string
+  createdAt: string | null
+}
+
+async function resolveClientByName(clientName: string) {
   const clientsResult = await getClientsAction()
 
   if (clientsResult.error) {
@@ -18,15 +29,19 @@ async function resolveClientIdByName(clientName: string) {
 
   const normalizedTarget = clientName.trim().toLowerCase()
   const activeClients = (clientsResult.clients ?? []).filter((client) => client.status !== "archived")
-  const exactMatch =
-    activeClients.find((client) => client.name.trim().toLowerCase() === normalizedTarget) ??
-    activeClients.find((client) => client.name.trim().toLowerCase().includes(normalizedTarget))
+  const exactMatches = activeClients.filter((client) => client.name.trim().toLowerCase() === normalizedTarget)
+  const partialMatches = activeClients.filter((client) => client.name.trim().toLowerCase().includes(normalizedTarget))
+  const matches = exactMatches.length > 0 ? exactMatches : partialMatches
 
-  if (!exactMatch) {
+  if (matches.length === 0) {
     return { error: `Nao encontrei um cliente chamado ${clientName}.` }
   }
 
-  return { clientId: exactMatch.id, clientName: exactMatch.name }
+  if (matches.length > 1) {
+    return { error: "Encontrei mais de um cliente com esse nome. Pode informar o nome completo?" }
+  }
+
+  return { client: matches[0] }
 }
 
 function buildExecutionSuccess(input: Omit<OperationsEngineResult, "ok" | "executionStatus">): OperationsEngineResult {
@@ -81,6 +96,111 @@ export async function executeResolvedIntent(input: {
         message: `Cliente ${name} criado com sucesso.`,
         suggestedLabel: "Ver clientes no Portal",
         suggestedHref: "/portal/cadastros",
+        resolvedIntent,
+        targetType: "client",
+        targetId: result.clientId,
+        targetName: name,
+        entities: {
+          ...resolvedIntent.entities,
+          name,
+          email,
+          phone,
+        },
+      })
+    }
+
+    case "update_client": {
+      const directClientId = String(resolvedIntent.entities.clientId || "").trim()
+      const directClientName = String(resolvedIntent.entities.clientName || "").trim()
+      const nextName = String(resolvedIntent.entities.name || "").trim()
+      const nextEmail = String(resolvedIntent.entities.email || "").trim()
+      const nextPhone = String(resolvedIntent.entities.phone || "").trim()
+      const nextCompany = String(resolvedIntent.entities.company || "").trim()
+      const nextNotes = String(resolvedIntent.entities.notes || "").trim()
+      const updatedFields = [
+        ...(nextName ? ["name"] : []),
+        ...(nextEmail ? ["email"] : []),
+        ...(nextPhone ? ["phone"] : []),
+        ...(nextCompany ? ["company"] : []),
+        ...(nextNotes ? ["notes"] : []),
+      ]
+
+      let targetClient: ResolvedClientRecord | null = null
+
+      if (directClientId) {
+        const clientResult = await getClientByIdAction({ clientId: directClientId })
+        if (clientResult.error || !clientResult.client) {
+          return buildExecutionFailure(
+            clientResult.error || "Nao encontrei esse cliente para atualizar.",
+            "update_client",
+            "validation_failed",
+          )
+        }
+
+        targetClient = clientResult.client
+      } else if (directClientName) {
+        const clientResolution = await resolveClientByName(directClientName)
+        if ("error" in clientResolution) {
+          return buildExecutionFailure(clientResolution.error || "Nao encontrei esse cliente para atualizar.", "update_client", "validation_failed")
+        }
+
+        targetClient = clientResolution.client
+      }
+
+      if (!targetClient) {
+        return buildExecutionFailure("Qual cliente voce quer atualizar?", "update_client", "validation_failed")
+      }
+
+      const result = await updateClientAction({
+        clientId: targetClient.id,
+        name: nextName || targetClient.name,
+        email: nextEmail || targetClient.email,
+        phone: nextPhone || targetClient.phone,
+        company: nextCompany || targetClient.company,
+        notes: nextNotes || targetClient.notes,
+        status: targetClient.status,
+      })
+
+      if (result.error) {
+        return buildExecutionFailure("Nao consegui atualizar o cliente agora. Tente novamente em instantes.", "update_client")
+      }
+
+      const currentTargetName = targetClient.name
+      const finalTargetName = nextName || result.clientName || currentTargetName
+      const updateMessage =
+        updatedFields.length === 1 && updatedFields[0] === "phone"
+          ? `Telefone do cliente ${finalTargetName} atualizado com sucesso.`
+          : updatedFields.length === 1 && updatedFields[0] === "email"
+            ? `E-mail do cliente ${finalTargetName} atualizado com sucesso.`
+            : updatedFields.length === 1 && updatedFields[0] === "name"
+              ? `Nome do cliente ${currentTargetName} atualizado para ${finalTargetName}.`
+              : updatedFields.length === 1 && updatedFields[0] === "company"
+                ? `Empresa do cliente ${finalTargetName} atualizada com sucesso.`
+                : updatedFields.length === 1 && updatedFields[0] === "notes"
+                  ? `Observacoes do cliente ${finalTargetName} atualizadas com sucesso.`
+                  : `Dados do cliente ${finalTargetName} atualizados com sucesso.`
+
+      return buildExecutionSuccess({
+        action: "update_client",
+        resultId: result.clientId || targetClient.id,
+        message: updateMessage,
+        suggestedLabel: "Ver clientes no Portal",
+        suggestedHref: "/portal/cadastros",
+        resolvedIntent,
+        targetType: "client",
+        targetId: result.clientId || targetClient.id,
+        targetName: finalTargetName,
+        updatedFields,
+        entities: {
+          ...resolvedIntent.entities,
+          clientId: result.clientId || targetClient.id,
+          clientName: finalTargetName,
+          name: nextName || null,
+          email: nextEmail || targetClient.email,
+          phone: nextPhone || targetClient.phone,
+          company: nextCompany || targetClient.company,
+          notes: nextNotes || targetClient.notes,
+        },
       })
     }
 
@@ -112,6 +232,12 @@ export async function executeResolvedIntent(input: {
         message: `${isIncome ? "Lancei o ganho" : "Lancei o gasto"} de ${formatCurrencyBRL(Number(amount.replace(/\./g, "").replace(",", ".")))} em ${title}.`,
         suggestedLabel: "Ver financeiro no Portal",
         suggestedHref: "/portal/financeiro",
+        resolvedIntent,
+        entities: {
+          ...resolvedIntent.entities,
+          amount,
+          title,
+        },
       })
     }
 
@@ -123,16 +249,16 @@ export async function executeResolvedIntent(input: {
       let resolvedClientName = ""
 
       if (clientName) {
-        const clientResolution = await resolveClientIdByName(clientName)
-        if (!("clientId" in clientResolution)) {
+        const clientResolution = await resolveClientByName(clientName)
+        if ("error" in clientResolution) {
           return buildExecutionFailure(
             clientResolution.error || "Nao consegui localizar este cliente agora.",
             "create_operation",
           )
         }
 
-        clientId = clientResolution.clientId
-        resolvedClientName = clientResolution.clientName || clientName
+        clientId = clientResolution.client.id
+        resolvedClientName = clientResolution.client.name || clientName
       }
 
       const result = await createOperationAction({
@@ -156,6 +282,8 @@ export async function executeResolvedIntent(input: {
           : `Operacao ${title} criada com sucesso.`,
         suggestedLabel: "Ver operacoes no Portal",
         suggestedHref: "/portal/operacoes",
+        resolvedIntent,
+        entities: resolvedIntent.entities,
       })
     }
 
@@ -180,6 +308,8 @@ export async function executeResolvedIntent(input: {
         message: `Documento ${title} criado com sucesso.`,
         suggestedLabel: "Ver documentos no Portal",
         suggestedHref: "/portal/documentos",
+        resolvedIntent,
+        entities: resolvedIntent.entities,
       })
     }
 
@@ -201,6 +331,8 @@ export async function executeResolvedIntent(input: {
         message: `Criei a reuniao ${title} como rascunho.`,
         suggestedLabel: "Ver reunioes",
         suggestedHref: "/app/conversas/reunioes",
+        resolvedIntent,
+        entities: resolvedIntent.entities,
       })
     }
 
@@ -224,6 +356,8 @@ export async function executeResolvedIntent(input: {
         message: "Chamado de suporte criado com sucesso.",
         suggestedLabel: "Abrir suporte",
         suggestedHref: "/app/conversas/suporte",
+        resolvedIntent,
+        entities: resolvedIntent.entities,
       })
     }
 
@@ -237,6 +371,8 @@ export async function executeResolvedIntent(input: {
       return buildExecutionSuccess({
         action: "get_clients_count",
         message: `Voce tem ${clientsCount} cliente${clientsCount === 1 ? "" : "s"} cadastrado${clientsCount === 1 ? "" : "s"}.`,
+        resolvedIntent,
+        entities: resolvedIntent.entities,
       })
     }
 
@@ -251,6 +387,8 @@ export async function executeResolvedIntent(input: {
         message: `Seu saldo atual e ${formatCurrencyBRL(result.summary.balance)}.`,
         suggestedLabel: "Ver financeiro no Portal",
         suggestedHref: "/portal/financeiro",
+        resolvedIntent,
+        entities: resolvedIntent.entities,
       })
     }
 
@@ -267,6 +405,8 @@ export async function executeResolvedIntent(input: {
           message: "Ainda nao ha atividades registradas no seu workspace.",
           suggestedLabel: "Abrir historico",
           suggestedHref: "/app/historico",
+          resolvedIntent,
+          entities: resolvedIntent.entities,
         })
       }
 
@@ -276,6 +416,8 @@ export async function executeResolvedIntent(input: {
         message: `Suas ultimas atividades foram: ${summary}.`,
         suggestedLabel: "Abrir historico",
         suggestedHref: "/app/historico",
+        resolvedIntent,
+        entities: resolvedIntent.entities,
       })
     }
 
