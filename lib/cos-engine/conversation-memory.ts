@@ -66,16 +66,31 @@ function extractGenericEntityFromMetadata(metadata: Record<string, unknown>): Op
   const entityType = readString(metadata.targetType) ?? readString(metadata.entityType)
   const area = readString(metadata.area)
   const executionStatus = readString(metadata.executionStatus)
+  const action = readString(metadata.actionType) ?? readString(metadata.action)
+  const sourceIntent = readString(metadata.intent)
+  const confidence = typeof metadata.confidence === "number" ? metadata.confidence : null
+  const createdAt = readString(metadata.createdAt)
+  const updatedAt = readString(metadata.updatedAt)
 
-  if (executionStatus !== "executed" || !targetId || !targetName) {
+  const canUseClassifiedEntity =
+    executionStatus === "not_executed" &&
+    (readString(metadata.entityType) || readString(metadata.targetType)) &&
+    targetName
+
+  if ((executionStatus !== "executed" && !canUseClassifiedEntity) || !targetName) {
     return null
   }
 
   return {
-    id: targetId,
+    id: targetId ?? null,
     name: targetName,
     entityType: (entityType as OperationsConversationEntity["entityType"]) ?? null,
     area: (area as OperationsConversationEntity["area"]) ?? null,
+    action: (action as OperationsConversationEntity["action"]) ?? null,
+    sourceIntent: (sourceIntent as OperationsConversationEntity["sourceIntent"]) ?? null,
+    createdAt,
+    updatedAt,
+    confidence,
     fields: entities,
   }
 }
@@ -97,9 +112,12 @@ export function createEmptyConversationMemory(): OperationsConversationMemory {
     lastResultId: null,
     lastEntities: {},
     lastClient: null,
+    lastClientId: null,
+    lastClientName: null,
     lastEntity: null,
     lastEntityType: null,
     lastEntityArea: null,
+    lastEntityName: null,
     recentEntities: [],
   }
 }
@@ -127,6 +145,8 @@ export function buildConversationMemory(rows: ConversationContextMessageRow[]): 
 
     if (!memory.lastClient) {
       memory.lastClient = extractClientFromMetadata(metadata)
+      memory.lastClientId = memory.lastClient?.id ?? null
+      memory.lastClientName = memory.lastClient?.name ?? null
     }
 
     const extractedEntity = extractGenericEntityFromMetadata(metadata)
@@ -137,20 +157,28 @@ export function buildConversationMemory(rows: ConversationContextMessageRow[]): 
       }
 
       if (!memory.lastEntityType) {
-        memory.lastEntityType = extractedEntity.entityType
+        memory.lastEntityType = (extractedEntity.entityType as OperationsConversationMemory["lastEntityType"]) ?? null
       }
 
       if (!memory.lastEntityArea) {
-        memory.lastEntityArea = extractedEntity.area
+        memory.lastEntityArea = (extractedEntity.area as OperationsConversationMemory["lastEntityArea"]) ?? null
       }
 
-      if (!memory.recentEntities.some((entity) => entity.id === extractedEntity.id)) {
+      if (!memory.lastEntityName) {
+        memory.lastEntityName = extractedEntity.name
+      }
+
+      if (
+        !memory.recentEntities.some((entity) => {
+          if (entity.id && extractedEntity.id) {
+            return entity.id === extractedEntity.id
+          }
+
+          return entity.entityType === extractedEntity.entityType && entity.name === extractedEntity.name
+        })
+      ) {
         memory.recentEntities.push(extractedEntity)
       }
-    }
-
-    if (memory.lastSuccessfulAction && memory.lastResultId && memory.lastClient && memory.lastEntity) {
-      break
     }
   }
 

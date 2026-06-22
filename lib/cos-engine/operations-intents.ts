@@ -26,6 +26,8 @@ import {
   looksLikeCreateMeeting,
   looksLikeCreateOperation,
   looksLikeCreateSupportTicket,
+  looksLikeContextualRead,
+  looksLikeContextualUpdate,
   looksLikeExternalSend,
   looksLikeFileIntake,
   looksLikeUpdateClient,
@@ -181,6 +183,30 @@ export function detectOperationsIntent(
   const operationalFallback = inferOperationalEntitiesFromMessage(message, context, attachment)
   const quickAction = inferQuickActionFromMessage(message)
 
+  if (looksLikeContextualUpdate(message) || looksLikeContextualRead(message)) {
+    return {
+      intent: "unknown",
+      entities: operationalFallback.entities,
+      area: operationalFallback.area,
+      entityType: operationalFallback.entityType ?? conversationMemory?.lastEntityType ?? null,
+      actionType: looksLikeContextualRead(message) ? "read" : "update",
+      targetReference: operationalFallback.unresolvedReference ? null : "contextual_reference",
+      clarificationQuestion: operationalFallback.clarificationQuestion,
+      unsupportedReason: operationalFallback.unsupportedReason,
+      unresolvedReference: operationalFallback.unresolvedReference,
+      resolvedFrom: null,
+      resolvedEntity: null,
+      readFields: looksLikeContextualRead(message) ? ["contextual"] : [],
+      intakeType: operationalFallback.intakeType,
+      documentType: operationalFallback.documentType,
+      extractedEntityTypes: operationalFallback.extractedEntityTypes,
+      suggestedActions: operationalFallback.suggestedActions,
+      extractionStatus: operationalFallback.extractionStatus,
+      externalSendIntent: operationalFallback.externalSendIntent,
+      externalSendBlockedReason: operationalFallback.externalSendBlockedReason,
+    }
+  }
+
   if (looksLikeFileIntake(message) || looksLikeExternalSend(message) || quickAction) {
     return {
       intent: "unknown",
@@ -188,12 +214,15 @@ export function detectOperationsIntent(
       area: quickAction?.entityType === "ticket" ? "suporte" : operationalFallback.area,
       entityType: quickAction?.entityType ?? operationalFallback.entityType,
       actionType: quickAction?.actionType ?? operationalFallback.actionType,
+      targetReference: null,
       clarificationQuestion: operationalFallback.clarificationQuestion,
       unsupportedReason:
         quickAction?.status === "unsupported_connected_action"
           ? `Entendi a acao ${quickAction.label}, mas essa execucao ainda nao esta conectada.`
           : operationalFallback.unsupportedReason,
       unresolvedReference: operationalFallback.unresolvedReference,
+      resolvedFrom: null,
+      resolvedEntity: null,
       intakeType: operationalFallback.intakeType,
       documentType: operationalFallback.documentType,
       extractedEntityTypes: operationalFallback.extractedEntityTypes,
@@ -210,9 +239,12 @@ export function detectOperationsIntent(
     area: operationalFallback.area,
     entityType: operationalFallback.entityType,
     actionType: operationalFallback.actionType,
+    targetReference: null,
     clarificationQuestion: operationalFallback.clarificationQuestion,
     unsupportedReason: operationalFallback.unsupportedReason,
     unresolvedReference: operationalFallback.unresolvedReference,
+    resolvedFrom: null,
+    resolvedEntity: null,
     intakeType: operationalFallback.intakeType,
     documentType: operationalFallback.documentType,
     extractedEntityTypes: operationalFallback.extractedEntityTypes,
@@ -220,5 +252,6 @@ export function detectOperationsIntent(
     extractionStatus: operationalFallback.extractionStatus,
     externalSendIntent: operationalFallback.externalSendIntent,
     externalSendBlockedReason: operationalFallback.externalSendBlockedReason,
+    readFields: [],
   }
 }

@@ -22,6 +22,12 @@ export function normalizeEngineText(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
 }
 
+export function hasGenericReference(message: string) {
+  return /\b(ele|ela|dele|dela|nele|nela|esse|essa|este|esta|o mesmo|a mesma|ultimo|ultima|último|última)\b/.test(
+    normalizeEngineText(message),
+  )
+}
+
 export function toTitleCase(value: string) {
   return value
     .trim()
@@ -333,11 +339,57 @@ export function extractQuotedOrTrailingTarget(message: string, aliases: string[]
   return cleaned ? toTitleCase(cleaned) : ""
 }
 
+export function extractPriorityFromMessage(message: string) {
+  const normalized = normalizeEngineText(message)
+  if (normalized.includes("urgente") || normalized.includes("alta")) return "high"
+  if (normalized.includes("media")) return "medium"
+  if (normalized.includes("baixa")) return "low"
+  return ""
+}
+
+export function extractStatusFromMessage(message: string) {
+  const normalized = normalizeEngineText(message)
+  if (normalized.includes("resolvido")) return "resolved"
+  if (normalized.includes("aberto")) return "open"
+  return ""
+}
+
+export function extractNotesFromMessage(message: string) {
+  const quoted = message.match(/["']([^"']+)["']/)
+  if (quoted?.[1]) {
+    return quoted[1].trim()
+  }
+
+  const match = message.match(/(?:observacao|observação|nota)\s+(.+)$/iu)
+  return match?.[1]?.trim() || ""
+}
+
+export function extractResponsibleFromMessage(message: string) {
+  const match = message.match(/(?:adicione|coloque|defina)\s+(.+?)\s+como\s+responsavel/iu)
+  return match?.[1] ? toTitleCase(match[1].trim()) : ""
+}
+
 export function isFinancialSummaryQuery(message: string) {
   const normalized = normalizeEngineText(message)
   return /\b(qual meu saldo|mostrar resumo financeiro|resumo financeiro|saldo atual|quanto tenho em caixa|qual o saldo final|qual o balanco deste mes|qual o balanco do mes|balanco do mes|gastos do mes|ganhos do mes)\b/.test(
     normalized,
   )
+}
+
+export function looksLikeContextualRead(message: string) {
+  const normalized = normalizeEngineText(message)
+
+  return /\b(qual|quais|quanto|quem|ver|mostrar|consultar)\b/.test(normalized) && (hasGenericReference(message) || /\b(ultimo|último|ultima|última|chamado|documento|reuniao|reunião|gasto|entrada|cliente)\b/.test(normalized))
+}
+
+export function looksLikeContextualUpdate(message: string) {
+  const normalized = normalizeEngineText(message)
+
+  if (!hasGenericReference(message) && !/\b(esse gasto|esse chamado|esse documento|essa reuniao|essa reunião|esse projeto|essa operacao|essa operação|desse item|nesse gasto|nesse chamado)\b/.test(normalized)) {
+    return false
+  }
+
+  return /\b(mude|altere|atualize|coloque|adicione|defina|renomeie|marque)\b/.test(normalized)
 }
 
 export function isClientsCountQuery(message: string) {
@@ -482,6 +534,10 @@ export function inferOperationalEntitiesFromMessage(
       phone: extractPhone(message),
       subject: classification.entityType === "ticket" ? extractSupportSubject(message) : null,
       category: classification.entityType === "ticket" ? detectSupportCategory(message, context) : null,
+      notes: extractNotesFromMessage(message) || null,
+      priority: extractPriorityFromMessage(message) || null,
+      status: extractStatusFromMessage(message) || null,
+      responsible: extractResponsibleFromMessage(message) || null,
       type:
         classification.entityType === "document" ||
         classification.entityType === "contract" ||

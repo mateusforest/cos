@@ -51,9 +51,12 @@ function buildExecutionSuccess(input: Omit<OperationsEngineResult, "ok" | "execu
     area: input.area ?? input.resolvedIntent?.area ?? null,
     entityType: input.entityType ?? input.resolvedIntent?.entityType ?? null,
     actionType: input.actionType ?? input.resolvedIntent?.actionType ?? null,
+    targetReference: input.targetReference ?? input.resolvedIntent?.targetReference ?? null,
     clarificationQuestion: input.clarificationQuestion ?? input.resolvedIntent?.clarificationQuestion ?? null,
     unsupportedReason: input.unsupportedReason ?? input.resolvedIntent?.unsupportedReason ?? null,
     unresolvedReference: input.unresolvedReference ?? input.resolvedIntent?.unresolvedReference ?? null,
+    resolvedFrom: input.resolvedFrom ?? input.resolvedIntent?.resolvedFrom ?? null,
+    resolvedEntity: input.resolvedEntity ?? input.resolvedIntent?.resolvedEntity ?? null,
     intakeType: input.intakeType ?? input.resolvedIntent?.intakeType ?? null,
     documentType: input.documentType ?? input.resolvedIntent?.documentType ?? null,
     fileName: input.fileName ?? input.resolvedIntent?.fileName ?? null,
@@ -85,9 +88,12 @@ function buildExecutionFailure(
     area: resolvedIntent?.area ?? null,
     entityType: resolvedIntent?.entityType ?? null,
     actionType: resolvedIntent?.actionType ?? null,
+    targetReference: resolvedIntent?.targetReference ?? null,
     clarificationQuestion: resolvedIntent?.clarificationQuestion ?? null,
     unsupportedReason: resolvedIntent?.unsupportedReason ?? null,
     unresolvedReference: resolvedIntent?.unresolvedReference ?? null,
+    resolvedFrom: resolvedIntent?.resolvedFrom ?? null,
+    resolvedEntity: resolvedIntent?.resolvedEntity ?? null,
     intakeType: resolvedIntent?.intakeType ?? null,
     documentType: resolvedIntent?.documentType ?? null,
     fileName: resolvedIntent?.fileName ?? null,
@@ -100,6 +106,99 @@ function buildExecutionFailure(
     requiresConfirmation: resolvedIntent?.requiresConfirmation ?? false,
     entities: resolvedIntent?.entities,
   }
+}
+
+function humanizeEntityLabel(entityType: string | null | undefined) {
+  switch (entityType) {
+    case "expense":
+      return "gasto"
+    case "income":
+      return "ganho"
+    case "ticket":
+      return "chamado"
+    case "project":
+      return "projeto"
+    case "document":
+      return "documento"
+    case "meeting":
+      return "reuniao"
+    case "lead":
+      return "lead"
+    case "product":
+      return "produto"
+    case "service":
+      return "servico"
+    default:
+      return "item"
+  }
+}
+
+function buildContextualReadMessage(resolvedIntent: OperationsResolvedIntent) {
+  const resolvedEntity = resolvedIntent.resolvedEntity
+  const readField = resolvedIntent.readFields?.[0]
+
+  if (!resolvedEntity) {
+    return null
+  }
+
+  const entityLabel = humanizeEntityLabel(resolvedEntity.entityType)
+  const fields = resolvedEntity.fields
+  const amount = fields.amount ?? resolvedIntent.entities.amount
+
+  if (readField === "latest") {
+    return `O ultimo ${entityLabel} que voce trouxe nesta conversa foi ${resolvedEntity.name}.`
+  }
+
+  if (readField === "amount" && amount) {
+    const numericAmount =
+      typeof amount === "number"
+        ? amount
+        : Number(String(amount).replace(/\./g, "").replace(",", "."))
+
+    return Number.isFinite(numericAmount)
+      ? `O valor desse ${entityLabel} e ${formatCurrencyBRL(numericAmount)}.`
+      : `O valor desse ${entityLabel} esta registrado como ${amount}.`
+  }
+
+  if (readField === "phone" && (fields.phone ?? resolvedIntent.entities.phone)) {
+    return `O telefone desse ${entityLabel} e ${fields.phone ?? resolvedIntent.entities.phone}.`
+  }
+
+  if (readField === "email" && (fields.email ?? resolvedIntent.entities.email)) {
+    return `O email desse ${entityLabel} e ${fields.email ?? resolvedIntent.entities.email}.`
+  }
+
+  if (readField === "priority" && (fields.priority ?? resolvedIntent.entities.priority)) {
+    return `A prioridade desse ${entityLabel} esta como ${fields.priority ?? resolvedIntent.entities.priority}.`
+  }
+
+  if (readField === "status" && (fields.status ?? resolvedIntent.entities.status)) {
+    return `O status desse ${entityLabel} esta como ${fields.status ?? resolvedIntent.entities.status}.`
+  }
+
+  if (readField === "notes" && (fields.notes ?? resolvedIntent.entities.notes)) {
+    return `A observacao desse ${entityLabel} e: ${fields.notes ?? resolvedIntent.entities.notes}.`
+  }
+
+  if (readField === "responsible" && (fields.responsible ?? resolvedIntent.entities.responsible)) {
+    return `O responsavel desse ${entityLabel} e ${fields.responsible ?? resolvedIntent.entities.responsible}.`
+  }
+
+  if (readField === "openedBy") {
+    return "Esse chamado foi aberto por voce."
+  }
+
+  return `O item em foco nesta conversa e ${resolvedEntity.name}.`
+}
+
+function buildContextualUnsupportedUpdateMessage(resolvedIntent: OperationsResolvedIntent) {
+  const resolvedEntity = resolvedIntent.resolvedEntity
+  const entityLabel = humanizeEntityLabel(resolvedIntent.entityType ?? resolvedEntity?.entityType ?? null)
+
+  return (
+    resolvedIntent.unsupportedReason ||
+    `Entendi que voce quer atualizar esse ${entityLabel}, mas essa execucao ainda nao esta conectada. Posso fazer isso assim que essa acao estiver conectada ao modulo correspondente.`
+  )
 }
 
 export async function executeResolvedIntent(input: {
@@ -277,10 +376,16 @@ export async function executeResolvedIntent(input: {
         suggestedLabel: "Ver financeiro no Portal",
         suggestedHref: "/portal/financeiro",
         resolvedIntent,
+        targetId: result.entryId,
+        targetName: title,
+        area: "financeiro",
+        entityType: isIncome ? "income" : "expense",
+        actionType: "create",
         entities: {
           ...resolvedIntent.entities,
           amount,
           title,
+          openedBy: "voce",
         },
       })
     }
@@ -327,7 +432,17 @@ export async function executeResolvedIntent(input: {
         suggestedLabel: "Ver operacoes no Portal",
         suggestedHref: "/portal/operacoes",
         resolvedIntent,
-        entities: resolvedIntent.entities,
+        targetId: result.operationId,
+        targetName: title,
+        area: "operacoes",
+        entityType: "project",
+        actionType: "create",
+        entities: {
+          ...resolvedIntent.entities,
+          title,
+          responsible: resolvedIntent.entities.responsible ?? null,
+          priority: resolvedIntent.entities.priority ?? "medium",
+        },
       })
     }
 
@@ -353,7 +468,16 @@ export async function executeResolvedIntent(input: {
         suggestedLabel: "Ver documentos no Portal",
         suggestedHref: "/portal/documentos",
         resolvedIntent,
-        entities: resolvedIntent.entities,
+        targetId: result.documentId,
+        targetName: title,
+        area: "documentos",
+        entityType: "document",
+        actionType: "create",
+        entities: {
+          ...resolvedIntent.entities,
+          title,
+          type,
+        },
       })
     }
 
@@ -376,7 +500,16 @@ export async function executeResolvedIntent(input: {
         suggestedLabel: "Ver reunioes",
         suggestedHref: "/app/conversas/reunioes",
         resolvedIntent,
-        entities: resolvedIntent.entities,
+        targetId: result.meetingId,
+        targetName: title,
+        area: "reunioes",
+        entityType: "meeting",
+        actionType: "create",
+        entities: {
+          ...resolvedIntent.entities,
+          title,
+          notes: resolvedIntent.entities.notes ?? `Solicitacao enviada pelo chat: ${message}`,
+        },
       })
     }
 
@@ -401,7 +534,19 @@ export async function executeResolvedIntent(input: {
         suggestedLabel: "Abrir suporte",
         suggestedHref: "/app/conversas/suporte",
         resolvedIntent,
-        entities: resolvedIntent.entities,
+        targetId: result.ticketId,
+        targetName: subject || "Solicitacao de suporte",
+        area: "suporte",
+        entityType: "ticket",
+        actionType: "open",
+        entities: {
+          ...resolvedIntent.entities,
+          subject,
+          category,
+          priority: "high" === String(resolvedIntent.entities.priority || "").trim().toLowerCase() ? "high" : "medium",
+          openedBy: "voce",
+          status: "open",
+        },
       })
     }
 
@@ -467,6 +612,35 @@ export async function executeResolvedIntent(input: {
 
     case "unknown":
     default:
+      if (resolvedIntent.actionType === "read" && resolvedIntent.resolvedEntity) {
+        return buildExecutionSuccess({
+          action: "unknown",
+          message:
+            buildContextualReadMessage(resolvedIntent) ||
+            "Nao consegui ler esse contexto com seguranca agora.",
+          resolvedIntent,
+          targetType: resolvedIntent.resolvedEntity.entityType === "client" ? "client" : null,
+          targetId: resolvedIntent.resolvedEntity.id ?? undefined,
+          targetName: resolvedIntent.resolvedEntity.name,
+          readFields: resolvedIntent.readFields ?? [],
+          resolvedFrom: resolvedIntent.resolvedFrom ?? null,
+          resolvedEntity: resolvedIntent.resolvedEntity,
+          entities: {
+            ...resolvedIntent.resolvedEntity.fields,
+            ...resolvedIntent.entities,
+          },
+        })
+      }
+
+      if (resolvedIntent.actionType === "update" && resolvedIntent.resolvedEntity) {
+        return buildExecutionFailure(
+          buildContextualUnsupportedUpdateMessage(resolvedIntent),
+          "unknown",
+          "not_executed",
+          resolvedIntent,
+        )
+      }
+
       return buildExecutionFailure(
         "Ainda nao consigo executar essa solicitacao, mas posso ajudar com clientes, financeiro, operacoes, documentos, reunioes e suporte.",
         "unknown",

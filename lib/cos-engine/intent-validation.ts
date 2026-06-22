@@ -174,7 +174,7 @@ export function validateIntentPayload({
   message,
   conversationMemory,
 }: ValidateIntentPayloadInput): ValidateIntentPayloadResult {
-  const normalizedResolvedIntent = resolveIntentReferences({
+  const normalizedResolvedIntent: OperationsResolvedIntent = resolveIntentReferences({
     resolvedIntent: recoverClientIntentIfSafe({
       resolvedIntent,
       message,
@@ -201,6 +201,17 @@ export function validateIntentPayload({
   }
 
   if (normalizedResolvedIntent.intent === "unknown") {
+    if (normalizedResolvedIntent.unresolvedReference === "ambiguous_reference" || normalizedResolvedIntent.unresolvedReference === "missing_reference_target") {
+      return {
+        ok: false,
+        resolvedIntent: normalizedResolvedIntent,
+        message:
+          normalizedResolvedIntent.clarificationQuestion ||
+          "Qual item voce quer atualizar?",
+        executionStatus: "validation_failed",
+      }
+    }
+
     if (normalizedResolvedIntent.externalSendIntent && normalizedResolvedIntent.externalSendBlockedReason) {
       return {
         ok: false,
@@ -239,6 +250,51 @@ export function validateIntentPayload({
         entityType: normalizedResolvedIntent.entityType ?? null,
         actionType: normalizedResolvedIntent.actionType ?? null,
       })
+
+    const hasResolvedEntity = Boolean(normalizedResolvedIntent.resolvedEntity)
+    const canAnswerContextualRead = normalizedResolvedIntent.actionType === "read" && hasResolvedEntity
+    const canProcessContextualUpdate = normalizedResolvedIntent.actionType === "update" && hasResolvedEntity
+    const hasContextualUpdatePayload = [
+      "name",
+      "email",
+      "phone",
+      "company",
+      "notes",
+      "amount",
+      "priority",
+      "status",
+      "responsible",
+      "title",
+    ].some((field) => hasMeaningfulValue(normalizedResolvedIntent.entities[field]))
+
+    if (canAnswerContextualRead || canProcessContextualUpdate) {
+      if (canProcessContextualUpdate && !hasContextualUpdatePayload) {
+        return {
+          ok: false,
+          resolvedIntent: {
+            ...normalizedResolvedIntent,
+            missingFields: ["update_fields"],
+            clarificationQuestion:
+              clarificationQuestion ||
+              `O que voce quer atualizar nesse ${normalizedResolvedIntent.resolvedEntity?.name || "item"}?`,
+          },
+          message:
+            clarificationQuestion ||
+            `O que voce quer atualizar nesse ${normalizedResolvedIntent.resolvedEntity?.name || "item"}?`,
+          executionStatus: "validation_failed",
+        }
+      }
+
+      return {
+        ok: true,
+        resolvedIntent: {
+          ...normalizedResolvedIntent,
+          missingFields: mergedMissingFields,
+          clarificationQuestion: clarificationQuestion ?? null,
+          unsupportedReason: unsupportedReply ?? normalizedResolvedIntent.unsupportedReason ?? null,
+        },
+      }
+    }
 
     return {
       ok: false,

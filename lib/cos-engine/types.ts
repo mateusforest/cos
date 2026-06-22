@@ -71,9 +71,12 @@ export type OperationsEngineResult = {
   area?: CosArea | null
   entityType?: CosEntityType | null
   actionType?: CosActionType | null
+  targetReference?: string | null
   clarificationQuestion?: string | null
   unsupportedReason?: string | null
   unresolvedReference?: string | null
+  resolvedFrom?: string | null
+  resolvedEntity?: OperationsConversationEntity | null
   intakeType?: OperationsIntakeType | null
   documentType?: OperationsDocumentType | null
   fileName?: string | null
@@ -84,6 +87,7 @@ export type OperationsEngineResult = {
   externalSendIntent?: boolean
   externalSendBlockedReason?: string | null
   requiresConfirmation?: boolean
+  readFields?: string[]
   entities?: Record<string, string | number | boolean | null | undefined>
 }
 
@@ -102,9 +106,12 @@ export type DetectedIntent = {
   area?: CosArea | null
   entityType?: CosEntityType | null
   actionType?: CosActionType | null
+  targetReference?: string | null
   clarificationQuestion?: string | null
   unsupportedReason?: string | null
   unresolvedReference?: string | null
+  resolvedFrom?: string | null
+  resolvedEntity?: OperationsConversationEntity | null
   intakeType?: OperationsIntakeType | null
   documentType?: OperationsDocumentType | null
   extractedEntityTypes?: CosEntityType[]
@@ -114,6 +121,7 @@ export type DetectedIntent = {
   externalSendBlockedReason?: string | null
   fileName?: string | null
   fileMimeType?: string | null
+  readFields?: string[]
 }
 
 export type OperationsIntentUsage = {
@@ -135,9 +143,12 @@ export type OperationsResolvedIntent = {
   area?: CosArea | null
   entityType?: CosEntityType | null
   actionType?: CosActionType | null
+  targetReference?: string | null
   clarificationQuestion?: string | null
   unsupportedReason?: string | null
   unresolvedReference?: string | null
+  resolvedFrom?: string | null
+  resolvedEntity?: OperationsConversationEntity | null
   intakeType?: OperationsIntakeType | null
   documentType?: OperationsDocumentType | null
   extractedEntityTypes?: CosEntityType[]
@@ -147,6 +158,7 @@ export type OperationsResolvedIntent = {
   externalSendBlockedReason?: string | null
   fileName?: string | null
   fileMimeType?: string | null
+  readFields?: string[]
 }
 
 export type OperationsConversationClient = {
@@ -159,10 +171,15 @@ export type OperationsConversationClient = {
 }
 
 export type OperationsConversationEntity = {
-  id: string
+  id?: string | null
   name: string
-  entityType: CosEntityType | null
-  area: CosArea | null
+  entityType: CosEntityType | string | null
+  area: CosArea | string | null
+  action?: CosActionType | string | null
+  sourceIntent?: OperationsEngineIntent | string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+  confidence?: number | null
   fields: Record<string, string | number | boolean | null | undefined>
 }
 
@@ -171,9 +188,12 @@ export type OperationsConversationMemory = {
   lastResultId: string | null
   lastEntities: Record<string, string | number | boolean | null | undefined>
   lastClient: OperationsConversationClient | null
+  lastClientId?: string | null
+  lastClientName?: string | null
   lastEntity: OperationsConversationEntity | null
   lastEntityType: CosEntityType | null
   lastEntityArea: CosArea | null
+  lastEntityName?: string | null
   recentEntities: OperationsConversationEntity[]
 }
 

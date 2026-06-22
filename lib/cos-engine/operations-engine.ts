@@ -55,9 +55,12 @@ export async function runOperationsEngine(
       area: validation.resolvedIntent.area ?? null,
       entityType: validation.resolvedIntent.entityType ?? null,
       actionType: validation.resolvedIntent.actionType ?? null,
+      targetReference: validation.resolvedIntent.targetReference ?? null,
       clarificationQuestion: validation.resolvedIntent.clarificationQuestion ?? null,
       unsupportedReason: validation.resolvedIntent.unsupportedReason ?? null,
       unresolvedReference: validation.resolvedIntent.unresolvedReference ?? null,
+      resolvedFrom: validation.resolvedIntent.resolvedFrom ?? null,
+      resolvedEntity: validation.resolvedIntent.resolvedEntity ?? null,
       intakeType: validation.resolvedIntent.intakeType ?? null,
       documentType: validation.resolvedIntent.documentType ?? null,
       fileName: validation.resolvedIntent.fileName ?? null,
@@ -68,6 +71,7 @@ export async function runOperationsEngine(
       externalSendIntent: validation.resolvedIntent.externalSendIntent ?? false,
       externalSendBlockedReason: validation.resolvedIntent.externalSendBlockedReason ?? null,
       requiresConfirmation: validation.resolvedIntent.requiresConfirmation ?? false,
+      readFields: validation.resolvedIntent.readFields ?? [],
       entities: validation.resolvedIntent.entities,
     }
   }

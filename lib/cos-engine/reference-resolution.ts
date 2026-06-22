@@ -1,32 +1,11 @@
+import {
+  buildAmbiguousReferenceMessage,
+  buildMissingReferenceMessage,
+  inferReadFieldFromMessage,
+  resolveConversationEntityReference,
+} from "@/lib/cos-engine/entity-context"
 import { extractEmail, extractPhone, normalizeEngineText, toTitleCase } from "@/lib/cos-engine/operations-tools"
 import type { OperationsConversationMemory, OperationsResolvedIntent } from "@/lib/cos-engine/types"
-
-function hasClientPronounReference(message: string) {
-  const normalized = normalizeEngineText(message)
-
-  return /\b(dele|dela|nele|nela|nesse cliente|nessa cliente|desse cliente|dessa cliente|esse cliente|essa cliente|ele|ela|o mesmo|a mesma|ultimo cliente|ultima cliente)\b/.test(
-    normalized,
-  )
-}
-
-function extractExplicitTargetClientName(message: string) {
-  const patterns = [
-    /(?:cliente)\s+(.+?)\s+para\s+(?:\d{8,15}|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/iu,
-    /(?:cliente)\s+(.+?)\s+(?:com\s+email|com\s+telefone)/iu,
-    /(?:cliente)\s+(.+?)\s*$/iu,
-  ]
-
-  for (const pattern of patterns) {
-    const match = message.match(pattern)
-    const candidate = match?.[1]?.trim()
-
-    if (candidate) {
-      return toTitleCase(candidate)
-    }
-  }
-
-  return ""
-}
 
 function extractUpdatedClientName(message: string) {
   const match = message.match(/(?:mude|altere|atualize|troque)\s+o?\s*nome(?:\s+dele|\s+dela|\s+do cliente\s+.+?|\s+da cliente\s+.+?)?\s+para\s+(.+)$/iu)
@@ -39,47 +18,88 @@ function extractUpdatedCompany(message: string) {
 }
 
 function extractUpdatedNotes(message: string) {
-  const match = message.match(/(?:observacao|observa[cç][aã]o|nota|notes?)(?:\s+dele|\s+dela|\s+do cliente\s+.+?|\s+da cliente\s+.+?)?\s+para\s+(.+)$/iu)
+  const quoteMatch = message.match(/(?:observacao|observação|nota).+?["']([^"']+)["']/iu)
+  if (quoteMatch?.[1]) {
+    return quoteMatch[1].trim()
+  }
+
+  const match = message.match(/(?:observacao|observação|nota)(?:\s+dele|\s+dela|\s+nesse item|\s+nesse gasto|\s+nesse chamado)?\s+(.+)$/iu)
   return match?.[1] ? match[1].trim() : ""
 }
 
-function mergeClientReference({
-  resolvedIntent,
-  message,
-  conversationMemory,
-}: {
-  resolvedIntent: OperationsResolvedIntent
-  message: string
-  conversationMemory?: OperationsConversationMemory
-}) {
-  const entities = { ...resolvedIntent.entities }
-  const explicitClientName = String(entities.clientName || "").trim() || extractExplicitTargetClientName(message)
-  const canUseLastClient = hasClientPronounReference(message) && conversationMemory?.lastClient
-  const trustedClientId =
-    String(entities.clientId || "").trim() &&
-    conversationMemory?.lastClient?.id &&
-    String(entities.clientId).trim() === conversationMemory.lastClient.id
-      ? String(entities.clientId).trim()
-      : ""
+function extractPriorityValue(message: string) {
+  const normalized = normalizeEngineText(message)
+  if (normalized.includes("alta") || normalized.includes("urgente")) return "high"
+  if (normalized.includes("media")) return "medium"
+  if (normalized.includes("baixa")) return "low"
+  return ""
+}
 
-  if (trustedClientId) {
-    entities.clientId = trustedClientId
-    entities.clientName = conversationMemory?.lastClient?.name ?? explicitClientName
-    return entities
+function extractStatusValue(message: string) {
+  const normalized = normalizeEngineText(message)
+  if (normalized.includes("resolvido")) return "resolved"
+  if (normalized.includes("aberto")) return "open"
+  if (normalized.includes("rascunho")) return "draft"
+  return ""
+}
+
+function extractResponsibleValue(message: string) {
+  const match = message.match(/(?:adicione|coloque|defina)\s+(.+?)\s+como\s+responsavel/iu)
+  return match?.[1] ? toTitleCase(match[1].trim()) : ""
+}
+
+function extractDocumentTitleForRename(message: string) {
+  const match = message.match(/(?:renomeie|renomear|mude)\s+(?:esse documento|esse contrato|esse arquivo|esse relatorio|esse relatório|o nome dele)?\s*(?:para)\s+(.+)$/iu)
+  return match?.[1] ? toTitleCase(match[1].trim()) : ""
+}
+
+function extractResolvedFields(message: string, resolvedIntent: OperationsResolvedIntent) {
+  const readField = inferReadFieldFromMessage(message)
+
+  const entities: OperationsResolvedIntent["entities"] = {
+    ...resolvedIntent.entities,
   }
 
-  if (canUseLastClient && conversationMemory?.lastClient) {
-    entities.clientId = conversationMemory.lastClient.id
-    entities.clientName = conversationMemory.lastClient.name
-    return entities
+  return {
+    readFields: readField ? [readField] : [],
+    entities: {
+      ...entities,
+      amount: entities.amount ?? "",
+      notes: extractUpdatedNotes(message) || entities.notes || null,
+      phone: extractPhone(message) || entities.phone || null,
+      email: extractEmail(message) || entities.email || null,
+      name: extractUpdatedClientName(message) || extractDocumentTitleForRename(message) || entities.name || null,
+      company: extractUpdatedCompany(message) || entities.company || null,
+      priority: extractPriorityValue(message) || entities.priority || null,
+      status: extractStatusValue(message) || entities.status || null,
+      responsible: extractResponsibleValue(message) || entities.responsible || null,
+    } as OperationsResolvedIntent["entities"],
+  }
+}
+
+function inferPreferredEntityType(resolvedIntent: OperationsResolvedIntent, message: string) {
+  if (resolvedIntent.entityType) {
+    return resolvedIntent.entityType
   }
 
-  if (explicitClientName) {
-    entities.clientName = explicitClientName
-    entities.clientId = null
-  }
+  const normalized = normalizeEngineText(message)
+  if (/\b(gasto|despesa)\b/.test(normalized)) return "expense"
+  if (/\b(ganho|receita|entrada)\b/.test(normalized)) return "income"
+  if (/\b(chamado|ticket)\b/.test(normalized)) return "ticket"
+  if (/\b(projeto|operacao|operação)\b/.test(normalized)) return "project"
+  if (/\b(documento|contrato|arquivo|relatorio|relatório)\b/.test(normalized)) return "document"
+  if (/\b(reuniao|reunião)\b/.test(normalized)) return "meeting"
+  if (/\b(lead)\b/.test(normalized)) return "lead"
+  if (/\b(produto)\b/.test(normalized)) return "product"
+  if (/\b(servico|serviço)\b/.test(normalized)) return "service"
 
-  return entities
+  return null
+}
+
+function inferReferenceActionType(resolvedIntent: OperationsResolvedIntent) {
+  return resolvedIntent.actionType === "read" || resolvedIntent.actionType === "update"
+    ? resolvedIntent.actionType
+    : null
 }
 
 export function resolveIntentReferences({
@@ -91,34 +111,77 @@ export function resolveIntentReferences({
   message: string
   conversationMemory?: OperationsConversationMemory
 }) {
-  if (resolvedIntent.intent !== "update_client") {
-    return resolvedIntent
-  }
-
-  const entities = mergeClientReference({
-    resolvedIntent,
+  const referenceResolution = resolveConversationEntityReference({
     message,
     conversationMemory,
+    preferredEntityType: inferPreferredEntityType(resolvedIntent, message),
   })
-  const extractedName = extractUpdatedClientName(message)
-  const extractedEmail = extractEmail(message)
-  const extractedPhone = extractPhone(message)
-  const extractedCompany = extractUpdatedCompany(message)
-  const extractedNotes = extractUpdatedNotes(message)
+  const resolvedFields = extractResolvedFields(message, resolvedIntent)
+
+  if (!referenceResolution.reference.mode) {
+    return {
+      ...resolvedIntent,
+      entities: resolvedFields.entities,
+      readFields: resolvedFields.readFields,
+    } satisfies OperationsResolvedIntent
+  }
+
+  if (referenceResolution.isAmbiguous) {
+    return {
+      ...resolvedIntent,
+      entities: resolvedFields.entities,
+      readFields: resolvedFields.readFields,
+      unresolvedReference: "ambiguous_reference",
+      clarificationQuestion: buildAmbiguousReferenceMessage(inferPreferredEntityType(resolvedIntent, message)),
+      targetReference: referenceResolution.reference.raw,
+    } satisfies OperationsResolvedIntent
+  }
+
+  if (!referenceResolution.resolvedEntity) {
+    return {
+      ...resolvedIntent,
+      entities: resolvedFields.entities,
+      readFields: resolvedFields.readFields,
+      unresolvedReference: "missing_reference_target",
+      clarificationQuestion: buildMissingReferenceMessage(
+        inferPreferredEntityType(resolvedIntent, message),
+        inferReferenceActionType(resolvedIntent),
+      ),
+      targetReference: referenceResolution.reference.raw,
+    } satisfies OperationsResolvedIntent
+  }
+
+  const resolvedEntity = referenceResolution.resolvedEntity
+  const targetType = resolvedEntity.entityType ?? resolvedIntent.entityType ?? null
 
   return {
     ...resolvedIntent,
-    unresolvedReference:
-      hasClientPronounReference(message) && !conversationMemory?.lastClient && !entities.clientName
-        ? "client_reference_not_resolved"
-        : resolvedIntent.unresolvedReference ?? null,
+    entityType: (targetType as OperationsResolvedIntent["entityType"]) ?? null,
+    area: (resolvedEntity.area as OperationsResolvedIntent["area"]) ?? resolvedIntent.area ?? null,
+    targetReference: referenceResolution.reference.raw,
+    resolvedFrom: referenceResolution.resolvedFrom,
+    resolvedEntity,
+    unresolvedReference: null,
     entities: {
-      ...entities,
-      name: extractedName || entities.name || null,
-      email: extractedEmail || entities.email || null,
-      phone: extractedPhone || entities.phone || null,
-      company: extractedCompany || entities.company || null,
-      notes: extractedNotes || entities.notes || null,
+      ...resolvedEntity.fields,
+      ...resolvedFields.entities,
+      clientId:
+        targetType === "client"
+          ? (resolvedEntity.id ?? resolvedFields.entities.clientId ?? null)
+          : resolvedFields.entities.clientId ?? null,
+      clientName:
+        targetType === "client"
+          ? resolvedEntity.name
+          : (resolvedFields.entities.clientName ?? null),
+      title:
+        resolvedFields.entities.title ??
+        resolvedEntity.fields.title ??
+        resolvedEntity.name,
+      subject:
+        resolvedFields.entities.subject ??
+        resolvedEntity.fields.subject ??
+        resolvedEntity.name,
     },
-  }
+    readFields: resolvedFields.readFields,
+  } satisfies OperationsResolvedIntent
 }

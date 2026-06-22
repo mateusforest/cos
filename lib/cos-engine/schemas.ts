@@ -185,6 +185,35 @@ function normalizeSuggestedActions(value: unknown): AssistedActionSuggestion[] {
   })
 }
 
+function normalizeResolvedEntity(value: unknown): OperationsResolvedIntent["resolvedEntity"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const name = typeof record.name === "string" ? record.name.trim() : ""
+
+  if (!name) {
+    return null
+  }
+
+  return {
+    id: typeof record.id === "string" ? record.id : null,
+    name,
+    entityType: typeof record.entityType === "string" ? record.entityType : null,
+    area: typeof record.area === "string" ? record.area : null,
+    action: typeof record.action === "string" ? record.action : null,
+    sourceIntent: typeof record.sourceIntent === "string" ? record.sourceIntent : null,
+    createdAt: typeof record.createdAt === "string" ? record.createdAt : null,
+    updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : null,
+    confidence: typeof record.confidence === "number" ? record.confidence : null,
+    fields:
+      record.fields && typeof record.fields === "object" && !Array.isArray(record.fields)
+        ? (record.fields as Record<string, string | number | boolean | null | undefined>)
+        : {},
+  }
+}
+
 const assistedActionSchema = z.object({
   label: z.string(),
   actionType: z.string(),
@@ -212,6 +241,23 @@ export const operationsResolvedIntentSchema = z.object({
   clarificationQuestion: z.string().nullable().optional(),
   unsupportedReason: z.string().nullable().optional(),
   unresolvedReference: z.string().nullable().optional(),
+  targetReference: z.string().nullable().optional(),
+  resolvedFrom: z.enum(["lastEntity", "recentEntities"]).nullable().optional(),
+  resolvedEntity: z
+    .object({
+      id: z.string().nullable().optional(),
+      name: z.string(),
+      entityType: z.string().nullable(),
+      area: z.string().nullable(),
+      action: z.string().nullable().optional(),
+      sourceIntent: z.string().nullable().optional(),
+      createdAt: z.string().nullable().optional(),
+      updatedAt: z.string().nullable().optional(),
+      confidence: z.number().nullable().optional(),
+      fields: z.record(z.string(), nullableEntityValueSchema),
+    })
+    .nullable()
+    .optional(),
   intakeType: z.string().nullable().optional(),
   documentType: z.string().nullable().optional(),
   extractedEntityTypes: z.array(z.string()).optional(),
@@ -221,6 +267,7 @@ export const operationsResolvedIntentSchema = z.object({
   externalSendBlockedReason: z.string().nullable().optional(),
   fileName: z.string().nullable().optional(),
   fileMimeType: z.string().nullable().optional(),
+  readFields: z.array(z.string()).optional(),
 })
 
 export const operationsOpenAiResponseSchema = operationsResolvedIntentSchema.extend({
@@ -249,6 +296,9 @@ export const operationsOpenAiJsonSchema = {
       "clarificationQuestion",
       "unsupportedReason",
       "unresolvedReference",
+      "targetReference",
+      "resolvedFrom",
+      "resolvedEntity",
       "intakeType",
       "documentType",
       "extractedEntityTypes",
@@ -322,6 +372,39 @@ export const operationsOpenAiJsonSchema = {
       unresolvedReference: {
         anyOf: [{ type: "string" }, { type: "null" }],
       },
+      targetReference: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      resolvedFrom: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
+      resolvedEntity: {
+        anyOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["id", "name", "entityType", "area", "action", "sourceIntent", "createdAt", "updatedAt", "confidence", "fields"],
+            properties: {
+              id: { anyOf: [{ type: "string" }, { type: "null" }] },
+              name: { type: "string" },
+              entityType: { anyOf: [{ type: "string" }, { type: "null" }] },
+              area: { anyOf: [{ type: "string" }, { type: "null" }] },
+              action: { anyOf: [{ type: "string" }, { type: "null" }] },
+              sourceIntent: { anyOf: [{ type: "string" }, { type: "null" }] },
+              createdAt: { anyOf: [{ type: "string" }, { type: "null" }] },
+              updatedAt: { anyOf: [{ type: "string" }, { type: "null" }] },
+              confidence: { anyOf: [{ type: "number" }, { type: "null" }] },
+              fields: {
+                type: "object",
+                additionalProperties: {
+                  anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }],
+                },
+              },
+            },
+          },
+          { type: "null" },
+        ],
+      },
       intakeType: {
         anyOf: [{ type: "string" }, { type: "null" }],
       },
@@ -393,6 +476,12 @@ export const operationsOpenAiJsonSchema = {
       fileMimeType: {
         anyOf: [{ type: "string" }, { type: "null" }],
       },
+      readFields: {
+        type: "array",
+        items: {
+          type: "string",
+        },
+      },
     },
   },
 } as const
@@ -436,9 +525,12 @@ export function buildResolvedIntentFromDetected(
     area: detected.area ?? null,
     entityType: detected.entityType ?? null,
     actionType: detected.actionType ?? null,
+    targetReference: detected.targetReference ?? null,
     clarificationQuestion: detected.clarificationQuestion ?? null,
     unsupportedReason: detected.unsupportedReason ?? null,
     unresolvedReference: detected.unresolvedReference ?? null,
+    resolvedFrom: detected.resolvedFrom ?? null,
+    resolvedEntity: detected.resolvedEntity ?? null,
     intakeType: detected.intakeType ?? null,
     documentType: detected.documentType ?? null,
     extractedEntityTypes: detected.extractedEntityTypes ?? [],
@@ -448,6 +540,7 @@ export function buildResolvedIntentFromDetected(
     externalSendBlockedReason: detected.externalSendBlockedReason ?? null,
     fileName: detected.fileName ?? null,
     fileMimeType: detected.fileMimeType ?? null,
+    readFields: detected.readFields ?? [],
   }
 }
 
@@ -498,6 +591,8 @@ export function normalizeResolvedIntent(
     | "extractionStatus"
     | "extractedEntityTypes"
     | "suggestedActions"
+    | "resolvedEntity"
+    | "resolvedFrom"
   > & {
     area?: string | null
     entityType?: string | null
@@ -507,6 +602,8 @@ export function normalizeResolvedIntent(
     extractionStatus?: string | null
     extractedEntityTypes?: string[]
     suggestedActions?: unknown
+    resolvedEntity?: OperationsResolvedIntent["resolvedEntity"] | Record<string, unknown> | null
+    resolvedFrom?: string | null
   },
 ): OperationsResolvedIntent {
   return {
@@ -531,9 +628,12 @@ export function normalizeResolvedIntent(
     area: normalizeOperationalArea(input.area),
     entityType: normalizeOperationalEntityType(input.entityType),
     actionType: normalizeOperationalActionType(input.actionType),
+    targetReference: input.targetReference ?? null,
     clarificationQuestion: input.clarificationQuestion ?? null,
     unsupportedReason: input.unsupportedReason ?? null,
     unresolvedReference: input.unresolvedReference ?? null,
+    resolvedFrom: input.resolvedFrom ?? null,
+    resolvedEntity: normalizeResolvedEntity(input.resolvedEntity),
     intakeType: normalizeIntakeType(input.intakeType),
     documentType: normalizeDocumentType(input.documentType),
     extractedEntityTypes: (input.extractedEntityTypes ?? []).filter((value): value is OperationalEntityType =>
@@ -545,6 +645,7 @@ export function normalizeResolvedIntent(
     externalSendBlockedReason: input.externalSendBlockedReason ?? null,
     fileName: input.fileName ?? null,
     fileMimeType: input.fileMimeType ?? null,
+    readFields: input.readFields ?? [],
   }
 }
 
