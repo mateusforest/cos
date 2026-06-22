@@ -1,13 +1,14 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { ChevronLeft, Send, Mic, Plus, Sparkles, type LucideIcon } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 
 export type ChatMessage = {
+  id?: string
   from: "cos" | "user"
   text: string
   time: string
@@ -64,7 +65,12 @@ export function AreaChat({
   const [chat, setChat] = useState<ChatMessage[]>(messages)
   const [isSending, setIsSending] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
   const conversationKeyRef = useRef(conversationKey)
+  const latestMessagesSignature = useMemo(
+    () => messages.map((message) => message.id ?? `${message.from}:${message.time}:${message.text}`).join("|"),
+    [messages],
+  )
 
   useEffect(() => {
     if (conversationKeyRef.current !== conversationKey) {
@@ -73,14 +79,25 @@ export function AreaChat({
       return
     }
 
-    setChat((current) => (current.length === 0 ? messages : current))
-  }, [conversationKey, messages])
+    setChat((current) => {
+      const currentSignature = current.map((message) => message.id ?? `${message.from}:${message.time}:${message.text}`).join("|")
+      return currentSignature === latestMessagesSignature ? current : messages
+    })
+  }, [conversationKey, latestMessagesSignature, messages])
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [chat, isSending, isLoadingHistory])
 
   const send = async () => {
     if (!input.trim() || isSending) return
     const now = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
     const nextInput = input.trim()
-    setChat((prev) => [...prev, { from: "user", text: nextInput, time: now }])
+    setChat((prev) => [...prev, { id: `local-user-${Date.now()}`, from: "user", text: nextInput, time: now }])
     setInput("")
 
     if (!onSendMessage) {
@@ -102,9 +119,9 @@ export function AreaChat({
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] lg:h-full">
+    <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col overflow-hidden lg:h-full">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white/95 backdrop-blur-lg sticky top-0 z-10">
+      <div className="sticky top-0 z-10 flex flex-shrink-0 items-center gap-3 border-b border-gray-100 bg-white/95 px-4 py-3 backdrop-blur-lg">
         <button
           onClick={() => router.back()}
           className="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 transition-colors"
@@ -122,7 +139,8 @@ export function AreaChat({
       </div>
 
       {/* History */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="space-y-3 pb-4">
         {isLoadingHistory ? (
           <div className="flex flex-col items-center justify-center text-center h-full py-16">
             <span className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: bg }}>
@@ -140,7 +158,7 @@ export function AreaChat({
         ) : (
           chat.map((m, i) => (
             <motion.div
-              key={i}
+              key={m.id ?? `${m.from}:${m.time}:${m.text}:${i}`}
               initial={{ y: 8, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               className={`flex ${m.from === "user" ? "justify-end" : "justify-start"}`}
@@ -175,11 +193,13 @@ export function AreaChat({
             </div>
           </motion.div>
         )}
+          <div ref={bottomRef} />
+        </div>
       </div>
 
       {/* Quick actions */}
       {quickActions.length > 0 && (
-        <div className="px-4 pb-2 flex gap-2 overflow-x-auto scrollbar-hide">
+        <div className="flex flex-shrink-0 gap-2 overflow-x-auto px-4 pb-2 scrollbar-hide">
           {quickActions.map((a) => (
             <button
               key={a.label}
@@ -200,7 +220,10 @@ export function AreaChat({
       )}
 
       {/* Message input */}
-      <div className="px-4 py-3 border-t border-gray-100 bg-white">
+      <div
+        className="flex-shrink-0 border-t border-gray-100 bg-white px-4 pt-3"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+      >
         <div className="flex items-center gap-2">
           <button
             onClick={() => {

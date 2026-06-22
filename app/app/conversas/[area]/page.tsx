@@ -118,6 +118,7 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
             return {
               messages: [
                 {
+                  id: `area-cos-${Date.now()}`,
                   from: "cos",
                   text: responseText,
                   time: now,
@@ -130,6 +131,7 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
             return {
               messages: [
                 {
+                  id: `area-cos-error-${Date.now()}`,
                   from: "cos",
                   text: "Nao consegui executar sua solicitacao agora. Tente novamente em instantes.",
                   time: now,

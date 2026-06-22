@@ -1,9 +1,8 @@
 "use client"
 
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import {
   ArrowRight,
@@ -68,6 +67,12 @@ type MeetingFormState = {
   notes: string
 }
 
+type ActiveConversation = {
+  area: string
+  subArea?: string
+  label: string
+}
+
 const suggestions = [
   { icon: Users, color: "#ec4899", bg: "#fce7f3", title: "Cadastrar primeiro cliente", desc: "Comece organizando sua base de clientes." },
   { icon: Wallet, color: "#22c55e", bg: "#dcfce7", title: "Registrar primeiro lancamento", desc: "Seus ganhos e gastos aparecerao aqui depois do primeiro registro." },
@@ -97,13 +102,40 @@ const defaultMeetingForm: MeetingFormState = {
   notes: "",
 }
 
+const generalConversation: ActiveConversation = {
+  area: "general",
+  label: "Inicio",
+}
+
+function buildConversationMessageId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function parseConversationArea(value?: string | null): ActiveConversation {
+  if (!value || value === "general") {
+    return generalConversation
+  }
+
+  const [area = "general", subArea] = value.split("/")
+  const label = subArea
+    ? `${area.charAt(0).toUpperCase() + area.slice(1)} / ${subArea.charAt(0).toUpperCase() + subArea.slice(1)}`
+    : area.charAt(0).toUpperCase() + area.slice(1)
+
+  return {
+    area,
+    subArea,
+    label,
+  }
+}
+
 export default function AppHomePage() {
-  const router = useRouter()
   const { user, profile, workspace } = useAuth()
   const { summary, isLoading: isStatsLoading, refreshSummary } = useOperationsDashboard()
   const { openSupport } = useSupport()
   const [message, setMessage] = useState("")
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [activeConversation, setActiveConversation] = useState<ActiveConversation>(generalConversation)
+  const [isLoadingConversation, setIsLoadingConversation] = useState(true)
   const [balanceOpen, setBalanceOpen] = useState(false)
   const [modal, setModal] = useState<ModalType>(null)
   const [shortcutPreferences, setShortcutPreferences] = useState<Record<string, boolean> | null>(null)
@@ -115,6 +147,7 @@ export default function AppHomePage() {
   const [micState, setMicState] = useState<MicState>("idle")
   const [micPreview, setMicPreview] = useState("")
   const [isEngineRunning, setIsEngineRunning] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
   const micActionRef = useRef<"finalize" | "cancel">("finalize")
@@ -130,12 +163,21 @@ export default function AppHomePage() {
     }
   }, [])
 
-  const loadGeneralConversation = useCallback(async () => {
-    const result = await getOperationsConversationMessagesAction({ area: "general" })
+  const loadConversation = useCallback(async (conversation: ActiveConversation) => {
+    setIsLoadingConversation(true)
+
+    const result = await getOperationsConversationMessagesAction({
+      area: conversation.area,
+      subArea: conversation.subArea,
+    })
 
     if (result.success) {
       setChatMessages(result.messages)
+    } else {
+      setChatMessages([])
     }
+
+    setIsLoadingConversation(false)
   }, [])
 
   useEffect(() => {
@@ -192,8 +234,17 @@ export default function AppHomePage() {
   )
 
   useEffect(() => {
-    void loadGeneralConversation()
-  }, [loadGeneralConversation, workspace?.id])
+    setActiveConversation(generalConversation)
+    void loadConversation(generalConversation)
+  }, [loadConversation, workspace?.id])
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [chatMessages, isEngineRunning, isLoadingConversation])
 
   const quickActions = [
     { icon: Sparkles, label: "Sugerir acao", onClick: () => setModal("sugerir") },
@@ -267,7 +318,10 @@ export default function AppHomePage() {
     const nextMessage = message.trim()
     const now = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 
-    setChatMessages((prev) => [...prev, { from: "user", text: nextMessage, time: now }])
+    setChatMessages((prev) => [
+      ...prev,
+      { id: buildConversationMessageId("home-user"), from: "user", text: nextMessage, time: now },
+    ])
     setMessage("")
     setMicPreview("")
     setIsEngineRunning(true)
@@ -289,6 +343,7 @@ export default function AppHomePage() {
       setChatMessages((prev) => [
         ...prev,
         {
+          id: buildConversationMessageId("home-cos"),
           from: "cos",
           text: responseText,
           time: responseTime,
@@ -301,18 +356,15 @@ export default function AppHomePage() {
         await refreshSummary({ silent: true, force: true })
       }
 
-      if (conversationArea === "general") {
-        await loadGeneralConversation()
-      } else if (ctaHref) {
-        startTransition(() => {
-          router.push(ctaHref)
-        })
-      }
+      const nextConversation = parseConversationArea(conversationArea)
+      setActiveConversation(nextConversation)
+      await loadConversation(nextConversation)
     } catch {
       const responseTime = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
       setChatMessages((prev) => [
         ...prev,
         {
+          id: buildConversationMessageId("home-error"),
           from: "cos",
           text: "Nao consegui executar sua solicitacao agora. Tente novamente em instantes.",
           time: responseTime,
@@ -508,42 +560,125 @@ export default function AppHomePage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-120px)] flex-col lg:h-full lg:min-h-[600px]">
-      <div className="flex flex-1 flex-col items-center justify-center px-5">
-        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3 }} className="mb-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100">
-            <Image src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/COS%20LOGO%20%281%29-mBU7xqdIZoWP3indGVxJrDFLu8urZH.png" alt="COS" width={28} height={28} className="h-7 w-7" />
-          </div>
-        </motion.div>
+    <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col overflow-hidden lg:h-full lg:min-h-[600px]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-5">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+          <AnimatePresence initial={false}>
+            {activeConversation.area !== "general" && (
+              <motion.div initial={{ y: -8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -8, opacity: 0 }} className="flex items-center justify-between rounded-2xl border border-gray-200 bg-white px-4 py-3">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-gray-400">Conversa atual</p>
+                  <p className="text-sm font-medium text-[#0a0a0a]">{activeConversation.label}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveConversation(generalConversation)
+                    void loadConversation(generalConversation)
+                  }}
+                  className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                >
+                  Voltar ao inicio
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05, duration: 0.3 }} className="mb-5 text-center">
-          <h1 className="mb-1 text-2xl font-semibold text-[#0a0a0a]">{`Ola, ${displayName}`}</h1>
-          <p className="text-sm text-gray-500">O que voce deseja fazer hoje?</p>
-        </motion.div>
+          {chatMessages.length === 0 && !isLoadingConversation ? (
+            <div className="flex min-h-full flex-col justify-center py-6">
+              <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3 }} className="mb-4 self-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100">
+                  <Image src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/COS%20LOGO%20%281%29-mBU7xqdIZoWP3indGVxJrDFLu8urZH.png" alt="COS" width={28} height={28} className="h-7 w-7" />
+                </div>
+              </motion.div>
 
-        <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1, duration: 0.3 }} className="mb-4 w-full max-w-sm">
-          <div className="relative rounded-full border border-gray-200 bg-white shadow-sm">
-            <input
-              type="text"
-              value={message || micPreview}
-              onChange={(event) => setMessage(event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && void handleSend()}
-              placeholder="Fale com o COS..."
-              className="w-full rounded-full bg-transparent px-5 py-3 pr-20 text-sm focus:outline-none"
-            />
-            <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
-              <button onClick={startListening} className={`p-2 transition-colors ${micState === "listening" ? "text-[#0a0a0a]" : "text-gray-400 hover:text-gray-600"}`} aria-label="Falar">
-                <Mic className="h-4 w-4" />
-              </button>
-              <button onClick={() => void handleSend()} disabled={!message.trim() || isEngineRunning} className="rounded-full bg-[#0a0a0a] p-2 text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50" aria-label="Enviar">
-                <Send className="h-4 w-4" />
-              </button>
+              <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05, duration: 0.3 }} className="mb-5 text-center">
+                <h1 className="mb-1 text-2xl font-semibold text-[#0a0a0a]">{`Ola, ${displayName}`}</h1>
+                <p className="text-sm text-gray-500">O que voce deseja fazer hoje?</p>
+              </motion.div>
+
+              <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.15, duration: 0.3 }} className="mb-5 flex flex-wrap justify-center gap-2">
+                {quickActions.map((action) => (
+                  <button key={action.label} onClick={action.onClick} className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50">
+                    <action.icon className="h-3.5 w-3.5" />
+                    {action.label}
+                  </button>
+                ))}
+              </motion.div>
+
+              <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2, duration: 0.3 }}>
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-gray-400" />
+                    <span className="text-xs font-medium text-gray-500">Atalhos inteligentes</span>
+                  </div>
+                  <button onClick={openShortcutsEditor} className="text-xs text-gray-400 transition-colors hover:text-gray-600">
+                    Editar
+                  </button>
+                </div>
+
+                <div className="rounded-xl border border-gray-100 bg-white p-3">
+                  {!isShortcutsReady || isStatsLoading ? (
+                    <div className="grid grid-cols-4 gap-2">
+                      {Array.from({ length: 4 }).map((_, index) => (
+                        <div key={index} className="flex flex-col items-center gap-2 py-1">
+                          <div className="h-4 w-4 animate-pulse rounded bg-gray-200" />
+                          <div className="h-4 w-12 animate-pulse rounded bg-gray-200" />
+                          <div className="h-3 w-16 animate-pulse rounded bg-gray-100" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className={`grid gap-2 ${enabledShortcuts.length <= 4 ? "grid-cols-4" : "grid-cols-3"}`}>
+                      {enabledShortcuts.map((shortcut) => (
+                        <button key={shortcut.id} onClick={() => shortcut.isBalance && setBalanceOpen(true)} className="flex flex-col items-center text-center">
+                          <shortcut.icon className="mb-1 h-4 w-4 text-gray-400" />
+                          <span className={`max-w-full truncate font-semibold text-[#0a0a0a] ${shortcut.isBalance ? "text-sm tabular-nums" : "text-base"}`}>{shortcut.value}</span>
+                          <span className="text-[10px] leading-tight text-gray-500">{shortcut.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-3 pt-2">
+              {chatMessages.map((chatMessage, index) => (
+                <div key={chatMessage.id ?? `${chatMessage.from}:${chatMessage.time}:${chatMessage.text}:${index}`} className={`flex ${chatMessage.from === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 ${chatMessage.from === "user" ? "bg-[#0a0a0a] text-white" : "border border-gray-100 bg-white text-[#0a0a0a]"}`}>
+                    {chatMessage.from === "cos" && (
+                      <span className="mb-0.5 flex items-center gap-1 text-[10px] font-medium text-gray-400">
+                        <Sparkles className="h-3 w-3" /> COS
+                      </span>
+                    )}
+                    <p className="text-sm leading-snug">{chatMessage.text}</p>
+                    {chatMessage.ctaLabel && chatMessage.ctaHref && (
+                      <Link href={chatMessage.ctaHref} className="mt-2 inline-flex rounded-full border border-gray-200 px-3 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50">
+                        {chatMessage.ctaLabel}
+                      </Link>
+                    )}
+                    <span className={`mt-1 block text-[10px] ${chatMessage.from === "user" ? "text-gray-300" : "text-gray-400"}`}>{chatMessage.time}</span>
+                  </div>
+                </div>
+              ))}
+
+              {isEngineRunning && (
+                <div className="flex justify-start">
+                  <div className="max-w-[88%] rounded-2xl border border-gray-100 bg-white px-3.5 py-2.5 text-[#0a0a0a]">
+                    <span className="mb-0.5 flex items-center gap-1 text-[10px] font-medium text-gray-400">
+                      <Sparkles className="h-3 w-3" /> COS
+                    </span>
+                    <p className="text-sm leading-snug text-gray-500">Executando sua solicitacao...</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <AnimatePresence initial={false}>
             {micState !== "idle" && (
-              <motion.div initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 8, opacity: 0 }} className="mt-2 rounded-2xl border border-gray-100 bg-white p-3">
+              <motion.div initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 8, opacity: 0 }} className="rounded-2xl border border-gray-100 bg-white p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-[#0a0a0a]">
@@ -580,88 +715,41 @@ export default function AppHomePage() {
             )}
           </AnimatePresence>
 
-          <AnimatePresence initial={false}>
-            {(chatMessages.length > 0 || isEngineRunning) && (
-              <motion.div initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 8, opacity: 0 }} className="mt-3 space-y-2">
-                {chatMessages.map((chatMessage, index) => (
-                  <div key={`${chatMessage.time}-${index}`} className={`flex ${chatMessage.from === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 ${chatMessage.from === "user" ? "bg-[#0a0a0a] text-white" : "border border-gray-100 bg-white text-[#0a0a0a]"}`}>
-                      {chatMessage.from === "cos" && (
-                        <span className="mb-0.5 flex items-center gap-1 text-[10px] font-medium text-gray-400">
-                          <Sparkles className="h-3 w-3" /> COS
-                        </span>
-                      )}
-                      <p className="text-sm leading-snug">{chatMessage.text}</p>
-                      {chatMessage.ctaLabel && chatMessage.ctaHref && (
-                        <Link href={chatMessage.ctaHref} className="mt-2 inline-flex rounded-full border border-gray-200 px-3 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50">
-                          {chatMessage.ctaLabel}
-                        </Link>
-                      )}
-                      <span className={`mt-1 block text-[10px] ${chatMessage.from === "user" ? "text-gray-300" : "text-gray-400"}`}>{chatMessage.time}</span>
-                    </div>
-                  </div>
-                ))}
-
-                {isEngineRunning && (
-                  <div className="flex justify-start">
-                    <div className="max-w-[88%] rounded-2xl border border-gray-100 bg-white px-3.5 py-2.5 text-[#0a0a0a]">
-                      <span className="mb-0.5 flex items-center gap-1 text-[10px] font-medium text-gray-400">
-                        <Sparkles className="h-3 w-3" /> COS
-                      </span>
-                      <p className="text-sm leading-snug text-gray-500">Executando sua solicitacao...</p>
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-
-        <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.15, duration: 0.3 }} className="flex flex-wrap justify-center gap-2">
-          {quickActions.map((action) => (
-            <button key={action.label} onClick={action.onClick} className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50">
-              <action.icon className="h-3.5 w-3.5" />
-              {action.label}
-            </button>
-          ))}
-        </motion.div>
-      </div>
-
-      <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2, duration: 0.3 }} className="px-4 pb-2">
-        <div className="mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <Sparkles className="h-3.5 w-3.5 text-gray-400" />
-            <span className="text-xs font-medium text-gray-500">Atalhos inteligentes</span>
-          </div>
-          <button onClick={openShortcutsEditor} className="text-xs text-gray-400 transition-colors hover:text-gray-600">
-            Editar
-          </button>
-        </div>
-
-        <div className="rounded-xl border border-gray-100 bg-white p-3">
-          {!isShortcutsReady || isStatsLoading ? (
-            <div className="grid grid-cols-4 gap-2">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="flex flex-col items-center gap-2 py-1">
-                  <div className="h-4 w-4 animate-pulse rounded bg-gray-200" />
-                  <div className="h-4 w-12 animate-pulse rounded bg-gray-200" />
-                  <div className="h-3 w-16 animate-pulse rounded bg-gray-100" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className={`grid gap-2 ${enabledShortcuts.length <= 4 ? "grid-cols-4" : "grid-cols-3"}`}>
-              {enabledShortcuts.map((shortcut) => (
-                <button key={shortcut.id} onClick={() => shortcut.isBalance && setBalanceOpen(true)} className="flex flex-col items-center text-center">
-                  <shortcut.icon className="mb-1 h-4 w-4 text-gray-400" />
-                  <span className={`max-w-full truncate font-semibold text-[#0a0a0a] ${shortcut.isBalance ? "text-sm tabular-nums" : "text-base"}`}>{shortcut.value}</span>
-                  <span className="text-[10px] leading-tight text-gray-500">{shortcut.label}</span>
-                </button>
-              ))}
+          {isLoadingConversation && chatMessages.length === 0 && (
+            <div className="rounded-2xl border border-gray-100 bg-white px-4 py-3 text-sm text-gray-500">
+              Carregando conversa...
             </div>
           )}
+
+          <div ref={messagesEndRef} />
         </div>
-      </motion.div>
+      </div>
+
+      <div
+        className="border-t border-gray-100 bg-white px-4 pt-3"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+      >
+        <div className="mx-auto w-full max-w-3xl">
+          <div className="relative rounded-full border border-gray-200 bg-white shadow-sm">
+            <input
+              type="text"
+              value={message || micPreview}
+              onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={(event) => event.key === "Enter" && void handleSend()}
+              placeholder="Fale com o COS..."
+              className="w-full rounded-full bg-transparent px-5 py-3 pr-20 text-sm focus:outline-none"
+            />
+            <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+              <button onClick={startListening} className={`p-2 transition-colors ${micState === "listening" ? "text-[#0a0a0a]" : "text-gray-400 hover:text-gray-600"}`} aria-label="Falar">
+                <Mic className="h-4 w-4" />
+              </button>
+              <button onClick={() => void handleSend()} disabled={!message.trim() || isEngineRunning} className="rounded-full bg-[#0a0a0a] p-2 text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50" aria-label="Enviar">
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <AnimatePresence>
         {balanceOpen && (

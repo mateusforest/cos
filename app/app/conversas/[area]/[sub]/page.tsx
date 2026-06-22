@@ -194,6 +194,7 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
           return {
             messages: [
               {
+                id: `subarea-cos-${Date.now()}`,
                 from: "cos",
                 text: responseText,
                 time: now,
@@ -206,6 +207,7 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
           return {
             messages: [
               {
+                id: `subarea-cos-error-${Date.now()}`,
                 from: "cos",
                 text: "Nao consegui executar sua solicitacao agora. Tente novamente em instantes.",
                 time: now,
