@@ -257,6 +257,18 @@ function mapConversationMessage(row: MessageRow): PersistedOperationsChatMessage
   }
 }
 
+type PersistedOperationsConversation = {
+  id: string
+  area: string
+  title: string
+  time: string
+  updatedAt: string | null
+  preview: string
+  lastFrom: "cos" | "user" | null
+  ctaLabel?: string
+  ctaHref?: string
+}
+
 export async function runOperationsEngineAction(input: OperationsEngineInput) {
   const actor = await getOperationsConversationActor()
 
@@ -611,7 +623,15 @@ export async function getOperationsConversationMessagesAction(input?: {
   })
 
   const conversationsTable = actor.adminClient.from("ai_conversations") as {
-    select: (columns: string) => SelectChain
+    select: (columns: string) => {
+      eq: (column: string, value: string) => {
+        eq: (column: string, value: string) => {
+          eq: (column: string, value: string) => {
+            maybeSingle: () => Promise<unknown>
+          }
+        }
+      }
+    }
   }
   const conversationQuery = (await conversationsTable
     .select("id, workspace_id, user_id, area, title")
@@ -659,5 +679,79 @@ export async function getOperationsConversationMessagesAction(input?: {
     messages: (rows ?? [])
       .map(mapConversationMessage)
       .filter((message: PersistedOperationsChatMessage | null): message is PersistedOperationsChatMessage => Boolean(message)),
+  }
+}
+
+export async function getOperationsConversationsAction() {
+  const actor = await getOperationsConversationActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  const conversationsTable = actor.adminClient.from("ai_conversations") as {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => {
+        eq: (column: string, value: string) => {
+          order: (column: string, options: { ascending: boolean }) => Promise<unknown>
+        }
+      }
+    }
+  }
+
+  const conversationsQuery = (await conversationsTable
+    .select("id, workspace_id, user_id, area, title")
+    .eq("workspace_id", actor.access.workspace.id)
+    .eq("user_id", actor.user.id)
+    .order("area", { ascending: true })) as { data: ConversationRow[] | null; error: QueryError }
+
+  if (conversationsQuery.error) {
+    return { error: "Nao consegui carregar as conversas do portal agora." }
+  }
+
+  const conversations = await Promise.all(
+    (conversationsQuery.data ?? []).map(async (conversation) => {
+      const recentRowsResult = await getRecentConversationRows({
+        adminClient: actor.adminClient,
+        conversationId: conversation.id,
+        limit: 1,
+      })
+
+      if ("error" in recentRowsResult) {
+        return null
+      }
+
+      const lastRow = recentRowsResult.rows[0] ?? null
+      const lastMessage = lastRow ? mapConversationMessage(lastRow) : null
+      const [area, subArea] = conversation.area.split("/")
+
+      return {
+        id: conversation.id,
+        area: conversation.area,
+        title:
+          conversation.title?.trim() ||
+          buildOperationsConversationTitle({
+            area,
+            subArea,
+          }),
+        time: formatOperationsConversationTime(lastRow?.created_at ?? null),
+        updatedAt: lastRow?.created_at ?? null,
+        preview: lastMessage?.text || "Nenhuma mensagem registrada ainda.",
+        lastFrom: lastMessage?.from ?? null,
+        ctaLabel: lastMessage?.ctaLabel,
+        ctaHref: lastMessage?.ctaHref,
+      } satisfies PersistedOperationsConversation
+    }),
+  )
+
+  const validConversations = conversations.filter((conversation) => conversation !== null)
+
+  return {
+    success: true,
+    conversations: validConversations.sort((left, right) => {
+        const leftTime = left.updatedAt ? new Date(left.updatedAt).getTime() : 0
+        const rightTime = right.updatedAt ? new Date(right.updatedAt).getTime() : 0
+        return rightTime - leftTime
+      }),
   }
 }

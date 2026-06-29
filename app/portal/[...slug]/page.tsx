@@ -209,7 +209,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     )
   }
 
-  if (key === "suporte") {
+  if (key === "suporte" || key === "atendimentos") {
     return (
       <div className="flex-1 flex flex-col h-full">
         <PortalHeader />

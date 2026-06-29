@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { FileText, Loader2, Paperclip, Pencil, Plus, Search, Trash2 } from "lucide-react"
+import { BarChart3, FileText, Loader2, Paperclip, Pencil, Plus, Search, Trash2, TrendingUp } from "lucide-react"
 import {
   createDocumentAction,
   deleteDocumentAction,
@@ -71,6 +71,74 @@ function normalizeFilterType(filterType?: string | null): DocumentType | null {
   return null
 }
 
+function buildDocumentUiCopy(filterType?: string | null) {
+  const normalized = normalizeFilterType(filterType)
+
+  if (normalized === "proposta") {
+    return {
+      createLabel: "Nova proposta",
+      editLabel: "Editar proposta",
+      searchPlaceholder: "Buscar por titulo ou conteudo da proposta...",
+      emptyLabel: "Nenhuma proposta criada ainda.",
+      loadingLabel: "Carregando propostas...",
+      createSuccess: "Proposta criada com sucesso.",
+      updateSuccess: "Proposta atualizada com sucesso.",
+      titlePlaceholder: "Titulo da proposta",
+      fileLabel: "Referencia comercial",
+      filePlaceholder: "Link ou referencia opcional",
+      contentLabel: "Detalhes",
+      contentPlaceholder: "Escreva o resumo ou escopo da proposta",
+      helperText: "Os dados reais da proposta ficam salvos no workspace sem depender de um modal generico de documento.",
+      fixedType: true,
+      icon: TrendingUp,
+      iconClassName: "text-blue-500",
+      iconBackgroundClassName: "bg-blue-50",
+    }
+  }
+
+  if (normalized === "relatório") {
+    return {
+      createLabel: "Novo relatorio",
+      editLabel: "Editar relatorio",
+      searchPlaceholder: "Buscar por titulo ou conteudo do relatorio...",
+      emptyLabel: "Nenhum relatorio criado ainda.",
+      loadingLabel: "Carregando relatorios...",
+      createSuccess: "Relatorio criado com sucesso.",
+      updateSuccess: "Relatorio atualizado com sucesso.",
+      titlePlaceholder: "Titulo do relatorio",
+      fileLabel: "Referencia",
+      filePlaceholder: "Link ou referencia opcional",
+      contentLabel: "Analise",
+      contentPlaceholder: "Escreva o conteudo ou a analise do relatorio",
+      helperText: "O relatorio fica salvo com seus dados reais do workspace nesta sessao dedicada.",
+      fixedType: true,
+      icon: BarChart3,
+      iconClassName: "text-amber-500",
+      iconBackgroundClassName: "bg-amber-50",
+    }
+  }
+
+  return {
+    createLabel: "Novo documento",
+    editLabel: "Editar documento",
+    searchPlaceholder: "Buscar por titulo, tipo ou conteudo...",
+    emptyLabel: "Nenhum documento criado ainda.",
+    loadingLabel: "Carregando documentos...",
+    createSuccess: "Documento criado com sucesso.",
+    updateSuccess: "Documento atualizado com sucesso.",
+    titlePlaceholder: "Titulo do documento",
+    fileLabel: "Referencia do arquivo",
+    filePlaceholder: "URL ou referencia do arquivo",
+    contentLabel: "Conteudo",
+    contentPlaceholder: "Escreva o conteudo ou resumo do documento",
+    helperText: "O upload real pode continuar visivel na interface, mas nesta etapa apenas metadados e conteudo sao salvos.",
+    fixedType: false,
+    icon: FileText,
+    iconClassName: "text-blue-500",
+    iconBackgroundClassName: "bg-blue-50",
+  }
+}
+
 export function DocumentsManager({
   title,
   description,
@@ -98,6 +166,7 @@ export function DocumentsManager({
   })
 
   const currentTypeFilter = normalizeFilterType(filterType)
+  const uiCopy = useMemo(() => buildDocumentUiCopy(filterType), [filterType])
 
   const loadDocuments = async () => {
     setIsLoading(true)
@@ -179,7 +248,7 @@ export function DocumentsManager({
       return
     }
 
-    setFeedback(editingDocumentId ? "Documento atualizado com sucesso." : "Documento criado com sucesso.")
+    setFeedback(editingDocumentId ? uiCopy.updateSuccess : uiCopy.createSuccess)
     setModalOpen(false)
     await loadDocuments()
   }
@@ -212,7 +281,7 @@ export function DocumentsManager({
             className="inline-flex items-center gap-2 rounded-xl bg-[#0a0a0a] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]"
           >
             <Plus className="h-4 w-4" />
-            Novo documento
+            {uiCopy.createLabel}
           </button>
         </div>
 
@@ -227,7 +296,7 @@ export function DocumentsManager({
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar por título, tipo ou conteúdo..."
+                placeholder={uiCopy.searchPlaceholder}
                 className="w-full rounded-xl bg-gray-50 px-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
               />
             </div>
@@ -255,11 +324,11 @@ export function DocumentsManager({
           {isLoading ? (
             <div className="flex items-center justify-center py-16 text-sm text-gray-500">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Carregando documentos...
+              {uiCopy.loadingLabel}
             </div>
           ) : filteredDocuments.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-16 text-center">
-              <p className="text-sm text-gray-500">Nenhum documento criado ainda.</p>
+              <p className="text-sm text-gray-500">{uiCopy.emptyLabel}</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -328,11 +397,11 @@ export function DocumentsManager({
           <div className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
           <div className="fixed inset-x-0 bottom-0 z-[80] max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 lg:inset-0 lg:m-auto lg:h-fit lg:max-h-[80vh] lg:max-w-lg lg:rounded-3xl">
             <div className="mb-4 flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50">
-                <FileText className="h-5 w-5 text-blue-500" />
+              <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${uiCopy.iconBackgroundClassName}`}>
+                <uiCopy.icon className={`h-5 w-5 ${uiCopy.iconClassName}`} />
               </span>
               <div>
-                <h2 className="text-lg font-semibold text-[#0a0a0a]">{editingDocumentId ? "Editar documento" : "Novo documento"}</h2>
+                <h2 className="text-lg font-semibold text-[#0a0a0a]">{editingDocumentId ? uiCopy.editLabel : uiCopy.createLabel}</h2>
                 <p className="text-sm text-gray-500">Salve conteúdo real e mantenha o upload apenas como metadado enquanto o storage não estiver conectado.</p>
               </div>
             </div>
@@ -347,18 +416,24 @@ export function DocumentsManager({
 
             <div className="space-y-3">
               <FormField label="Título">
-                <input value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} placeholder="Título do documento" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+                <input value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} placeholder={uiCopy.titlePlaceholder} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
               </FormField>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <FormField label="Tipo">
-                  <select value={form.type} onChange={(event) => setForm((prev) => ({ ...prev, type: event.target.value as DocumentType }))} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none">
-                    <option value="contrato">Contrato</option>
-                    <option value="arquivo">Arquivo</option>
-                    <option value="relatório">Relatório</option>
-                    <option value="proposta">Proposta</option>
-                    <option value="outro">Outro</option>
-                  </select>
-                </FormField>
+                {uiCopy.fixedType ? (
+                  <FormField label="Tipo">
+                    <input value={typeLabel(form.type)} readOnly className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500 focus:outline-none" />
+                  </FormField>
+                ) : (
+                  <FormField label="Tipo">
+                    <select value={form.type} onChange={(event) => setForm((prev) => ({ ...prev, type: event.target.value as DocumentType }))} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none">
+                      <option value="contrato">Contrato</option>
+                      <option value="arquivo">Arquivo</option>
+                      <option value="relatório">Relatório</option>
+                      <option value="proposta">Proposta</option>
+                      <option value="outro">Outro</option>
+                    </select>
+                  </FormField>
+                )}
                 <FormField label="Status">
                   <select value={form.status} onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as DocumentStatus }))} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none">
                     <option value="draft">Rascunho</option>
@@ -368,19 +443,19 @@ export function DocumentsManager({
                   </select>
                 </FormField>
               </div>
-              <FormField label="Referência do arquivo">
+              <FormField label={uiCopy.fileLabel}>
                 <div className="relative">
                   <Paperclip className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  <input value={form.fileUrl} onChange={(event) => setForm((prev) => ({ ...prev, fileUrl: event.target.value }))} placeholder="URL ou referência do arquivo" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-10 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+                  <input value={form.fileUrl} onChange={(event) => setForm((prev) => ({ ...prev, fileUrl: event.target.value }))} placeholder={uiCopy.filePlaceholder} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-10 py-3 text-sm focus:border-gray-300 focus:outline-none" />
                 </div>
               </FormField>
-              <FormField label="Conteúdo">
-                <textarea value={form.content} onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))} placeholder="Escreva o conteúdo ou resumo do documento" rows={5} className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+              <FormField label={uiCopy.contentLabel}>
+                <textarea value={form.content} onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))} placeholder={uiCopy.contentPlaceholder} rows={5} className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
               </FormField>
             </div>
 
             <div className="mt-3 rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-500">
-              O upload real pode continuar visível na interface, mas nesta etapa apenas metadados e conteúdo são salvos.
+              {uiCopy.helperText}
             </div>
 
             <div className="mt-5 flex gap-2">
@@ -392,7 +467,7 @@ export function DocumentsManager({
                 disabled={isSaving || (Boolean(editingDocumentId) && !canManageWorkspace)}
                 className="flex-1 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isSaving ? "Salvando..." : editingDocumentId ? "Salvar alterações" : "Salvar documento"}
+                {isSaving ? "Salvando..." : editingDocumentId ? "Salvar alterações" : uiCopy.createLabel}
               </button>
             </div>
           </div>

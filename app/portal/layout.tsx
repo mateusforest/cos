@@ -50,8 +50,7 @@ const mainNavItems = [
 const favoriteItems = [
   { icon: FileSignature, label: "Propostas", href: "/portal/vendas/propostas" },
   { icon: FileText, label: "Contratos", href: "/portal/documentos/contratos" },
-  { icon: Headphones, label: "Atendimentos", href: "/portal/operacoes/atendimentos" },
-  { icon: DollarSign, label: "Balanço", href: "/portal/financeiro/balanco" },
+  { icon: Headphones, label: "Atendimentos", href: "/portal/suporte" },
 ]
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
