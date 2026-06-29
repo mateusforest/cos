@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import {
   ArrowRight,
@@ -24,6 +25,7 @@ import {
 } from "lucide-react"
 import { createMeetingAction } from "@/actions/meetings"
 import { runOperationsEngineAction } from "@/actions/operations-engine"
+import { useAppInteractions } from "@/components/app/app-interactions"
 import { useOperationsDashboard } from "@/components/app/operations-dashboard-store"
 import { useAuth } from "@/components/auth/auth-provider"
 import type { ChatMessage } from "@/components/app/area-chat"
@@ -71,26 +73,26 @@ type ActiveConversation = {
 }
 
 const suggestions = [
-  { icon: Users, color: "#ec4899", bg: "#fce7f3", title: "Cadastrar primeiro cliente", desc: "Comece organizando sua base de clientes." },
-  { icon: Wallet, color: "#22c55e", bg: "#dcfce7", title: "Registrar primeiro lancamento", desc: "Seus ganhos e gastos aparecerao aqui depois do primeiro registro." },
-  { icon: FileText, color: "#3b82f6", bg: "#dbeafe", title: "Criar primeiro documento", desc: "Use o COS para centralizar propostas, contratos e arquivos." },
-  { icon: Video, color: "#ef4444", bg: "#fee2e2", title: "Gravar primeira reuniao", desc: "Os resumos gerados ficarao disponiveis nesta area." },
+  { id: "cliente", icon: Users, color: "#ec4899", bg: "#fce7f3", title: "Cadastrar primeiro cliente", desc: "Comece organizando sua base de clientes." },
+  { id: "financeiro", icon: Wallet, color: "#22c55e", bg: "#dcfce7", title: "Registrar primeiro lançamento", desc: "Seus ganhos e gastos aparecerão aqui depois do primeiro registro." },
+  { id: "documento", icon: FileText, color: "#3b82f6", bg: "#dbeafe", title: "Criar primeiro documento", desc: "Use o COS para centralizar propostas, contratos e arquivos." },
+  { id: "reuniao", icon: Video, color: "#ef4444", bg: "#fee2e2", title: "Gravar primeira reunião", desc: "Os resumos gerados ficarão disponíveis nesta área." },
 ]
 
 const nextSteps = [
-  { priority: "Alta", color: "#ef4444", title: "Cadastrar primeiro cliente", desc: "Sua operacao comeca quando os primeiros dados reais entrarem no COS." },
-  { priority: "Alta", color: "#ef4444", title: "Criar primeira operacao", desc: "Estruture pedidos, projetos ou atendimentos no seu workspace." },
-  { priority: "Media", color: "#f97316", title: "Registrar primeiro lancamento", desc: "Isso libera os indicadores financeiros reais." },
-  { priority: "Baixa", color: "#22c55e", title: "Convidar a equipe", desc: "Adicione membros quando quiser comecar a colaboracao." },
+  { id: "cliente", priority: "Alta", color: "#ef4444", title: "Cadastrar primeiro cliente", desc: "Sua operação começa quando os primeiros dados reais entrarem no COS." },
+  { id: "operacao", priority: "Alta", color: "#ef4444", title: "Criar primeira operação", desc: "Estruture pedidos, projetos ou atendimentos no seu workspace." },
+  { id: "financeiro", priority: "Média", color: "#f97316", title: "Registrar primeiro lançamento", desc: "Isso libera os indicadores financeiros reais." },
+  { id: "equipe", priority: "Baixa", color: "#22c55e", title: "Convidar a equipe", desc: "Adicione membros quando quiser começar a colaboração." },
 ]
 
 const defaultShortcuts = [
   { id: "clientes", icon: Users, value: "0", label: "Clientes", enabled: true },
-  { id: "operacoes", icon: Briefcase, value: "0", label: "Operacoes", enabled: true },
-  { id: "balanco", icon: Wallet, value: "0,00", label: "Balanco", isBalance: true, enabled: true },
+  { id: "operacoes", icon: Briefcase, value: "0", label: "Operações", enabled: true },
+  { id: "balanco", icon: Wallet, value: "0,00", label: "Balanço", isBalance: true, enabled: true },
   { id: "equipe", icon: UsersRound, value: "0", label: "Equipe", enabled: true },
   { id: "vendas", icon: ArrowRight, value: "0", label: "Vendas", enabled: false },
-  { id: "reunioes", icon: Video, value: "0", label: "Reunioes", enabled: false },
+  { id: "reunioes", icon: Video, value: "0", label: "Reuniões", enabled: false },
 ]
 
 const defaultMeetingForm: MeetingFormState = {
@@ -126,9 +128,11 @@ function parseConversationArea(value?: string | null): ActiveConversation {
 }
 
 export default function AppHomePage() {
+  const router = useRouter()
   const { user, profile, workspace } = useAuth()
   const { summary, isLoading: isStatsLoading, refreshSummary } = useOperationsDashboard()
   const { openSupport } = useSupport()
+  const { openTeam } = useAppInteractions()
   const [message, setMessage] = useState("")
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [activeConversation, setActiveConversation] = useState<ActiveConversation>(generalConversation)
@@ -226,11 +230,11 @@ export default function AppHomePage() {
   }, [chatMessages, isEngineRunning])
 
   const quickActions = [
-    { icon: Sparkles, label: "Sugerir acao", onClick: () => setModal("sugerir") },
-    { icon: ArrowRight, label: "Proximo passo", onClick: () => setModal("passo") },
+    { icon: Sparkles, label: "Sugerir ação", onClick: () => setModal("sugerir") },
+    { icon: ArrowRight, label: "Próximo passo", onClick: () => setModal("passo") },
     {
       icon: Video,
-      label: "Gravar reuniao",
+      label: "Gravar reunião",
       onClick: () => {
         setMeetingForm(defaultMeetingForm)
         setMeetingFeedback(null)
@@ -263,6 +267,89 @@ export default function AppHomePage() {
   const saldoFinal = stats?.balanco ?? 0
   const enabledShortcuts = shortcuts.filter((shortcut) => shortcut.enabled)
   const displayName = profile?.full_name || user?.email?.split("@")[0] || "sua equipe"
+
+  const openMeetModal = () => {
+    setMeetingForm(defaultMeetingForm)
+    setMeetingFeedback(null)
+    setModal("meet")
+  }
+
+  const handleShortcutAction = (shortcutId: string) => {
+    if (shortcutId === "balanco") {
+      setBalanceOpen(true)
+      return
+    }
+
+    if (shortcutId === "clientes") {
+      router.push("/app/conversas/cadastros/clientes")
+      return
+    }
+
+    if (shortcutId === "operacoes") {
+      router.push("/app/conversas/operacoes")
+      return
+    }
+
+    if (shortcutId === "equipe") {
+      router.push("/app/conversas/equipe")
+      return
+    }
+
+    if (shortcutId === "vendas") {
+      router.push("/app/conversas/vendas")
+      return
+    }
+
+    if (shortcutId === "reunioes") {
+      router.push("/app/conversas/reunioes")
+    }
+  }
+
+  const handleSuggestionAction = (suggestionId: string) => {
+    closeModal()
+
+    if (suggestionId === "cliente") {
+      router.push("/app/novo/cliente")
+      return
+    }
+
+    if (suggestionId === "financeiro") {
+      router.push("/app/novo/financeiro")
+      return
+    }
+
+    if (suggestionId === "documento") {
+      router.push("/app/novo/documento")
+      return
+    }
+
+    if (suggestionId === "reuniao") {
+      openMeetModal()
+    }
+  }
+
+  const handleNextStepAction = (stepId: string) => {
+    closeModal()
+
+    if (stepId === "cliente") {
+      router.push("/app/novo/cliente")
+      return
+    }
+
+    if (stepId === "operacao") {
+      router.push("/app/novo/operacao")
+      return
+    }
+
+    if (stepId === "financeiro") {
+      router.push("/app/novo/financeiro")
+      return
+    }
+
+    if (stepId === "equipe") {
+      openTeam()
+    }
+  }
 
   function formatCurrency(value: number) {
     return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
@@ -490,7 +577,7 @@ export default function AppHomePage() {
 
   const submitMeeting = async () => {
     if (!meetingForm.title.trim()) {
-      setMeetingFeedback({ tone: "error", text: "Informe o titulo da reuniao." })
+      setMeetingFeedback({ tone: "error", text: "Informe o título da reunião." })
       return
     }
 
@@ -519,8 +606,8 @@ export default function AppHomePage() {
     await refreshSummary({ silent: true, force: true })
 
     toast({
-      title: "Reuniao criada com sucesso.",
-      description: "A reuniao ja pode ser vista em Reunioes.",
+      title: "Reunião criada com sucesso.",
+      description: "A reunião já pode ser vista em Reuniões.",
     })
   }
 
@@ -611,7 +698,7 @@ export default function AppHomePage() {
                   ) : (
                     <div className={`grid gap-2 ${enabledShortcuts.length <= 4 ? "grid-cols-4" : "grid-cols-3"}`}>
                       {enabledShortcuts.map((shortcut) => (
-                        <button key={shortcut.id} onClick={() => shortcut.isBalance && setBalanceOpen(true)} className="flex flex-col items-center text-center">
+                        <button key={shortcut.id} onClick={() => handleShortcutAction(shortcut.id)} className="flex flex-col items-center text-center">
                           <shortcut.icon className="mb-1 h-4 w-4 text-gray-400" />
                           <span className={`max-w-full truncate font-semibold text-[#0a0a0a] ${shortcut.isBalance ? "text-sm tabular-nums" : "text-base"}`}>{shortcut.value}</span>
                           <span className="text-[10px] leading-tight text-gray-500">{shortcut.label}</span>
@@ -731,7 +818,7 @@ export default function AppHomePage() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={() => setBalanceOpen(false)} />
             <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 400 }} className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl bg-white p-5 pb-8 lg:inset-0 lg:m-auto lg:h-fit lg:max-w-md lg:rounded-3xl">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-[#0a0a0a]">Balanco</h2>
+                <h2 className="text-lg font-semibold text-[#0a0a0a]">Balanço</h2>
                 <button onClick={() => setBalanceOpen(false)} className="rounded-full p-1.5 transition-colors hover:bg-gray-100" aria-label="Fechar">
                   <X className="h-5 w-5 text-gray-500" />
                 </button>
@@ -766,8 +853,8 @@ export default function AppHomePage() {
             <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 30, stiffness: 400 }} className="fixed bottom-0 left-0 right-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 lg:inset-0 lg:m-auto lg:h-fit lg:max-h-[80vh] lg:max-w-md lg:rounded-3xl">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-[#0a0a0a]">
-                  {modal === "sugerir" && "Sugestoes do COS"}
-                  {modal === "passo" && "Proximos passos"}
+                  {modal === "sugerir" && "Sugestões do COS"}
+                  {modal === "passo" && "Próximos passos"}
                   {modal === "meet" && "COS Meet"}
                   {modal === "editar" && "Editar atalhos"}
                 </h2>
@@ -778,9 +865,9 @@ export default function AppHomePage() {
 
               {modal === "sugerir" && (
                 <div className="space-y-2.5">
-                  <p className="mb-1 text-sm text-gray-500">Com base na sua operacao, o COS recomenda:</p>
+                  <p className="mb-1 text-sm text-gray-500">Com base na sua operação, o COS recomenda:</p>
                   {suggestions.map((suggestion) => (
-                    <button key={suggestion.title} className="flex w-full items-start gap-3 rounded-2xl border border-gray-100 p-3 text-left transition-colors hover:bg-gray-50">
+                    <button key={suggestion.title} onClick={() => handleSuggestionAction(suggestion.id)} className="flex w-full items-start gap-3 rounded-2xl border border-gray-100 p-3 text-left transition-colors hover:bg-gray-50">
                       <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: suggestion.bg }}>
                         <suggestion.icon className="h-5 w-5" style={{ color: suggestion.color }} />
                       </span>
@@ -798,7 +885,7 @@ export default function AppHomePage() {
                 <div className="space-y-2.5">
                   <p className="mb-1 text-sm text-gray-500">Prioridades recomendadas para hoje:</p>
                   {nextSteps.map((step) => (
-                    <div key={step.title} className="flex w-full items-start gap-3 rounded-2xl border border-gray-100 p-3">
+                    <button key={step.title} onClick={() => handleNextStepAction(step.id)} className="flex w-full items-start gap-3 rounded-2xl border border-gray-100 p-3 text-left transition-colors hover:bg-gray-50">
                       <span className="mt-0.5 flex-shrink-0">
                         <Lightbulb className="h-5 w-5" style={{ color: step.color }} />
                       </span>
@@ -811,7 +898,7 @@ export default function AppHomePage() {
                       <span className="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ color: step.color, backgroundColor: `${step.color}1a` }}>
                         {step.priority}
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -823,8 +910,8 @@ export default function AppHomePage() {
                       <Video className="h-6 w-6 text-red-500" />
                     </span>
                     <div>
-                      <p className="text-sm font-medium text-[#0a0a0a]">Criar reuniao</p>
-                      <p className="text-sm text-gray-500">Transcricao e gravacao automatica serao ativadas quando a IA estiver conectada.</p>
+                      <p className="text-sm font-medium text-[#0a0a0a]">Criar reunião</p>
+                      <p className="text-sm text-gray-500">Transcrição e gravação automática serão ativadas quando a IA estiver conectada.</p>
                     </div>
                   </div>
 
@@ -855,7 +942,7 @@ export default function AppHomePage() {
                         <textarea
                           value={meetingForm.notes}
                           onChange={(event) => setMeetingForm((prev) => ({ ...prev, notes: event.target.value }))}
-                          placeholder="Observacoes da reuniao"
+                          placeholder="Observações da reunião"
                           rows={4}
                           className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
                         />
@@ -870,7 +957,7 @@ export default function AppHomePage() {
                           Cancelar
                         </button>
                         <button onClick={submitMeeting} disabled={isCreatingMeeting} className="flex-1 rounded-2xl bg-[#0a0a0a] py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50">
-                          {isCreatingMeeting ? "Salvando..." : "Iniciar gravacao"}
+                          {isCreatingMeeting ? "Salvando..." : "Criar reunião"}
                         </button>
                       </div>
                     </>
@@ -882,18 +969,18 @@ export default function AppHomePage() {
                       <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
                         <div className="mb-1.5 flex items-center gap-2">
                           <FileText className="h-4 w-4 text-blue-500" />
-                          <span className="text-sm font-medium text-[#0a0a0a]">Proximo passo</span>
+                          <span className="text-sm font-medium text-[#0a0a0a]">Próximo passo</span>
                         </div>
                         <p className="text-xs leading-relaxed text-gray-600">
-                          A reuniao ja foi criada no backend real e aparecera em Reunioes e no Historico do workspace.
+                          A reunião já foi criada no backend real e aparecerá em Reuniões e no Histórico do workspace.
                         </p>
                       </div>
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <Link href="/app/conversas/reunioes" onClick={closeModal} className="rounded-2xl bg-[#0a0a0a] py-3 text-center text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">
-                          Abrir reuniao
+                          Abrir reuniões
                         </Link>
                         <Link href="/app/conversas/reunioes" onClick={closeModal} className="rounded-2xl bg-gray-100 py-3 text-center text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200">
-                          Ver em Reunioes
+                          Ver em Reuniões
                         </Link>
                       </div>
                     </div>
