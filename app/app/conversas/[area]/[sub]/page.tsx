@@ -10,10 +10,10 @@ import { AreaChat, type ChatMessage } from "@/components/app/area-chat"
 import { areaConfigs, slug } from "@/lib/area-configs"
 
 const portalDestinations: Record<string, string> = {
-  clientes: "/portal/cadastros",
-  leads: "/portal/cadastros",
-  produtos: "/portal/cadastros",
-  servicos: "/portal/cadastros",
+  clientes: "/portal/cadastros/clientes",
+  leads: "/portal/cadastros/leads",
+  produtos: "/portal/cadastros/produtos",
+  servicos: "/portal/cadastros/servicos",
   projetos: "/portal/operacoes",
   ordens: "/portal/operacoes",
   processos: "/portal/operacoes",
@@ -34,10 +34,21 @@ const portalDestinations: Record<string, string> = {
 
 function resolveChatCopy(area: string, subLabel: string) {
   if (area === "cadastros") {
+    const normalizedSub = slug(subLabel)
+    const portalLabelBySub: Record<string, string> = {
+      clientes: "Ver clientes no Portal",
+      leads: "Ver leads no Portal",
+      produtos: "Ver produtos no Portal",
+      servicos: "Ver servicos no Portal",
+    }
+
     return {
       subtitle: `Conversa contextual de ${subLabel.toLowerCase()} do seu workspace.`,
       emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
-      quickActions: ["Criar cliente", "Buscar cliente", "Ver clientes no Portal"],
+      quickActions:
+        normalizedSub === "clientes"
+          ? ["Criar cliente", "Buscar cliente", portalLabelBySub[normalizedSub]]
+          : [`Buscar ${subLabel.toLowerCase()}`, portalLabelBySub[normalizedSub] ?? "Ver cadastros no Portal"],
     }
   }
 

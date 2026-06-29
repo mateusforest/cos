@@ -24,7 +24,7 @@ function resolvePortalHref(area: string) {
 
   if (subArea === "propostas" || rootArea === "vendas") return "/portal/vendas"
   if (subArea === "relatorios") return "/portal/relatorios"
-  if (rootArea === "cadastros") return "/portal/cadastros"
+  if (rootArea === "cadastros") return subArea ? `/portal/cadastros/${subArea}` : "/portal/cadastros"
   if (rootArea === "operacoes") return "/portal/operacoes"
   if (rootArea === "financeiro") return "/portal/financeiro"
   if (rootArea === "equipe") return "/portal/equipe"

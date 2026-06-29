@@ -1,6 +1,8 @@
 "use client"
 
 import { use } from "react"
+import Link from "next/link"
+import { ArrowRight, Box, Briefcase, Users } from "lucide-react"
 import { PortalHeader } from "@/components/portal/portal-header"
 import { PortalModulePage } from "@/components/portal/portal-module-page"
 import { ClientsManager } from "@/components/operations/clients-manager"
@@ -91,6 +93,37 @@ const SECTION_META: Record<string, { title: string; description: string; ctaLabe
   },
 }
 
+const CADASTROS_SECTIONS = [
+  {
+    key: "clientes",
+    title: "Clientes",
+    description: "Gerencie clientes e relacionamentos reais do seu workspace.",
+    href: "/portal/cadastros/clientes",
+    icon: Users,
+  },
+  {
+    key: "leads",
+    title: "Leads",
+    description: "Acompanhe leads por aqui assim que a persistencia real deste modulo estiver conectada.",
+    href: "/portal/cadastros/leads",
+    icon: Users,
+  },
+  {
+    key: "produtos",
+    title: "Produtos",
+    description: "Acompanhe produtos por aqui assim que a persistencia real deste modulo estiver conectada.",
+    href: "/portal/cadastros/produtos",
+    icon: Box,
+  },
+  {
+    key: "servicos",
+    title: "Servicos",
+    description: "Acompanhe servicos por aqui assim que a persistencia real deste modulo estiver conectada.",
+    href: "/portal/cadastros/servicos",
+    icon: Briefcase,
+  },
+] as const
+
 function titleize(slug: string) {
   return slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ")
 }
@@ -131,12 +164,81 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     return (
       <div className="flex-1 flex flex-col h-full">
         <PortalHeader />
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-7xl mx-auto px-6 py-8">
+            <div className="mb-8">
+              <h1 className="text-2xl font-semibold text-[#0a0a0a]">Cadastros</h1>
+              <p className="text-sm text-gray-500">Acesse clientes, leads, produtos e servicos do seu workspace.</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {CADASTROS_SECTIONS.map((section) => (
+                <Link
+                  key={section.key}
+                  href={section.href}
+                  className="rounded-2xl border border-gray-100 bg-white p-5 transition-colors hover:bg-gray-50"
+                >
+                  <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-50">
+                    <section.icon className="h-5 w-5 text-[#0a0a0a]" />
+                  </span>
+                  <p className="text-base font-semibold text-[#0a0a0a]">{section.title}</p>
+                  <p className="mt-2 text-sm text-gray-500">{section.description}</p>
+                  <span className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#0a0a0a]">
+                    Abrir modulo
+                    <ArrowRight className="h-4 w-4" />
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (key === "clientes") {
+    return (
+      <div className="flex-1 flex flex-col h-full">
+        <PortalHeader />
         <ClientsManager
           title="Clientes"
           description="Gerencie clientes e relacionamentos reais do seu workspace."
           variant="portal"
         />
       </div>
+    )
+  }
+
+  if (key === "leads") {
+    return (
+      <PortalModulePage
+        title="Leads"
+        description="Consulte os leads do portal por aqui quando a persistencia real deste modulo estiver conectada."
+        emptyLabel="Nenhum lead disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace."
+        listHref="/portal/cadastros"
+      />
+    )
+  }
+
+  if (key === "produtos") {
+    return (
+      <PortalModulePage
+        title="Produtos"
+        description="Consulte os produtos do portal por aqui quando a persistencia real deste modulo estiver conectada."
+        emptyLabel="Nenhum produto disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace."
+        listHref="/portal/cadastros"
+      />
+    )
+  }
+
+  if (key === "servicos") {
+    return (
+      <PortalModulePage
+        title="Servicos"
+        description="Consulte os servicos do portal por aqui quando a persistencia real deste modulo estiver conectada."
+        emptyLabel="Nenhum servico disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace."
+        listHref="/portal/cadastros"
+      />
     )
   }
 

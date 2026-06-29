@@ -14,7 +14,7 @@ export function PortalModulePage({
 }: {
   title: string
   description: string
-  ctaLabel: string
+  ctaLabel?: string
   emptyLabel: string
   listHref: string
 }) {
@@ -27,13 +27,15 @@ export function PortalModulePage({
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="flex items-start justify-between gap-4 mb-8">
             <PortalPageHeader title={title} description={description} />
-            <button
-              onClick={openQuickActions}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#0a0a0a] px-4 py-2.5 text-sm text-white hover:bg-gray-800 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              {ctaLabel}
-            </button>
+            {ctaLabel ? (
+              <button
+                onClick={openQuickActions}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#0a0a0a] px-4 py-2.5 text-sm text-white hover:bg-gray-800 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                {ctaLabel}
+              </button>
+            ) : null}
           </div>
 
           <div className="bg-white border border-gray-100 rounded-2xl p-5">
