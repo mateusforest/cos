@@ -15,6 +15,7 @@ export type OperationsEngineIntent =
   | "create_document"
   | "create_meeting"
   | "create_support_ticket"
+  | "get_workspace_members"
   | "get_clients_count"
   | "get_financial_summary"
   | "get_recent_activity"

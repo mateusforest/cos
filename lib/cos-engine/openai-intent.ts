@@ -46,6 +46,7 @@ const operationsSystemPrompt = [
   "Para update_client, use clientId apenas se ele estiver presente no contexto fornecido. Caso contrario, use clientName ou missingFields.",
   "Para create_financial_income e create_financial_expense, amount e title sao obrigatorios.",
   "Para create_document, o campo title e obrigatorio.",
+  "Para get_workspace_members, interprete pedidos de listar ou consultar membros reais da equipe ou do workspace.",
   "Quando a intencao for compreensivel mas a execucao ainda nao existir, use intent unknown e preencha area, entityType, actionType e unsupportedReason.",
   "Se o pedido envolver arquivo, contrato, foto, documento, extracao ou envio externo, voce pode manter intent unknown e retornar metadata estruturada de intake.",
   "Edicao segura de cliente e permitida apenas via intent update_client.",
@@ -101,6 +102,7 @@ function buildUserPrompt(
         "create_document",
         "create_meeting",
         "create_support_ticket",
+        "get_workspace_members",
         "get_clients_count",
         "get_financial_summary",
         "get_recent_activity",
@@ -148,6 +150,7 @@ function buildUserPrompt(
         create_document: ["title"],
         create_meeting: ["title"],
         create_support_ticket: ["subject", "description"],
+        get_workspace_members: [],
         unknown: ["area", "entityType", "actionType", "unsupportedReason_or_clarificationQuestion_when_applicable"],
         intake: [
           "intakeType",

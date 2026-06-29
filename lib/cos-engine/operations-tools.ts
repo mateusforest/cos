@@ -402,6 +402,13 @@ export function isRecentActivityQuery(message: string) {
   return /\b(listar ultimas atividades|ultimas atividades|ultimos registros|mostrar historico|o que fiz hoje)\b/.test(normalized)
 }
 
+export function isWorkspaceMembersQuery(message: string) {
+  const normalized = normalizeEngineText(message)
+  return /\b(quem esta na equipe|quem faz parte da equipe|listar equipe|listar membros|mostrar equipe|mostrar membros|membros da equipe|membros do workspace|equipe do workspace|consultar equipe)\b/.test(
+    normalized,
+  )
+}
+
 export function classifyUnsupportedOperationsRequest(message: string) {
   const normalized = normalizeEngineText(message)
 

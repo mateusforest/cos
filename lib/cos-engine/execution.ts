@@ -5,6 +5,7 @@ import { createMeetingAction } from "@/actions/meetings"
 import { createOperationAction } from "@/actions/operations"
 import { createSupportTicketAction } from "@/actions/support"
 import { getWorkspaceActivityLogsAction } from "@/actions/activity"
+import { getWorkspaceMembersAction } from "@/actions/workspace"
 import { formatCurrencyBRL, humanizeActivityAction } from "@/lib/cos-engine/operations-response"
 import { toTitleCase } from "@/lib/cos-engine/operations-tools"
 import type { OperationsEngineResult, OperationsResolvedIntent } from "@/lib/cos-engine/types"
@@ -124,6 +125,8 @@ function humanizeEntityLabel(entityType: string | null | undefined) {
       return "reuniao"
     case "lead":
       return "lead"
+    case "member":
+      return "membro"
     case "product":
       return "produto"
     case "service":
@@ -605,6 +608,43 @@ export async function executeResolvedIntent(input: {
         message: `Seu saldo atual e ${formatCurrencyBRL(result.summary.balance)}.`,
         suggestedLabel: "Ver financeiro no Portal",
         suggestedHref: "/portal/financeiro",
+        resolvedIntent,
+        entities: resolvedIntent.entities,
+      })
+    }
+
+    case "get_workspace_members": {
+      const result = await getWorkspaceMembersAction()
+      if (result.error) {
+        return buildExecutionFailure("Nao consegui consultar sua equipe agora.", "get_workspace_members", "failed", resolvedIntent)
+      }
+
+      const members = result.members ?? []
+      if (members.length === 0) {
+        return buildExecutionSuccess({
+          action: "get_workspace_members",
+          message: "Ainda nao ha membros cadastrados no seu workspace.",
+          suggestedLabel: "Abrir equipe no Portal",
+          suggestedHref: "/portal/equipe",
+          resolvedIntent,
+          entities: resolvedIntent.entities,
+        })
+      }
+
+      const membersSummary = members
+        .slice(0, 5)
+        .map((member) => `${member.fullName} (${member.role})`)
+        .join(", ")
+      const remainingCount = members.length - Math.min(members.length, 5)
+
+      return buildExecutionSuccess({
+        action: "get_workspace_members",
+        message:
+          remainingCount > 0
+            ? `Sua equipe tem ${members.length} membro(s): ${membersSummary} e mais ${remainingCount}.`
+            : `Sua equipe tem ${members.length} membro(s): ${membersSummary}.`,
+        suggestedLabel: "Abrir equipe no Portal",
+        suggestedHref: "/portal/equipe",
         resolvedIntent,
         entities: resolvedIntent.entities,
       })

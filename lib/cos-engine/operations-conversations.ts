@@ -91,6 +91,8 @@ export function inferOperationsConversationAreaFromIntent(detected: DetectedInte
       return "financeiro"
     case "create_operation":
       return "operacoes/projetos"
+    case "get_workspace_members":
+      return "equipe"
     case "create_document": {
       const type = String(detected.entities.type || "").trim().toLowerCase()
 

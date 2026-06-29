@@ -20,6 +20,7 @@ import {
   isClientsCountQuery,
   isFinancialSummaryQuery,
   isRecentActivityQuery,
+  isWorkspaceMembersQuery,
   looksLikeCreateClient,
   looksLikeCreateDocument,
   looksLikeCreateFinancial,
@@ -66,6 +67,16 @@ export function detectOperationsIntent(
       area: "sistema",
       entityType: "system_log",
       actionType: "summarize",
+    }
+  }
+
+  if (isWorkspaceMembersQuery(message)) {
+    return {
+      intent: "get_workspace_members",
+      entities: {},
+      area: "equipe",
+      entityType: "member",
+      actionType: "list",
     }
   }
 
