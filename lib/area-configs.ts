@@ -31,7 +31,7 @@ export const areaConfigs: Record<string, AreaConfig> = {
     icon: Users,
     color: "#ec4899",
     bg: "#fce7f3",
-    subsections: ["Clientes", "Leads", "Produtos", "Serviços"],
+    subsections: ["Clientes"],
     quickActions: ["Criar cliente", "Buscar cliente", "Ver clientes no Portal"],
     messages: [],
   },
