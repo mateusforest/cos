@@ -8,6 +8,8 @@ import { DocumentsManager } from "@/components/operations/documents-manager"
 import { FinancialManager } from "@/components/operations/financial-manager"
 import { MeetingsManager } from "@/components/operations/meetings-manager"
 import { OperationsManager } from "@/components/operations/operations-manager"
+import { SupportWorkspaceCenter } from "@/components/support/support-workspace-center"
+import { SystemActivityManager } from "@/components/portal/system-activity-manager"
 
 const SECTION_META: Record<string, { title: string; description: string; ctaLabel: string; emptyLabel: string; listHref: string }> = {
   conversas: {
@@ -164,6 +166,20 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     )
   }
 
+  if (key === "vendas") {
+    return (
+      <div className="flex-1 flex flex-col h-full">
+        <PortalHeader />
+        <DocumentsManager
+          title="Vendas"
+          description="Acompanhe propostas reais do workspace e use o COS para transformar conversas comerciais em documentos."
+          variant="portal"
+          filterType="propostas"
+        />
+      </div>
+    )
+  }
+
   if (key === "documentos" || key === "contratos" || key === "propostas" || key === "relatorios") {
     const meta = metaForDocumentKey(key)
 
@@ -189,6 +205,28 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
           description="Gerencie gravacoes, resumos e proximos passos reais do COS Meet."
           variant="portal"
         />
+      </div>
+    )
+  }
+
+  if (key === "suporte") {
+    return (
+      <div className="flex-1 flex flex-col h-full">
+        <PortalHeader />
+        <div className="flex-1 overflow-y-auto">
+          <SupportWorkspaceCenter />
+        </div>
+      </div>
+    )
+  }
+
+  if (key === "sistema") {
+    return (
+      <div className="flex-1 flex flex-col h-full">
+        <PortalHeader />
+        <div className="flex-1 overflow-y-auto">
+          <SystemActivityManager />
+        </div>
       </div>
     )
   }

@@ -201,6 +201,34 @@ function buildContextualUnsupportedUpdateMessage(resolvedIntent: OperationsResol
   )
 }
 
+function resolveDocumentPortalDestination(type: string) {
+  if (type === "proposta") {
+    return {
+      label: "Ver vendas no Portal",
+      href: "/portal/vendas",
+    }
+  }
+
+  if (type === "contrato") {
+    return {
+      label: "Ver contratos no Portal",
+      href: "/portal/contratos",
+    }
+  }
+
+  if (type === "relatório" || type === "relatorio") {
+    return {
+      label: "Ver relatorios no Portal",
+      href: "/portal/relatorios",
+    }
+  }
+
+  return {
+    label: "Ver documentos no Portal",
+    href: "/portal/documentos",
+  }
+}
+
 export async function executeResolvedIntent(input: {
   message: string
   resolvedIntent: OperationsResolvedIntent
@@ -449,6 +477,7 @@ export async function executeResolvedIntent(input: {
     case "create_document": {
       const title = String(resolvedIntent.entities.title || "").trim()
       const type = String(resolvedIntent.entities.type || "outro").trim()
+      const destination = resolveDocumentPortalDestination(type)
       const result = await createDocumentAction({
         title,
         type,
@@ -465,8 +494,8 @@ export async function executeResolvedIntent(input: {
         action: "create_document",
         resultId: result.documentId,
         message: `Documento ${title} criado com sucesso.`,
-        suggestedLabel: "Ver documentos no Portal",
-        suggestedHref: "/portal/documentos",
+        suggestedLabel: destination.label,
+        suggestedHref: destination.href,
         resolvedIntent,
         targetId: result.documentId,
         targetName: title,
@@ -531,8 +560,8 @@ export async function executeResolvedIntent(input: {
         action: "create_support_ticket",
         resultId: result.ticketId,
         message: "Chamado de suporte criado com sucesso.",
-        suggestedLabel: "Abrir suporte",
-        suggestedHref: "/app/conversas/suporte",
+        suggestedLabel: "Abrir suporte no Portal",
+        suggestedHref: "/portal/suporte",
         resolvedIntent,
         targetId: result.ticketId,
         targetName: subject || "Solicitacao de suporte",
@@ -592,8 +621,8 @@ export async function executeResolvedIntent(input: {
         return buildExecutionSuccess({
           action: "get_recent_activity",
           message: "Ainda nao ha atividades registradas no seu workspace.",
-          suggestedLabel: "Abrir historico",
-          suggestedHref: "/app/historico",
+          suggestedLabel: "Abrir sistema no Portal",
+          suggestedHref: "/portal/sistema",
           resolvedIntent,
           entities: resolvedIntent.entities,
         })
@@ -603,8 +632,8 @@ export async function executeResolvedIntent(input: {
       return buildExecutionSuccess({
         action: "get_recent_activity",
         message: `Suas ultimas atividades foram: ${summary}.`,
-        suggestedLabel: "Abrir historico",
-        suggestedHref: "/app/historico",
+        suggestedLabel: "Abrir sistema no Portal",
+        suggestedHref: "/portal/sistema",
         resolvedIntent,
         entities: resolvedIntent.entities,
       })
