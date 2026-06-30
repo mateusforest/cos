@@ -8,6 +8,7 @@ import { Search, Bell, Command, Menu, User, Settings, ExternalLink, LogOut } fro
 import { usePortalUI } from "./portal-ui-context"
 import { useAuth } from "@/components/auth/auth-provider"
 import { logoutAction } from "@/actions/auth"
+import { UserAvatar } from "@/components/shared/user-avatar"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 
 const notifications: { id: number; title: string; desc: string; time: string; unread: boolean }[] = []
@@ -22,7 +23,6 @@ export function PortalHeader({ placeholder = "Pergunte ao COS..." }: { placehold
   const [isPending, startTransition] = useTransition()
 
   const unreadCount = notifications.filter((item) => item.unread && !reads.includes(item.id)).length
-  const initials = (profile?.full_name || user?.email || "C").trim().charAt(0).toUpperCase()
   const displayName = profile?.full_name || user?.email || "Sua conta"
   const displayRole = profile?.global_role === "master" ? "Master" : "Administrador"
 
@@ -98,8 +98,8 @@ export function PortalHeader({ placeholder = "Pergunte ao COS..." }: { placehold
         </div>
 
         <div className="relative">
-          <button onClick={() => setOpenMenu(openMenu === "profile" ? null : "profile")} className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-sm font-medium cursor-pointer" aria-label="Menu do perfil">
-            {initials}
+          <button onClick={() => setOpenMenu(openMenu === "profile" ? null : "profile")} className="block cursor-pointer rounded-full overflow-hidden" aria-label="Menu do perfil">
+            <UserAvatar fullName={profile?.full_name} email={profile?.email || user?.email} avatarUrl={profile?.avatar_url} size={36} />
           </button>
           <AnimatePresence>
             {openMenu === "profile" && (
@@ -111,9 +111,12 @@ export function PortalHeader({ placeholder = "Pergunte ao COS..." }: { placehold
                   exit={{ opacity: 0, y: -8 }}
                   className="absolute right-0 mt-2 w-56 bg-white rounded-2xl border border-gray-100 shadow-lg z-50 overflow-hidden py-1"
                 >
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <p className="text-sm font-medium truncate">{displayName}</p>
-                    <p className="text-xs text-muted-foreground">{displayRole}</p>
+                  <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
+                    <UserAvatar fullName={profile?.full_name} email={profile?.email || user?.email} avatarUrl={profile?.avatar_url} size={40} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{displayName}</p>
+                      <p className="text-xs text-muted-foreground">{displayRole}</p>
+                    </div>
                   </div>
                   <Link href="/portal/configuracoes" onClick={() => setOpenMenu(null)} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors">
                     <User className="w-4 h-4 text-muted-foreground" /> Meu perfil

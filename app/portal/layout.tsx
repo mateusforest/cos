@@ -28,8 +28,10 @@ import {
   Star,
 } from "lucide-react"
 import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
+import { useAuth } from "@/components/auth/auth-provider"
 import { PortalUIProvider, usePortalUI } from "@/components/portal/portal-ui-context"
 import { PortalInteractionsProvider, usePortalInteractions } from "@/components/portal/portal-interactions"
+import { UserAvatar } from "@/components/shared/user-avatar"
 import { Toaster } from "@/components/ui/toaster"
 
 const mainNavItems = [
@@ -70,7 +72,10 @@ function PortalShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const { mobileMenuOpen, setMobileMenuOpen } = usePortalUI()
   const { openInstall } = usePortalInteractions()
+  const { user, profile } = useAuth()
   const pathname = usePathname()
+  const displayName = profile?.full_name || user?.email || "Sua conta"
+  const displayRole = profile?.global_role === "master" ? "Master" : "Administrador"
 
   return (
     <div className="flex h-screen bg-white">
@@ -179,13 +184,11 @@ function PortalShell({ children }: { children: React.ReactNode }) {
           </button>
 
           <div className={`flex items-center gap-3 mt-2 px-3 py-2.5 rounded-xl hover:bg-white/60 transition-all cursor-pointer ${sidebarCollapsed ? "justify-center" : ""}`}>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-sm font-medium">
-              J
-            </div>
+            <UserAvatar fullName={profile?.full_name} email={profile?.email || user?.email} avatarUrl={profile?.avatar_url} size={32} />
             {!sidebarCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">Sua conta</p>
-                <p className="text-xs text-muted-foreground truncate">Administrador</p>
+                <p className="text-sm font-medium truncate">{displayName}</p>
+                <p className="text-xs text-muted-foreground truncate">{displayRole}</p>
               </div>
             )}
             {!sidebarCollapsed && <MoreVertical className="w-4 h-4 text-muted-foreground" />}
