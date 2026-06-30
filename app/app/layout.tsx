@@ -45,6 +45,7 @@ import { OperationsDashboardProvider, useOperationsDashboard } from "@/component
 import { AppInteractionsProvider } from "@/components/app/app-interactions"
 import { useAuth } from "@/components/auth/auth-provider"
 import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
+import { chatAreaSources } from "@/lib/area-configs"
 import { SupportProvider, useSupport } from "@/components/support/support-context"
 import { Toaster } from "@/components/ui/toaster"
 
@@ -457,6 +458,23 @@ function DesktopSidebar() {
     { icon: User, label: "Você", href: "/app/voce" },
   ]
 
+  const sharedSessionsData: SessionItem[] = sessionsData.map((session) => {
+    const area = chatAreaSources.find((item) => item.chatHref === session.href)
+
+    if (!area) {
+      return session
+    }
+
+    return {
+      ...session,
+      label: area.label,
+      icon: area.icon as typeof Users,
+      color: area.color,
+      bg: area.bg,
+      href: area.chatHref,
+    }
+  })
+
   const isActive = (href: string, exact?: boolean) => (exact ? pathname === href : pathname.startsWith(href))
   const isSessionActive = (href: string) =>
     pendingSessionHref === href || pathname === href || pathname.startsWith(`${href}/`)
@@ -466,10 +484,10 @@ function DesktopSidebar() {
   }, [pathname])
 
   useEffect(() => {
-    sessionsData.forEach((session) => {
+    sharedSessionsData.forEach((session) => {
       router.prefetch(session.href)
     })
-  }, [router])
+  }, [router, sharedSessionsData])
 
   return (
     <aside className="hidden lg:flex lg:flex-col w-[280px] flex-shrink-0 border-r border-gray-200 bg-white h-screen">
@@ -507,7 +525,7 @@ function DesktopSidebar() {
         <div className="px-2 py-2">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Sessões</span>
         </div>
-        {sessionsData.map((s) => (
+        {sharedSessionsData.map((s) => (
           <Link
             key={s.label}
             href={s.href}

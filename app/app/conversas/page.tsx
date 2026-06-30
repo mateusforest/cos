@@ -4,26 +4,13 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
-import {
-  Search,
-  SlidersHorizontal,
-  ChevronRight,
-  ChevronDown,
-  Users,
-  Briefcase,
-  TrendingUp,
-  DollarSign,
-  UsersRound,
-  FolderOpen,
-  Video,
-  Settings,
-  LifeBuoy,
-} from "lucide-react"
+import { Search, SlidersHorizontal, ChevronRight, ChevronDown, Users } from "lucide-react"
 import { useOperationsDashboard } from "@/components/app/operations-dashboard-store"
 import { useAppInteractions } from "@/components/app/app-interactions"
-import { areaConfigs, slug } from "@/lib/area-configs"
+import { chatAreaSources, slug } from "@/lib/area-configs"
 
 type Conversation = {
+  key: string
   icon: typeof Users
   label: string
   lastMessage: string
@@ -34,17 +21,17 @@ type Conversation = {
   subsections: string[]
 }
 
-const baseConversations: Conversation[] = [
-  { icon: Users, label: "Cadastros", lastMessage: "Sem registros", time: "-", count: 0, color: "#ec4899", bgColor: "#fce7f3", subsections: areaConfigs.cadastros.subsections },
-  { icon: Briefcase, label: "Operações", lastMessage: "Sem registros", time: "-", count: 0, color: "#8b5cf6", bgColor: "#ede9fe", subsections: areaConfigs.operacoes.subsections },
-  { icon: TrendingUp, label: "Vendas", lastMessage: "Conversa contextual pronta", time: "-", count: 0, color: "#3b82f6", bgColor: "#dbeafe", subsections: areaConfigs.vendas.subsections },
-  { icon: DollarSign, label: "Financeiro", lastMessage: "Sem registros", time: "-", count: 0, color: "#22c55e", bgColor: "#dcfce7", subsections: areaConfigs.financeiro.subsections },
-  { icon: UsersRound, label: "Equipe", lastMessage: "Sem registros", time: "-", count: 0, color: "#0ea5e9", bgColor: "#e0f2fe", subsections: areaConfigs.equipe.subsections },
-  { icon: FolderOpen, label: "Documentos", lastMessage: "Sem registros", time: "-", count: 0, color: "#f97316", bgColor: "#ffedd5", subsections: areaConfigs.documentos.subsections },
-  { icon: Video, label: "Reuniões", lastMessage: "Sem registros", time: "-", count: 0, color: "#ef4444", bgColor: "#fee2e2", subsections: areaConfigs.reunioes.subsections },
-  { icon: Settings, label: "Sistema", lastMessage: "Configurações e logs", time: "-", count: 0, color: "#6b7280", bgColor: "#f3f4f6", subsections: areaConfigs.sistema.subsections },
-  { icon: LifeBuoy, label: "Suporte", lastMessage: "Sem registros", time: "-", count: 0, color: "#6b7280", bgColor: "#f3f4f6", subsections: areaConfigs.suporte.subsections },
-]
+const baseConversations: Conversation[] = chatAreaSources.map((area) => ({
+  key: area.key,
+  icon: area.icon as typeof Users,
+  label: area.label,
+  lastMessage: area.key === "vendas" ? "Conversa contextual pronta" : area.key === "sistema" ? "Configuracoes e logs" : "Sem registros",
+  time: "-",
+  count: 0,
+  color: area.color,
+  bgColor: area.bg,
+  subsections: area.subsections,
+}))
 
 export default function ConversasPage() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -56,37 +43,37 @@ export default function ConversasPage() {
   const conversations = useMemo(
     () =>
       baseConversations.map((conversation) => {
-        if (conversation.label === "Cadastros") {
+        if (conversation.key === "cadastros") {
           const count = summary?.clientsCount ?? 0
           return { ...conversation, count, lastMessage: count === 1 ? "1 cliente" : count > 1 ? `${count} clientes` : "Sem registros" }
         }
 
-        if (conversation.label === "Operações") {
+        if (conversation.key === "operacoes") {
           const count = summary?.operationsCount ?? 0
-          return { ...conversation, count, lastMessage: count === 1 ? "1 operação" : count > 1 ? `${count} operações` : "Sem registros" }
+          return { ...conversation, count, lastMessage: count === 1 ? "1 operacao" : count > 1 ? `${count} operacoes` : "Sem registros" }
         }
 
-        if (conversation.label === "Financeiro") {
+        if (conversation.key === "financeiro") {
           const count = summary?.financial.entriesCount ?? 0
-          return { ...conversation, count, lastMessage: count === 1 ? "1 lançamento" : count > 1 ? `${count} lançamentos` : "Sem registros" }
+          return { ...conversation, count, lastMessage: count === 1 ? "1 lancamento" : count > 1 ? `${count} lancamentos` : "Sem registros" }
         }
 
-        if (conversation.label === "Equipe") {
+        if (conversation.key === "equipe") {
           const count = summary?.teamCount ?? 0
           return { ...conversation, count, lastMessage: count === 1 ? "1 membro" : count > 1 ? `${count} membros` : "Sem registros" }
         }
 
-        if (conversation.label === "Documentos") {
+        if (conversation.key === "documentos") {
           const count = summary?.documentsCount ?? 0
           return { ...conversation, count, lastMessage: count === 1 ? "1 documento" : count > 1 ? `${count} documentos` : "Sem registros" }
         }
 
-        if (conversation.label === "Reuniões") {
+        if (conversation.key === "reunioes") {
           const count = summary?.meetingsCount ?? 0
-          return { ...conversation, count, lastMessage: count === 1 ? "1 reunião" : count > 1 ? `${count} reuniões` : "Sem registros" }
+          return { ...conversation, count, lastMessage: count === 1 ? "1 reuniao" : count > 1 ? `${count} reunioes` : "Sem registros" }
         }
 
-        if (conversation.label === "Suporte") {
+        if (conversation.key === "suporte") {
           const count = summary?.supportCount ?? 0
           return { ...conversation, count, lastMessage: count === 1 ? "1 chamado" : count > 1 ? `${count} chamados` : "Sem registros" }
         }
@@ -110,7 +97,7 @@ export default function ConversasPage() {
     <div className="px-4 py-4">
       <motion.div initial={{ y: -10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mb-4">
         <h1 className="text-2xl font-bold text-[#0a0a0a] mb-0.5">Conversas</h1>
-        <p className="text-sm text-gray-500">Todas as áreas da sua operação em um só lugar.</p>
+        <p className="text-sm text-gray-500">Todas as areas da sua operacao em um so lugar.</p>
       </motion.div>
 
       <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05 }} className="flex gap-2 mb-4">
@@ -137,7 +124,7 @@ export default function ConversasPage() {
 
           return (
             <motion.div
-              key={conversation.label}
+              key={conversation.key}
               initial={{ x: -10, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.05 + index * 0.03 }}

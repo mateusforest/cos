@@ -8,15 +8,6 @@ import { motion, AnimatePresence } from "framer-motion"
 import {
   Home,
   MessageSquare,
-  ClipboardList,
-  Briefcase,
-  TrendingUp,
-  Megaphone,
-  DollarSign,
-  UsersRound,
-  FileText,
-  Video,
-  BarChart3,
   Plug,
   Settings,
   ChevronLeft,
@@ -25,30 +16,24 @@ import {
   Monitor,
   MoreVertical,
   FileSignature,
+  FileText,
   Headphones,
   Star,
 } from "lucide-react"
 import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
 import { useAuth } from "@/components/auth/auth-provider"
+import { portalAreaSources } from "@/lib/area-configs"
 import { PortalUIProvider, usePortalUI } from "@/components/portal/portal-ui-context"
 import { PortalInteractionsProvider, usePortalInteractions } from "@/components/portal/portal-interactions"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Toaster } from "@/components/ui/toaster"
 
 const mainNavItems = [
-  { icon: Home, label: "Início", href: "/portal" },
+  { icon: Home, label: "Inicio", href: "/portal" },
   { icon: MessageSquare, label: "Conversas", href: "/portal/conversas" },
-  { icon: ClipboardList, label: "Cadastros", href: "/portal/cadastros" },
-  { icon: Briefcase, label: "Operações", href: "/portal/operacoes" },
-  { icon: TrendingUp, label: "Vendas", href: "/portal/vendas" },
-  { icon: Megaphone, label: "Marketing", href: "/portal/marketing" },
-  { icon: DollarSign, label: "Financeiro", href: "/portal/financeiro" },
-  { icon: UsersRound, label: "Equipe", href: "/portal/equipe" },
-  { icon: FileText, label: "Documentos", href: "/portal/documentos" },
-  { icon: Video, label: "Reuniões", href: "/portal/reunioes" },
-  { icon: BarChart3, label: "Relatórios", href: "/portal/relatorios" },
-  { icon: Plug, label: "Integrações", href: "/portal/integracoes" },
-  { icon: Settings, label: "Configurações", href: "/portal/configuracoes" },
+  ...portalAreaSources.map((area) => ({ icon: area.icon, label: area.label, href: area.portalHref })),
+  { icon: Plug, label: "Integracoes", href: "/portal/integracoes" },
+  { icon: Settings, label: "Configuracoes", href: "/portal/configuracoes" },
 ]
 
 const favoriteItems = [

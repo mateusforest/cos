@@ -12,6 +12,7 @@ import { FinancialManager } from "@/components/operations/financial-manager"
 import { MeetingsManager } from "@/components/operations/meetings-manager"
 import { OperationsManager } from "@/components/operations/operations-manager"
 import { SupportWorkspaceCenter } from "@/components/support/support-workspace-center"
+import { getCosAreaSourceByKey } from "@/lib/area-configs"
 import { SystemActivityManager } from "@/components/portal/system-activity-manager"
 
 const SECTION_META: Record<string, { title: string; description: string; ctaLabel: string; emptyLabel: string; listHref: string }> = {
@@ -161,14 +162,15 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   const { slug } = use(params)
   const router = useRouter()
   const key = slug[slug.length - 1]
+  const sharedArea = getCosAreaSourceByKey(key)
 
   useEffect(() => {
-    if (key === "marketing") {
-      router.replace("/app/novo/marketing")
+    if (sharedArea?.portalStatus === "redirect") {
+      router.replace(sharedArea.portalDestination)
     }
-  }, [key, router])
+  }, [router, sharedArea])
 
-  if (key === "marketing") {
+  if (sharedArea?.portalStatus === "redirect") {
     return null
   }
 
