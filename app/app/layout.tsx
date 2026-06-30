@@ -3,7 +3,7 @@
 import { useEffect, useState, createContext, useContext, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   Home,
   MessageSquare,
@@ -368,8 +368,10 @@ function GlobalHeader() {
 
 function DesktopSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { setIsOpen, setLevel } = useFAB()
   const { summary } = useOperationsDashboard()
+  const [pendingSessionHref, setPendingSessionHref] = useState<string | null>(null)
   const sessionsData: SessionItem[] = [
     {
       icon: Users,
@@ -456,6 +458,18 @@ function DesktopSidebar() {
   ]
 
   const isActive = (href: string, exact?: boolean) => (exact ? pathname === href : pathname.startsWith(href))
+  const isSessionActive = (href: string) =>
+    pendingSessionHref === href || pathname === href || pathname.startsWith(`${href}/`)
+
+  useEffect(() => {
+    setPendingSessionHref(null)
+  }, [pathname])
+
+  useEffect(() => {
+    sessionsData.forEach((session) => {
+      router.prefetch(session.href)
+    })
+  }, [router])
 
   return (
     <aside className="hidden lg:flex lg:flex-col w-[280px] flex-shrink-0 border-r border-gray-200 bg-white h-screen">
@@ -494,7 +508,17 @@ function DesktopSidebar() {
           <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Sessões</span>
         </div>
         {sessionsData.map((s) => (
-          <Link key={s.label} href={s.href} className="flex items-center gap-3 px-2.5 py-2 rounded-lg hover:bg-gray-50 transition-colors group">
+          <Link
+            key={s.label}
+            href={s.href}
+            prefetch
+            onClick={() => setPendingSessionHref(s.href)}
+            onMouseEnter={() => router.prefetch(s.href)}
+            onFocus={() => router.prefetch(s.href)}
+            className={`flex items-center gap-3 px-2.5 py-2 rounded-lg transition-colors group ${
+              isSessionActive(s.href) ? "bg-gray-100" : "hover:bg-gray-50"
+            }`}
+          >
             <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: s.bg }}>
               <s.icon className="w-4 h-4" style={{ color: s.color }} />
             </span>
