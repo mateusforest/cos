@@ -1,8 +1,9 @@
 "use client"
 
-import { use } from "react"
+import { use, useEffect } from "react"
 import Link from "next/link"
 import { ArrowRight, Box, Briefcase, Users } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { PortalHeader } from "@/components/portal/portal-header"
 import { PortalModulePage } from "@/components/portal/portal-module-page"
 import { ClientsManager } from "@/components/operations/clients-manager"
@@ -158,7 +159,18 @@ function metaForDocumentKey(key: string) {
 
 export default function PortalSectionPage({ params }: { params: Promise<{ slug: string[] }> }) {
   const { slug } = use(params)
+  const router = useRouter()
   const key = slug[slug.length - 1]
+
+  useEffect(() => {
+    if (key === "marketing") {
+      router.replace("/app/novo/marketing")
+    }
+  }, [key, router])
+
+  if (key === "marketing") {
+    return null
+  }
 
   if (key === "cadastros") {
     return (
