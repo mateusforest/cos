@@ -72,14 +72,14 @@ type ActiveConversation = {
   label: string
 }
 
-const suggestions = [
+const suggestionTemplates = [
   { id: "cliente", icon: Users, color: "#ec4899", bg: "#fce7f3", title: "Cadastrar primeiro cliente", desc: "Comece organizando sua base de clientes." },
   { id: "financeiro", icon: Wallet, color: "#22c55e", bg: "#dcfce7", title: "Registrar primeiro lançamento", desc: "Seus ganhos e gastos aparecerão aqui depois do primeiro registro." },
   { id: "documento", icon: FileText, color: "#3b82f6", bg: "#dbeafe", title: "Criar primeiro documento", desc: "Use o COS para centralizar propostas, contratos e arquivos." },
   { id: "reuniao", icon: Video, color: "#ef4444", bg: "#fee2e2", title: "Gravar primeira reunião", desc: "Os resumos gerados ficarão disponíveis nesta área." },
 ]
 
-const nextSteps = [
+const nextStepTemplates = [
   { id: "cliente", priority: "Alta", color: "#ef4444", title: "Cadastrar primeiro cliente", desc: "Sua operação começa quando os primeiros dados reais entrarem no COS." },
   { id: "operacao", priority: "Alta", color: "#ef4444", title: "Criar primeira operação", desc: "Estruture pedidos, projetos ou atendimentos no seu workspace." },
   { id: "financeiro", priority: "Média", color: "#f97316", title: "Registrar primeiro lançamento", desc: "Isso libera os indicadores financeiros reais." },
@@ -214,6 +214,88 @@ export default function AppHomePage() {
       reunioes: summary?.meetingsCount ?? 0,
     }),
     [summary],
+  )
+
+  const suggestions = useMemo(
+    () => [
+      {
+        ...suggestionTemplates[0],
+        title: stats.clientes > 0 ? "Cadastrar novo cliente" : "Cadastrar primeiro cliente",
+        desc:
+          stats.clientes > 0
+            ? "Adicione outro cliente ao workspace com dados reais."
+            : "Comece organizando sua base de clientes.",
+      },
+      {
+        ...suggestionTemplates[1],
+        title: (summary?.financial.entriesCount ?? 0) > 0 ? "Registrar novo lançamento" : "Registrar primeiro lançamento",
+        desc:
+          (summary?.financial.entriesCount ?? 0) > 0
+            ? "Inclua mais um ganho ou gasto no financeiro real."
+            : "Seus ganhos e gastos aparecerão aqui depois do primeiro registro.",
+      },
+      {
+        ...suggestionTemplates[2],
+        title: (summary?.documentsCount ?? 0) > 0 ? "Criar novo documento" : "Criar primeiro documento",
+        desc:
+          (summary?.documentsCount ?? 0) > 0
+            ? "Centralize mais um documento, proposta ou contrato no COS."
+            : "Use o COS para centralizar propostas, contratos e arquivos.",
+      },
+      {
+        ...suggestionTemplates[3],
+        title: (summary?.meetingsCount ?? 0) > 0 ? "Gravar nova reunião" : "Gravar primeira reunião",
+        desc:
+          (summary?.meetingsCount ?? 0) > 0
+            ? "Crie uma nova reunião com gravação e resumo no workspace."
+            : "Os resumos gerados ficarão disponíveis nesta área.",
+      },
+    ],
+    [stats.clientes, summary?.documentsCount, summary?.financial.entriesCount, summary?.meetingsCount],
+  )
+
+  const nextSteps = useMemo(
+    () => [
+      {
+        ...nextStepTemplates[0],
+        priority: stats.clientes > 0 ? "Média" : "Alta",
+        color: stats.clientes > 0 ? "#f97316" : nextStepTemplates[0].color,
+        title: stats.clientes > 0 ? "Cadastrar novo cliente" : "Cadastrar primeiro cliente",
+        desc:
+          stats.clientes > 0
+            ? "Amplie sua base com mais um cliente real no workspace."
+            : "Sua operação começa quando os primeiros dados reais entrarem no COS.",
+      },
+      {
+        ...nextStepTemplates[1],
+        priority: stats.operacoes > 0 ? "Média" : "Alta",
+        color: stats.operacoes > 0 ? "#f97316" : nextStepTemplates[1].color,
+        title: stats.operacoes > 0 ? "Criar nova operação" : "Criar primeira operação",
+        desc:
+          stats.operacoes > 0
+            ? "Registre uma nova operação, pedido ou atendimento real."
+            : "Estruture pedidos, projetos ou atendimentos no seu workspace.",
+      },
+      {
+        ...nextStepTemplates[2],
+        priority: (summary?.financial.entriesCount ?? 0) > 0 ? "Baixa" : "Média",
+        color: (summary?.financial.entriesCount ?? 0) > 0 ? "#22c55e" : nextStepTemplates[2].color,
+        title: (summary?.financial.entriesCount ?? 0) > 0 ? "Registrar novo lançamento" : "Registrar primeiro lançamento",
+        desc:
+          (summary?.financial.entriesCount ?? 0) > 0
+            ? "Mantenha o saldo atualizado com novos lançamentos reais."
+            : "Isso libera os indicadores financeiros reais.",
+      },
+      {
+        ...nextStepTemplates[3],
+        title: stats.equipe > 0 ? "Abrir equipe" : "Convidar a equipe",
+        desc:
+          stats.equipe > 0
+            ? "Acesse a equipe para acompanhar os membros já ativos."
+            : "Adicione membros quando quiser começar a colaboração.",
+      },
+    ],
+    [stats.clientes, stats.equipe, stats.operacoes, summary?.financial.entriesCount],
   )
 
   useEffect(() => {
