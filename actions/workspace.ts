@@ -1,7 +1,7 @@
 "use server"
 
 import { canManageWorkspace, getUserAccessForUser, type WorkspaceMetadata } from "@/lib/auth"
-import { createSupabaseServerClient } from "@/lib/supabase/server"
+import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server"
 
 type MemberRecord = {
   user_id: string
@@ -133,9 +133,11 @@ export async function getWorkspaceMembersAction() {
 
 export async function addWorkspaceMemberAction({
   email,
+  password,
   role,
 }: {
   email: string
+  password?: string
   role: string
 }) {
   const supabase = await createSupabaseServerClient()
@@ -155,13 +157,21 @@ export async function addWorkspaceMemberAction({
     return { error: "Você não tem permissão para editar a equipe." }
   }
 
+  const adminClient = createSupabaseAdminClient()
+
+  if (!adminClient) {
+    return { error: "SUPABASE_SERVICE_ROLE_KEY não configurada para criar contas." }
+  }
+
   const normalizedEmail = email.trim().toLowerCase()
+  const normalizedPassword = password?.trim() || ""
+  const normalizedRole = role.trim() || "member"
 
   if (!normalizedEmail) {
     return { error: "Informe um e-mail válido." }
   }
 
-  const { data: existingProfile, error: profileError } = await supabase
+  const { data: existingProfile, error: profileError } = await adminClient
     .from("profiles")
     .select("id, full_name, email")
     .eq("email", normalizedEmail)
@@ -171,15 +181,55 @@ export async function addWorkspaceMemberAction({
     return { error: profileError.message }
   }
 
-  if (!existingProfile) {
-    return { error: "Convites por e-mail serão ativados posteriormente." }
+  let targetProfile = existingProfile
+
+  if (!targetProfile) {
+    if (!normalizedPassword || normalizedPassword.length < 6) {
+      return { error: "Informe uma senha com pelo menos 6 caracteres." }
+    }
+
+    const displayName = normalizedEmail.split("@")[0] || "Usuario"
+    const createUserResult = await adminClient.auth.admin.createUser({
+      email: normalizedEmail,
+      password: normalizedPassword,
+      email_confirm: true,
+      user_metadata: {
+        name: displayName,
+      },
+    })
+
+    if (createUserResult.error || !createUserResult.data.user) {
+      return { error: createUserResult.error?.message ?? "Não foi possível criar a conta do membro." }
+    }
+
+    const createdUser = createUserResult.data.user
+    const { error: profileUpsertError } = await adminClient.from("profiles").upsert(
+      {
+        id: createdUser.id,
+        full_name: displayName,
+        email: normalizedEmail,
+      },
+      {
+        onConflict: "id",
+      },
+    )
+
+    if (profileUpsertError) {
+      return { error: profileUpsertError.message }
+    }
+
+    targetProfile = {
+      id: createdUser.id,
+      full_name: displayName,
+      email: normalizedEmail,
+    }
   }
 
   const { data: existingMembership, error: membershipLookupError } = await supabase
     .from("workspace_members")
     .select("workspace_id")
     .eq("workspace_id", access.workspace.id)
-    .eq("user_id", existingProfile.id)
+    .eq("user_id", targetProfile.id)
     .maybeSingle()
 
   if (membershipLookupError) {
@@ -192,8 +242,8 @@ export async function addWorkspaceMemberAction({
 
   const { error: insertError } = await supabase.from("workspace_members").insert({
     workspace_id: access.workspace.id,
-    user_id: existingProfile.id,
-    role: role.trim() || "member",
+    user_id: targetProfile.id,
+    role: normalizedRole,
   })
 
   if (insertError) {

@@ -15,11 +15,13 @@ type WorkspaceMember = {
 
 type InviteForm = {
   email: string
+  password: string
   role: "owner" | "admin" | "member"
 }
 
 const defaultInvite: InviteForm = {
   email: "",
+  password: "",
   role: "member",
 }
 
@@ -96,6 +98,7 @@ export default function EquipePage() {
 
     const result = await addWorkspaceMemberAction({
       email: invite.email,
+      password: invite.password,
       role: invite.role,
     })
 
@@ -106,7 +109,7 @@ export default function EquipePage() {
       return
     }
 
-    setFeedback("Membro adicionado ao workspace com sucesso.")
+    setFeedback("Membro adicionado ao workspace com conta criada com sucesso.")
     setInvite(defaultInvite)
     setInviteOpen(false)
     await loadMembers()
@@ -129,7 +132,7 @@ export default function EquipePage() {
                 className="flex items-center gap-2 px-4 py-2.5 bg-[#0a0a0a] text-white rounded-xl text-sm hover:bg-gray-800 transition-colors"
               >
                 <Plus className="w-4 h-4" />
-                Convidar membro
+                Adicionar membro
               </button>
             )}
           </div>
@@ -161,7 +164,7 @@ export default function EquipePage() {
 
               {inviteOpen && canManageWorkspace && (
                 <div className="mb-5 rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr),180px,auto] gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr),minmax(0,1fr),180px,auto] gap-3">
                     <label className="block space-y-1.5">
                       <span className="text-sm font-medium text-[#0a0a0a]">E-mail</span>
                       <input
@@ -169,6 +172,16 @@ export default function EquipePage() {
                         value={invite.email}
                         onChange={(event) => setInvite((prev) => ({ ...prev, email: event.target.value }))}
                         placeholder="usuario@empresa.com"
+                        className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
+                      />
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-sm font-medium text-[#0a0a0a]">Senha</span>
+                      <input
+                        type="password"
+                        value={invite.password}
+                        onChange={(event) => setInvite((prev) => ({ ...prev, password: event.target.value }))}
+                        placeholder="Minimo de 6 caracteres"
                         className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
                       />
                     </label>
@@ -187,16 +200,16 @@ export default function EquipePage() {
                     <div className="flex items-end">
                       <button
                         onClick={submitInvite}
-                        disabled={isInviting || !invite.email.trim()}
+                        disabled={isInviting || !invite.email.trim() || !invite.password.trim()}
                         className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {isInviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-                        {isInviting ? "Enviando..." : "Adicionar"}
+                        {isInviting ? "Criando..." : "Adicionar"}
                       </button>
                     </div>
                   </div>
                   <p className="mt-3 text-sm text-gray-500">
-                    Se o e-mail ja existir em profiles, o usuario entra no workspace agora. Convite por e-mail continua pendente de implementacao.
+                    O membro sera criado com e-mail, senha e papel e vinculado ao workspace atual.
                   </p>
                 </div>
               )}
@@ -244,8 +257,8 @@ export default function EquipePage() {
                   />
                   <InfoRow
                     icon={Mail}
-                    label="Convites"
-                    value={canManageWorkspace ? "Disponiveis para usuarios ja existentes" : "Indisponiveis para este perfil"}
+                    label="Contas"
+                    value={canManageWorkspace ? "Criacao direta de membros habilitada" : "Indisponivel para este perfil"}
                   />
                 </div>
               </div>
