@@ -22,12 +22,14 @@ import {
   Play,
   Trash2,
   Check,
+  User,
 } from "lucide-react"
 import Link from "next/link"
 import { PortalHeader } from "@/components/portal/portal-header"
 import { usePortalInteractions } from "@/components/portal/portal-interactions"
 import { toast } from "@/hooks/use-toast"
 import { getPortalHomeOverviewAction } from "@/actions/activity"
+import { getOperationsConversationsAction } from "@/actions/operations-engine"
 
 type Insight = {
   id: string
@@ -36,6 +38,18 @@ type Insight = {
   title: string
   description: string
   action: string
+}
+
+type PortalConversation = {
+  id: string
+  area: string
+  title: string
+  time: string
+  updatedAt: string | null
+  preview: string
+  lastFrom: "cos" | "user" | null
+  ctaLabel?: string
+  ctaHref?: string
 }
 
 type MicState = "idle" | "listening" | "processing" | "unsupported" | "error"
@@ -149,6 +163,7 @@ export default function PortalHomePage() {
   const [isRedirectingToApp, setIsRedirectingToApp] = useState(false)
   const [stats, setStats] = useState(defaultStats)
   const [recentActivities, setRecentActivities] = useState<Array<{ id: string; action: string; actionLabel?: string; description: string }>>([])
+  const [recentConversations, setRecentConversations] = useState<PortalConversation[]>([])
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
@@ -162,7 +177,10 @@ export default function PortalHomePage() {
 
   useEffect(() => {
     const loadPortalData = async () => {
-      const overviewResult = await getPortalHomeOverviewAction()
+      const [overviewResult, conversationsResult] = await Promise.all([
+        getPortalHomeOverviewAction(),
+        getOperationsConversationsAction(),
+      ])
 
       if (overviewResult.success && overviewResult.overview) {
         setStats((prev) =>
@@ -181,6 +199,10 @@ export default function PortalHomePage() {
         setRecentActivities(
           overviewResult.overview.logs as Array<{ id: string; action: string; actionLabel?: string; description: string }>,
         )
+      }
+
+      if (conversationsResult.success && conversationsResult.conversations) {
+        setRecentConversations((conversationsResult.conversations as PortalConversation[]).slice(0, 3))
       }
     }
 
@@ -263,7 +285,6 @@ export default function PortalHomePage() {
       if (finalText) {
         setMicState("processing")
         setChatInput((prev) => [prev.trim(), finalText].filter(Boolean).join(" "))
-        setAudioTranscript(finalText)
         setMicPreview("")
         toast({ title: "Transcrição concluída", description: "Transcrição adicionada ao campo." })
       }
@@ -400,22 +421,26 @@ export default function PortalHomePage() {
                   <h2 className="font-semibold">Conversas recentes</h2>
                   <Link href="/portal/conversas" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Ver todas</Link>
                 </div>
-                <div className="space-y-1">
-                  {conversations.map((conv) => (
-                    <Link key={conv.title + conv.description} href="/portal/conversas" className="flex items-start gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
-                      <div className={`w-10 h-10 rounded-xl ${conv.iconBg} flex items-center justify-center flex-shrink-0`}>
-                        <conv.icon className={`w-5 h-5 ${conv.iconColor}`} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="font-medium truncate">{conv.title}</p>
-                          <span className="text-xs text-muted-foreground flex-shrink-0">{conv.time}</span>
+                {recentConversations.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">Nenhuma conversa salva ainda.</div>
+                ) : (
+                  <div className="space-y-1">
+                    {recentConversations.map((conversation) => (
+                      <Link key={conversation.id} href={conversation.ctaHref || "/portal/conversas"} className="flex items-start gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
+                        <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+                          {conversation.lastFrom === "user" ? <User className="w-5 h-5 text-gray-600" /> : <Sparkles className="w-5 h-5 text-gray-600" />}
                         </div>
-                        <p className="text-sm text-muted-foreground truncate">{conv.description}</p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium truncate">{conversation.title}</p>
+                            <span className="text-xs text-muted-foreground flex-shrink-0">{conversation.time}</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate">{conversation.preview}</p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </motion.div>
 
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.4 }} className="bg-white border border-gray-100 rounded-2xl p-5">
@@ -468,7 +493,7 @@ export default function PortalHomePage() {
                 </div>
               </motion.div>
 
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.35 }} className="bg-white border border-gray-100 rounded-2xl p-5">
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.35 }} className="hidden bg-white border border-gray-100 rounded-2xl p-5">
                 <h2 className="font-semibold mb-1">Gravar áudio</h2>
                 <p className="text-sm text-muted-foreground mb-4">Use voz para preencher o campo do COS sem depender de backend.</p>
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl mb-4">
