@@ -113,7 +113,7 @@ export default function VocePage() {
 
   const companyItems = [
     { icon: Building2, label: "Minha empresa", sublabel: workspace?.name || "Nenhuma empresa cadastrada ainda", onClick: openCompany },
-    { icon: Users, label: "Equipe", sublabel: "Membros e permissoes do workspace", onClick: openTeam },
+    { icon: Users, label: "Equipe", sublabel: "Membros do workspace", onClick: openTeam },
     { icon: CreditCard, label: "Assinatura e plano", sublabel: "Nenhuma assinatura ativa ainda", onClick: openSubscription },
   ]
 

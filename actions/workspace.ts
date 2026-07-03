@@ -132,10 +132,12 @@ export async function getWorkspaceMembersAction() {
 }
 
 export async function addWorkspaceMemberAction({
+  name,
   email,
   password,
   role,
 }: {
+  name?: string
   email: string
   password?: string
   role: string
@@ -164,6 +166,7 @@ export async function addWorkspaceMemberAction({
   }
 
   const normalizedEmail = email.trim().toLowerCase()
+  const normalizedName = name?.trim() || ""
   const normalizedPassword = password?.trim() || ""
   const normalizedRole = role.trim() || "member"
 
@@ -188,7 +191,7 @@ export async function addWorkspaceMemberAction({
       return { error: "Informe uma senha com pelo menos 6 caracteres." }
     }
 
-    const displayName = normalizedEmail.split("@")[0] || "Usuario"
+    const displayName = normalizedName || normalizedEmail.split("@")[0] || "Usuario"
     const createUserResult = await adminClient.auth.admin.createUser({
       email: normalizedEmail,
       password: normalizedPassword,
@@ -222,6 +225,24 @@ export async function addWorkspaceMemberAction({
       id: createdUser.id,
       full_name: displayName,
       email: normalizedEmail,
+    }
+  }
+
+  if (targetProfile && normalizedName && targetProfile.full_name !== normalizedName) {
+    const { error: profileUpdateError } = await adminClient
+      .from("profiles")
+      .update({
+        full_name: normalizedName,
+      })
+      .eq("id", targetProfile.id)
+
+    if (profileUpdateError) {
+      return { error: profileUpdateError.message }
+    }
+
+    targetProfile = {
+      ...targetProfile,
+      full_name: normalizedName,
     }
   }
 

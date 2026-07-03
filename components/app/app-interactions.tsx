@@ -10,7 +10,6 @@ import {
   CreditCard,
   Receipt,
   FileText,
-  ShieldCheck,
   UserPlus,
 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
@@ -42,6 +41,7 @@ type CompanyState = {
 type InviteState = {
   name: string
   email: string
+  password: string
   role: "owner" | "admin" | "member"
 }
 
@@ -103,6 +103,7 @@ const defaultCompany: CompanyState = {
 const defaultInvite: InviteState = {
   name: "",
   email: "",
+  password: "",
   role: "member",
 }
 
@@ -249,7 +250,9 @@ export function AppInteractionsProvider({ children }: { children: ReactNode }) {
     setInviteError("")
 
     const result = await addWorkspaceMemberAction({
+      name: invite.name,
       email: invite.email,
+      password: invite.password,
       role: invite.role,
     })
 
@@ -267,7 +270,7 @@ export function AppInteractionsProvider({ children }: { children: ReactNode }) {
 
     toast({
       title: "Membro adicionado",
-      description: "O usuário foi vinculado ao workspace com sucesso.",
+      description: "A conta foi criada e vinculada ao workspace com sucesso.",
     })
     setInvite(defaultInvite)
     setInviteOpen(false)
@@ -453,37 +456,23 @@ export function AppInteractionsProvider({ children }: { children: ReactNode }) {
                           </div>
                         )}
 
-                        {hasOnlyOwner && <EmptyHint text="Nenhum outro membro convidado ainda." />}
+                        {hasOnlyOwner && <EmptyHint text="Nenhum outro membro cadastrado ainda." />}
                       </>
                     )}
 
                     {teamError && <InlineMessage tone="error" text={teamError} />}
                     {!canManageWorkspace && (
-                      <EmptyHint text="Você pode visualizar a equipe, mas apenas owner, admin ou master podem editar membros e permissões." />
+                      <EmptyHint text="Você pode visualizar a equipe, mas apenas owner, admin ou master podem adicionar membros." />
                     )}
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div>
                       <button
                         type="button"
                         onClick={() => (canManageWorkspace ? setInviteOpen((prev) => !prev) : showPermissionToast())}
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]"
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]"
                       >
                         <UserPlus className="h-4 w-4" />
-                        Convidar membro
-                      </button>
-                      <button
-                        type="button"
-                        onClick={canManageWorkspace
-                          ? () =>
-                              toast({
-                                title: "Permissões preparadas",
-                                description: "A gestão de papéis já usa os dados reais do workspace e receberá fluxos avançados depois.",
-                              })
-                          : showPermissionToast}
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200"
-                      >
-                        <ShieldCheck className="h-4 w-4" />
-                        Gerenciar permissões
+                        Adicionar membro
                       </button>
                     </div>
 
@@ -502,6 +491,14 @@ export function AppInteractionsProvider({ children }: { children: ReactNode }) {
                               value={invite.email}
                               onChange={(email) => setInvite((prev) => ({ ...prev, email }))}
                               placeholder="E-mail"
+                              type="email"
+                            />
+                            <InputField
+                              label="Senha"
+                              value={invite.password}
+                              onChange={(password) => setInvite((prev) => ({ ...prev, password }))}
+                              placeholder="Mínimo de 6 caracteres"
+                              type="password"
                             />
                             <ChoiceField
                               label="Papel"
@@ -519,15 +516,14 @@ export function AppInteractionsProvider({ children }: { children: ReactNode }) {
                               }
                               options={["Proprietário", "Admin", "Membro"]}
                             />
-                            <EmptyHint text="Se o e-mail já existir em profiles, o usuário será adicionado ao workspace. Caso contrário, o convite por e-mail será ativado posteriormente." />
                             {inviteError && <InlineMessage tone="error" text={inviteError} />}
                             <button
                               type="button"
                               onClick={sendInvite}
-                              disabled={invitingMember || !invite.email.trim()}
+                              disabled={invitingMember || !invite.name.trim() || !invite.email.trim() || !invite.password.trim()}
                               className="w-full rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              {invitingMember ? "Enviando..." : "Enviar convite"}
+                              {invitingMember ? "Criando..." : "Adicionar membro"}
                             </button>
                           </div>
                         </motion.div>
@@ -644,18 +640,20 @@ function InputField({
   onChange,
   placeholder,
   disabled = false,
+  type = "text",
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   placeholder: string
   disabled?: boolean
+  type?: "text" | "email" | "password"
 }) {
   return (
     <label className="block space-y-1.5">
       <span className="text-sm font-medium text-[#0a0a0a]">{label}</span>
       <input
-        type="text"
+        type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Loader2, Mail, Plus, Shield, UserPlus, Users } from "lucide-react"
+import { Loader2, Plus, UserPlus } from "lucide-react"
 import { addWorkspaceMemberAction, getWorkspaceMembersAction } from "@/actions/workspace"
 import { useAuth } from "@/components/auth/auth-provider"
 import { PortalHeader, PortalPageHeader } from "@/components/portal/portal-header"
@@ -14,12 +14,14 @@ type WorkspaceMember = {
 }
 
 type InviteForm = {
+  name: string
   email: string
   password: string
   role: "owner" | "admin" | "member"
 }
 
 const defaultInvite: InviteForm = {
+  name: "",
   email: "",
   password: "",
   role: "member",
@@ -97,6 +99,7 @@ export default function EquipePage() {
     setFeedback(null)
 
     const result = await addWorkspaceMemberAction({
+      name: invite.name,
       email: invite.email,
       password: invite.password,
       role: invite.role,
@@ -121,7 +124,7 @@ export default function EquipePage() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="flex items-start justify-between gap-4 mb-8">
-            <PortalPageHeader title="Equipe" description="Gerencie membros e niveis de acesso reais do workspace." />
+            <PortalPageHeader title="Equipe" description="Gerencie membros reais do workspace." />
             {canManageWorkspace && (
               <button
                 onClick={() => {
@@ -150,8 +153,7 @@ export default function EquipePage() {
             ))}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white border border-gray-100 rounded-2xl p-6">
+          <div className="bg-white border border-gray-100 rounded-2xl p-6">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-5">
                 <div>
                   <h2 className="font-semibold">Membros</h2>
@@ -164,7 +166,17 @@ export default function EquipePage() {
 
               {inviteOpen && canManageWorkspace && (
                 <div className="mb-5 rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr),minmax(0,1fr),180px,auto] gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr),minmax(0,1fr),minmax(0,1fr),180px,auto] gap-3">
+                    <label className="block space-y-1.5">
+                      <span className="text-sm font-medium text-[#0a0a0a]">Nome</span>
+                      <input
+                        type="text"
+                        value={invite.name}
+                        onChange={(event) => setInvite((prev) => ({ ...prev, name: event.target.value }))}
+                        placeholder="Nome do membro"
+                        className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
+                      />
+                    </label>
                     <label className="block space-y-1.5">
                       <span className="text-sm font-medium text-[#0a0a0a]">E-mail</span>
                       <input
@@ -200,11 +212,11 @@ export default function EquipePage() {
                     <div className="flex items-end">
                       <button
                         onClick={submitInvite}
-                        disabled={isInviting || !invite.email.trim() || !invite.password.trim()}
+                        disabled={isInviting || !invite.name.trim() || !invite.email.trim() || !invite.password.trim()}
                         className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {isInviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-                        {isInviting ? "Criando..." : "Adicionar"}
+                        {isInviting ? "Criando..." : "Adicionar membro"}
                       </button>
                     </div>
                   </div>
@@ -241,51 +253,9 @@ export default function EquipePage() {
                   ))}
                 </div>
               )}
-            </div>
-
-            <div className="space-y-6">
-              <div className="bg-white border border-gray-100 rounded-2xl p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <Shield className="w-5 h-5 text-muted-foreground" />
-                  <h2 className="font-semibold">Permissoes</h2>
-                </div>
-                <div className="space-y-3">
-                  <InfoRow
-                    icon={Users}
-                    label="Gestao do workspace"
-                    value={canManageWorkspace ? "Liberada para esta conta" : "Somente leitura"}
-                  />
-                  <InfoRow
-                    icon={Mail}
-                    label="Contas"
-                    value={canManageWorkspace ? "Criacao direta de membros habilitada" : "Indisponivel para este perfil"}
-                  />
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
-    </div>
-  )
-}
-
-function InfoRow({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof Shield
-  label: string
-  value: string
-}) {
-  return (
-    <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
-      <div className="flex items-center gap-2 mb-1">
-        <Icon className="h-4 w-4 text-gray-500" />
-        <span className="text-sm font-medium text-[#0a0a0a]">{label}</span>
-      </div>
-      <p className="text-sm text-gray-500">{value}</p>
     </div>
   )
 }
