@@ -869,24 +869,24 @@ export default function AppHomePage() {
       </div>
 
       <div
-        className="border-t border-gray-100 bg-white px-4 pt-3"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+        className="px-4 pt-3"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
       >
         <div className="mx-auto w-full max-w-3xl">
-          <div className="relative rounded-full border border-gray-200 bg-white shadow-sm">
+          <div className="relative rounded-[28px] border border-gray-200/80 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
             <input
               type="text"
               value={message || micPreview}
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && void handleSend()}
               placeholder="Fale com o COS..."
-              className="w-full rounded-full bg-transparent px-5 py-3 pr-20 text-sm focus:outline-none"
+              className="w-full rounded-[28px] bg-transparent px-6 py-4 pr-24 text-sm focus:outline-none"
             />
-            <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
-              <button onClick={startListening} className={`p-2 transition-colors ${micState === "listening" ? "text-[#0a0a0a]" : "text-gray-400 hover:text-gray-600"}`} aria-label="Falar">
+            <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+              <button onClick={startListening} className={`rounded-full p-2 transition-colors ${micState === "listening" ? "bg-gray-100 text-[#0a0a0a]" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"}`} aria-label="Falar">
                 <Mic className="h-4 w-4" />
               </button>
-              <button onClick={() => void handleSend()} disabled={!message.trim() || isEngineRunning} className="rounded-full bg-[#0a0a0a] p-2 text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50" aria-label="Enviar">
+              <button onClick={() => void handleSend()} disabled={!message.trim() || isEngineRunning} className="rounded-full bg-[#0a0a0a] p-2.5 text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50" aria-label="Enviar">
                 <Send className="h-4 w-4" />
               </button>
             </div>
