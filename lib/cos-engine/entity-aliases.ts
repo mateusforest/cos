@@ -1,7 +1,7 @@
 export const operationalAreaAliases = {
   cadastros: ["cadastro", "cadastros", "clientes", "leads", "produtos", "servicos", "serviços"],
   operacoes: ["operacoes", "operações", "projetos", "ordens", "processos"],
-  vendas: ["vendas", "propostas", "negociacoes", "negociações", "funil"],
+  vendas: ["vendas", "propostas", "negociacoes", "negociações", "pedidos", "funil"],
   financeiro: ["financeiro", "ganhos", "gastos", "despesas", "receitas", "fluxo de caixa", "caixa"],
   equipe: ["equipe", "comercial", "operacional", "administrativo", "financeiro", "membros"],
   documentos: ["documentos", "contratos", "arquivos", "relatorios", "relatórios"],

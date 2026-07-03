@@ -19,6 +19,8 @@ const areaTitles: Record<string, string> = {
   vendas: "Vendas",
   propostas: "Propostas",
   negociacoes: "Negociacoes",
+  pedidos: "Pedidos",
+  funil: "Funil",
   documentos: "Documentos",
   contratos: "Contratos",
   arquivos: "Arquivos",

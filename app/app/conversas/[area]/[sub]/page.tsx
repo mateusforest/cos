@@ -17,9 +17,11 @@ const portalDestinations: Record<string, string> = {
   projetos: "/portal/operacoes",
   ordens: "/portal/operacoes",
   processos: "/portal/operacoes",
-  propostas: "/portal/propostas",
-  negociacoes: "/portal/vendas",
-  funil: "/portal/vendas",
+  propostas: "/portal/vendas/propostas",
+  negociacoes: "/portal/vendas/negociacoes",
+  pedidos: "/portal/vendas/pedidos",
+  vendas: "/portal/vendas/vendas",
+  funil: "/portal/vendas/funil",
   ganhos: "/portal/financeiro",
   gastos: "/portal/financeiro",
   "fluxo-de-caixa": "/portal/financeiro",
@@ -61,10 +63,17 @@ function resolveChatCopy(area: string, subLabel: string) {
   }
 
   if (area === "vendas") {
+    const normalizedSub = slug(subLabel)
+
     return {
       subtitle: `Conversa comercial sobre ${subLabel.toLowerCase()}.`,
       emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
-      quickActions: ["Criar proposta", "Buscar negociacao", "Ver vendas no Portal"],
+      quickActions:
+        normalizedSub === "propostas"
+          ? ["Criar proposta", "Ver vendas no Portal"]
+          : normalizedSub === "negociacoes"
+            ? ["Abrir propostas", "Ver vendas no Portal"]
+            : ["Ver vendas no Portal"],
     }
   }
 
@@ -171,7 +180,12 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
           }
 
           if (label === "Criar proposta") {
-            router.push("/portal/propostas")
+            router.push("/portal/vendas/propostas")
+            return
+          }
+
+          if (label === "Abrir propostas") {
+            router.push("/portal/vendas/propostas")
             return
           }
 
