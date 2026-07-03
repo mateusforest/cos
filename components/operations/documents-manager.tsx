@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { BarChart3, FileText, Loader2, Paperclip, Pencil, Plus, Search, Trash2, TrendingUp } from "lucide-react"
+import { BarChart3, FileText, Loader2, Paperclip, Pencil, Plus, Search, Trash2, TrendingUp, Upload } from "lucide-react"
 import {
   createDocumentAction,
   deleteDocumentAction,
@@ -10,6 +10,7 @@ import {
   type DocumentStatus,
   type DocumentType,
 } from "@/actions/documents"
+import { uploadDocumentFile } from "@/lib/document-upload"
 import { useAuth } from "@/components/auth/auth-provider"
 
 type DocumentRecord = {
@@ -150,7 +151,7 @@ export function DocumentsManager({
   variant: "app" | "portal"
   filterType?: string
 }) {
-  const { canManageWorkspace } = useAuth()
+  const { canManageWorkspace, user, workspace } = useAuth()
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<"all" | DocumentStatus>("all")
@@ -160,6 +161,7 @@ export function DocumentsManager({
   const [feedback, setFeedback] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [form, setForm] = useState<DocumentFormState>({
     ...defaultForm,
     type: normalizeFilterType(filterType) ?? "outro",
@@ -207,6 +209,7 @@ export function DocumentsManager({
     })
     setError(null)
     setFeedback(null)
+    setSelectedFile(null)
     setModalOpen(true)
   }
 
@@ -221,6 +224,7 @@ export function DocumentsManager({
     })
     setError(null)
     setFeedback(null)
+    setSelectedFile(null)
     setModalOpen(true)
   }
 
@@ -229,10 +233,34 @@ export function DocumentsManager({
     setError(null)
     setFeedback(null)
 
+    let resolvedFileUrl = form.fileUrl
+
+    if (selectedFile) {
+      if (!user?.id || !workspace?.id) {
+        setIsSaving(false)
+        setError("Nao foi possivel identificar a sessao atual para enviar o arquivo.")
+        return
+      }
+
+      const uploadResult = await uploadDocumentFile({
+        file: selectedFile,
+        userId: user.id,
+        workspaceId: workspace.id,
+      })
+
+      if (uploadResult.error || !uploadResult.publicUrl) {
+        setIsSaving(false)
+        setError(uploadResult.error || "Nao foi possivel enviar o anexo.")
+        return
+      }
+
+      resolvedFileUrl = uploadResult.publicUrl
+    }
+
     const payload = {
       title: form.title,
       type: form.type,
-      fileUrl: form.fileUrl,
+      fileUrl: resolvedFileUrl,
       content: form.content,
       status: form.status,
     }
@@ -249,6 +277,7 @@ export function DocumentsManager({
     }
 
     setFeedback(editingDocumentId ? uiCopy.updateSuccess : uiCopy.createSuccess)
+    setSelectedFile(null)
     setModalOpen(false)
     await loadDocuments()
   }
@@ -444,9 +473,21 @@ export function DocumentsManager({
                 </FormField>
               </div>
               <FormField label={uiCopy.fileLabel}>
-                <div className="relative">
-                  <Paperclip className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  <input value={form.fileUrl} onChange={(event) => setForm((prev) => ({ ...prev, fileUrl: event.target.value }))} placeholder={uiCopy.filePlaceholder} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-10 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+                <div className="space-y-3">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-700 transition-colors hover:border-gray-400">
+                    <Upload className="h-4 w-4 text-gray-500" />
+                    <span>{selectedFile ? selectedFile.name : "Anexar arquivo ou imagem"}</span>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf,.doc,.docx,.txt,.rtf,.xlsx,.xls,.csv,.ppt,.pptx"
+                      onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                      className="hidden"
+                    />
+                  </label>
+                  <div className="relative">
+                    <Paperclip className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input value={form.fileUrl} onChange={(event) => setForm((prev) => ({ ...prev, fileUrl: event.target.value }))} placeholder={uiCopy.filePlaceholder} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-10 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+                  </div>
                 </div>
               </FormField>
               <FormField label={uiCopy.contentLabel}>
@@ -455,7 +496,7 @@ export function DocumentsManager({
             </div>
 
             <div className="mt-3 rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-500">
-              {uiCopy.helperText}
+              {selectedFile ? "O anexo selecionado sera enviado e salvo como referencia real do documento." : uiCopy.helperText}
             </div>
 
             <div className="mt-5 flex gap-2">

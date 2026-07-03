@@ -296,6 +296,17 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     )
   }
 
+  if (key === "marketing") {
+    return (
+      <PortalModulePage
+        title="Marketing"
+        description="Acompanhe campanhas e iniciativas de marketing por aqui, sem depender do fluxo de chat."
+        emptyLabel="Nenhuma acao de marketing disponivel ainda."
+        listHref="/portal/marketing"
+      />
+    )
+  }
+
   if (key === "documentos" || key === "contratos" || key === "propostas" || key === "relatorios") {
     const meta = metaForDocumentKey(key)
 
