@@ -27,7 +27,7 @@ const avatarMenu = [
   { icon: ExternalLink, label: "Acessar Portal", href: "/portal" },
 ]
 
-export function HeaderActions({ variant: _variant }: { variant?: "mobile" | "desktop" }) {
+export function HeaderActions({ variant }: { variant?: "mobile" | "desktop" }) {
   const router = useRouter()
   const { user, profile, clearAuth } = useAuth()
   const [searchOpen, setSearchOpen] = useState(false)
@@ -39,6 +39,10 @@ export function HeaderActions({ variant: _variant }: { variant?: "mobile" | "des
   const unreadCount = notifications.filter((item) => item.unread).length
   const displayName = profile?.full_name || user?.email || "Seu perfil"
   const displayEmail = profile?.email || user?.email || "Nenhum e-mail cadastrado"
+  const avatarMenuClassName =
+    variant === "desktop"
+      ? "absolute left-0 mt-2 w-56 max-w-[calc(100vw-1rem)] bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden"
+      : "absolute right-0 mt-2 w-60 max-w-[calc(100vw-1rem)] bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden"
 
   const handleLogout = () => {
     startTransition(async () => {
@@ -76,7 +80,7 @@ export function HeaderActions({ variant: _variant }: { variant?: "mobile" | "des
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -8, scale: 0.97 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden"
+                  className={avatarMenuClassName}
                 >
                   <div className="flex items-center gap-3 p-4 border-b border-gray-100">
                     <UserAvatar fullName={profile?.full_name} email={profile?.email || user?.email} avatarUrl={profile?.avatar_url} size={40} />
