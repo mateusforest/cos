@@ -369,129 +369,30 @@ function GlobalHeader() {
 
 function DesktopSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
   const { setIsOpen, setLevel } = useFAB()
   const { summary } = useOperationsDashboard()
-  const [pendingSessionHref, setPendingSessionHref] = useState<string | null>(null)
-  const sessionsData: SessionItem[] = [
-    {
-      icon: Users,
-      label: "Cadastros",
-      time:
-        summary?.clientsCount === 1 ? "1 cliente" : (summary?.clientsCount ?? 0) > 1 ? `${summary?.clientsCount ?? 0} clientes` : "Sem registros",
-      count: summary?.clientsCount ?? 0,
-      color: "#ec4899",
-      bg: "#fce7f3",
-      href: "/app/conversas/cadastros",
-    },
-    {
-      icon: Briefcase,
-      label: "Operações",
-      time:
-        summary?.operationsCount === 1 ? "1 operação" : (summary?.operationsCount ?? 0) > 1 ? `${summary?.operationsCount ?? 0} operações` : "Sem registros",
-      count: summary?.operationsCount ?? 0,
-      color: "#8b5cf6",
-      bg: "#ede9fe",
-      href: "/app/conversas/operacoes",
-    },
-    { icon: TrendingUp, label: "Vendas", time: "Chat contextual", count: 0, color: "#3b82f6", bg: "#dbeafe", href: "/app/conversas/vendas" },
-    {
-      icon: DollarSign,
-      label: "Financeiro",
-      time:
-        summary?.financial.entriesCount === 1
-          ? "1 lançamento"
-          : (summary?.financial.entriesCount ?? 0) > 1
-            ? `${summary?.financial.entriesCount ?? 0} lançamentos`
-            : "Sem registros",
-      count: summary?.financial.entriesCount ?? 0,
-      color: "#22c55e",
-      bg: "#dcfce7",
-      href: "/app/conversas/financeiro",
-    },
-    {
-      icon: UsersRound,
-      label: "Equipe",
-      time: summary?.teamCount === 1 ? "1 membro" : (summary?.teamCount ?? 0) > 1 ? `${summary?.teamCount ?? 0} membros` : "Sem registros",
-      count: summary?.teamCount ?? 0,
-      color: "#0ea5e9",
-      bg: "#e0f2fe",
-      href: "/app/conversas/equipe",
-    },
-    {
-      icon: FolderOpen,
-      label: "Documentos",
-      time:
-        summary?.documentsCount === 1 ? "1 documento" : (summary?.documentsCount ?? 0) > 1 ? `${summary?.documentsCount ?? 0} documentos` : "Sem registros",
-      count: summary?.documentsCount ?? 0,
-      color: "#f97316",
-      bg: "#ffedd5",
-      href: "/app/conversas/documentos",
-    },
-    {
-      icon: Video,
-      label: "Reuniões",
-      time:
-        summary?.meetingsCount === 1 ? "1 reunião" : (summary?.meetingsCount ?? 0) > 1 ? `${summary?.meetingsCount ?? 0} reuniões` : "Sem registros",
-      count: summary?.meetingsCount ?? 0,
-      color: "#ef4444",
-      bg: "#fee2e2",
-      href: "/app/conversas/reunioes",
-    },
-    {
-      icon: LifeBuoy,
-      label: "Suporte",
-      time:
-        summary?.supportCount === 1 ? "1 chamado" : (summary?.supportCount ?? 0) > 1 ? `${summary?.supportCount ?? 0} chamados` : "Sem registros",
-      count: summary?.supportCount ?? 0,
-      color: "#6b7280",
-      bg: "#f3f4f6",
-      href: "/app/conversas/suporte",
-    },
-    { icon: Settings, label: "Sistema", time: "Configurações e logs", count: 0, color: "#6b7280", bg: "#f3f4f6", href: "/app/conversas/sistema" },
-  ]
+  const conversationsCount =
+    (summary?.clientsCount ?? 0) +
+    (summary?.operationsCount ?? 0) +
+    (summary?.financial.entriesCount ?? 0) +
+    (summary?.teamCount ?? 0) +
+    (summary?.documentsCount ?? 0) +
+    (summary?.meetingsCount ?? 0) +
+    (summary?.supportCount ?? 0)
+  const historyCount = summary?.activities.length ?? 0
 
   const navItems = [
-    { icon: Home, label: "Início", href: "/app", exact: true },
-    { icon: MessageSquare, label: "Conversas", href: "/app/conversas" },
-    { icon: Clock, label: "Histórico", href: "/app/historico" },
-    { icon: User, label: "Você", href: "/app/voce" },
+    { icon: Home, label: "Início", href: "/app", exact: true, count: 0 },
+    { icon: MessageSquare, label: "Conversas", href: "/app/conversas", count: conversationsCount },
+    { icon: Clock, label: "Histórico", href: "/app/historico", count: historyCount },
+    { icon: User, label: "Você", href: "/app/voce", count: 0 },
   ]
 
-  const sharedSessionsData: SessionItem[] = sessionsData.map((session) => {
-    const area = chatAreaSources.find((item) => item.chatHref === session.href)
-
-    if (!area) {
-      return session
-    }
-
-    return {
-      ...session,
-      label: area.label,
-      icon: area.icon as typeof Users,
-      color: area.color,
-      bg: area.bg,
-      href: area.chatHref,
-    }
-  })
-
   const isActive = (href: string, exact?: boolean) => (exact ? pathname === href : pathname.startsWith(href))
-  const isSessionActive = (href: string) =>
-    pendingSessionHref === href || pathname === href || pathname.startsWith(`${href}/`)
-
-  useEffect(() => {
-    setPendingSessionHref(null)
-  }, [pathname])
-
-  useEffect(() => {
-    sharedSessionsData.forEach((session) => {
-      router.prefetch(session.href)
-    })
-  }, [router, sharedSessionsData])
 
   return (
-    <aside className="hidden lg:flex lg:flex-col w-[280px] flex-shrink-0 border-r border-gray-200 bg-white h-screen">
-      <div className="px-5 h-16 flex items-center justify-between flex-shrink-0 border-b border-gray-100">
+    <aside className="hidden lg:flex lg:flex-col w-[220px] flex-shrink-0 border-r border-gray-200 bg-white h-screen">
+      <div className="px-4 h-16 flex items-center justify-between flex-shrink-0 border-b border-gray-100">
         <Image
           src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/COS%20LOGO%20header-lB2hw9fMDONpyTpAYQaVVinJsAweku.png"
           alt="COS"
@@ -504,63 +405,39 @@ function DesktopSidebar() {
         <HeaderActions variant="desktop" />
       </div>
 
-      <div className="p-3 space-y-2 flex-shrink-0">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input type="text" placeholder="Buscar..." className="w-full pl-9 pr-3 py-2 bg-gray-50 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-gray-300" />
-        </div>
+      <div className="px-3 py-3 flex-shrink-0">
         <button
           onClick={() => {
             setLevel("main")
             setIsOpen(true)
           }}
-          className="flex items-center justify-center gap-2 w-full py-2.5 bg-[#0a0a0a] text-white rounded-lg text-sm font-medium hover:bg-[#1a1a1a] transition-colors"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0a0a0a] text-white transition-colors hover:bg-[#1a1a1a]"
+          aria-label="Nova conversa"
         >
           <Plus className="w-4 h-4" />
-          Nova conversa
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
-        <div className="px-2 py-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Sessões</span>
-        </div>
-        {sharedSessionsData.map((s) => (
-          <Link
-            key={s.label}
-            href={s.href}
-            prefetch
-            onClick={() => setPendingSessionHref(s.href)}
-            onMouseEnter={() => router.prefetch(s.href)}
-            onFocus={() => router.prefetch(s.href)}
-            className={`flex items-center gap-3 px-2.5 py-2 rounded-lg transition-colors group ${
-              isSessionActive(s.href) ? "bg-gray-100" : "hover:bg-gray-50"
-            }`}
-          >
-            <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: s.bg }}>
-              <s.icon className="w-4 h-4" style={{ color: s.color }} />
-            </span>
-            <span className="flex-1 min-w-0">
-              <span className="block text-sm font-medium text-[#0a0a0a] truncate">{s.label}</span>
-              <span className="block text-xs text-gray-400">{s.time}</span>
-            </span>
-            {s.count > 0 && (
-              <span className="w-5 h-5 bg-blue-500 text-white text-[11px] rounded-full flex items-center justify-center flex-shrink-0">
-                {s.count}
-              </span>
-            )}
-          </Link>
-        ))}
-      </div>
-
-      <div className="border-t border-gray-100 p-2 flex-shrink-0">
-        <div className="grid grid-cols-4 gap-1">
+      <div className="flex-1 overflow-y-auto px-3 pb-3">
+        <div className="space-y-1">
           {navItems.map((item) => {
             const active = isActive(item.href, item.exact)
+
             return (
-              <Link key={item.href} href={item.href} className={`flex flex-col items-center gap-1 py-2 rounded-lg transition-colors ${active ? "bg-gray-100 text-[#0a0a0a]" : "text-gray-400 hover:bg-gray-50"}`}>
-                <item.icon className="w-4 h-4" />
-                <span className="text-[10px] font-medium">{item.label}</span>
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors ${
+                  active ? "bg-gray-100 text-[#0a0a0a]" : "text-gray-500 hover:bg-gray-50 hover:text-[#0a0a0a]"
+                }`}
+              >
+                <item.icon className="h-4 w-4 flex-shrink-0" />
+                <span className="flex-1 font-medium">{item.label}</span>
+                {item.count > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#0a0a0a] px-1.5 text-[11px] text-white">
+                    {item.count}
+                  </span>
+                )}
               </Link>
             )
           })}
@@ -569,7 +446,6 @@ function DesktopSidebar() {
     </aside>
   )
 }
-
 function DesktopContextPanel() {
   const [collapsed, setCollapsed] = useState(false)
   const { summary, isLoading } = useOperationsDashboard()
