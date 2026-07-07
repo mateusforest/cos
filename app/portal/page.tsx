@@ -476,12 +476,12 @@ export default function PortalHomePage() {
 
             <div className="space-y-6">
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }} className="bg-white border border-gray-100 rounded-2xl p-5">
-                <h2 className="font-semibold mb-1">Gravação de reunião</h2>
-                <p className="text-sm text-muted-foreground mb-4">Abra o COS Meet para gravar, enviar áudio ou preparar a reunião.</p>
+                <h2 className="font-semibold mb-1">COS Meet</h2>
+                <p className="text-sm text-muted-foreground mb-4">Abra o COS Meet para preparar reunião por vídeo, registrar gravação ou configurar o acompanhamento do COS de forma honesta.</p>
                 <div className="flex items-center gap-4">
                   <button onClick={openMeeting} className="flex items-center gap-2 px-4 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 transition-colors">
                     <Video className="w-4 h-4" />
-                    Iniciar gravação
+                    Abrir COS Meet
                   </button>
                   <div className="flex-1 min-w-0 h-10 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden">
                     <div className="flex items-center gap-0.5 h-6">
@@ -588,7 +588,7 @@ export default function PortalHomePage() {
               </button>
               <button onClick={openMeeting} className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-xl text-sm text-muted-foreground hover:bg-gray-200 transition-colors">
                 <Video className="w-4 h-4" />
-                <span>Gravar reunião</span>
+                <span>COS Meet</span>
               </button>
             </div>
             <div className="flex-1 relative">

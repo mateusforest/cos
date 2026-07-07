@@ -61,9 +61,15 @@ type SpeechRecognitionLike = {
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
 
 type MeetingFormState = {
+  mode: "video" | "recording"
   title: string
+  roomName: string
+  meetingLink: string
   participants: string
   notes: string
+  cosShouldAttend: boolean
+  cosShouldRecord: boolean
+  cosShouldExtract: boolean
 }
 
 type ActiveConversation = {
@@ -96,9 +102,37 @@ const defaultShortcuts = [
 ]
 
 const defaultMeetingForm: MeetingFormState = {
+  mode: "video",
   title: "",
+  roomName: "",
+  meetingLink: "",
   participants: "",
   notes: "",
+  cosShouldAttend: true,
+  cosShouldRecord: false,
+  cosShouldExtract: true,
+}
+
+function buildMeetingSummary(form: MeetingFormState) {
+  return [
+    form.participants ? `Participantes: ${form.participants}` : "",
+    form.notes ? `Observacoes: ${form.notes}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
+function buildMeetingNextSteps(form: MeetingFormState) {
+  return [
+    `Fluxo COS Meet: ${form.mode === "video" ? "Reuniao por video" : "Gravacao ou audio"}`,
+    form.mode === "video" && form.roomName ? `Sala COS Meet: ${form.roomName}` : "",
+    form.mode === "video" && form.meetingLink ? `Link da reuniao: ${form.meetingLink}` : "",
+    `COS acompanhar: ${form.cosShouldAttend ? "sim" : "nao"}`,
+    `COS gravar: ${form.cosShouldRecord ? "sim" : "nao"}`,
+    `COS extrair pontos importantes: ${form.cosShouldExtract ? "sim" : "nao"}`,
+  ]
+    .filter(Boolean)
+    .join("\n")
 }
 
 const generalConversation: ActiveConversation = {
@@ -316,7 +350,7 @@ export default function AppHomePage() {
     { icon: ArrowRight, label: "Próximo passo", onClick: () => setModal("passo") },
     {
       icon: Video,
-      label: "Gravar reunião",
+      label: "COS Meet",
       onClick: () => {
         setMeetingForm(defaultMeetingForm)
         setMeetingFeedback(null)
@@ -663,18 +697,19 @@ export default function AppHomePage() {
       return
     }
 
+    if (meetingForm.mode === "video" && !meetingForm.roomName.trim()) {
+      setMeetingFeedback({ tone: "error", text: "Informe a sala da reunião por vídeo." })
+      return
+    }
+
     setIsCreatingMeeting(true)
     setMeetingFeedback(null)
 
     const result = await createMeetingAction({
       title: meetingForm.title,
       status: "draft",
-      summary: [
-        meetingForm.participants ? `Participantes: ${meetingForm.participants}` : "",
-        meetingForm.notes ? `Observacoes: ${meetingForm.notes}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n"),
+      summary: buildMeetingSummary(meetingForm),
+      nextSteps: buildMeetingNextSteps(meetingForm),
     })
 
     setIsCreatingMeeting(false)
@@ -684,7 +719,13 @@ export default function AppHomePage() {
       return
     }
 
-    setMeetingFeedback({ tone: "success", text: "Reuniao criada com sucesso." })
+    setMeetingFeedback({
+      tone: "success",
+      text:
+        meetingForm.mode === "video"
+          ? "Fluxo de reunião por vídeo criado com sucesso."
+          : "Fluxo de gravação da reunião criado com sucesso.",
+    })
     await refreshSummary({ silent: true, force: true })
 
     toast({
@@ -992,13 +1033,32 @@ export default function AppHomePage() {
                       <Video className="h-6 w-6 text-red-500" />
                     </span>
                     <div>
-                      <p className="text-sm font-medium text-[#0a0a0a]">Criar reunião</p>
-                      <p className="text-sm text-gray-500">Transcrição e gravação automática serão ativadas quando a IA estiver conectada.</p>
+                      <p className="text-sm font-medium text-[#0a0a0a]">COS Meet</p>
+                      <p className="text-sm text-gray-500">Prepare uma reunião por vídeo ou um fluxo de gravação sem simular integrações que ainda não existem.</p>
                     </div>
                   </div>
 
                   {!meetingFeedback?.tone || meetingFeedback.tone === "error" ? (
                     <>
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-[#0a0a0a]">Tipo de reunião</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setMeetingForm((prev) => ({ ...prev, mode: "video" }))}
+                            className={`rounded-2xl border px-4 py-3 text-sm font-medium transition-colors ${meetingForm.mode === "video" ? "border-[#0a0a0a] bg-[#0a0a0a] text-white" : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"}`}
+                          >
+                            Reunião por vídeo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMeetingForm((prev) => ({ ...prev, mode: "recording" }))}
+                            className={`rounded-2xl border px-4 py-3 text-sm font-medium transition-colors ${meetingForm.mode === "recording" ? "border-[#0a0a0a] bg-[#0a0a0a] text-white" : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"}`}
+                          >
+                            Gravação ou áudio
+                          </button>
+                        </div>
+                      </div>
                       <div>
                         <label className="mb-1.5 block text-sm font-medium text-[#0a0a0a]">Titulo</label>
                         <input
@@ -1019,6 +1079,30 @@ export default function AppHomePage() {
                           className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
                         />
                       </div>
+                      {meetingForm.mode === "video" && (
+                        <>
+                          <div>
+                            <label className="mb-1.5 block text-sm font-medium text-[#0a0a0a]">Sala da reunião</label>
+                            <input
+                              type="text"
+                              value={meetingForm.roomName}
+                              onChange={(event) => setMeetingForm((prev) => ({ ...prev, roomName: event.target.value }))}
+                              placeholder="Ex: Sala semanal comercial"
+                              className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-sm font-medium text-[#0a0a0a]">Link da reunião</label>
+                            <input
+                              type="text"
+                              value={meetingForm.meetingLink}
+                              onChange={(event) => setMeetingForm((prev) => ({ ...prev, meetingLink: event.target.value }))}
+                              placeholder="Cole aqui o link real da videochamada, se já existir"
+                              className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
+                            />
+                          </div>
+                        </>
+                      )}
                       <div>
                         <label className="mb-1.5 block text-sm font-medium text-[#0a0a0a]">Observacoes</label>
                         <textarea
@@ -1028,6 +1112,43 @@ export default function AppHomePage() {
                           rows={4}
                           className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
                         />
+                      </div>
+                      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                        <p className="text-sm font-medium text-[#0a0a0a]">Antes de iniciar, o COS deve:</p>
+                        <div className="mt-3 space-y-2">
+                          <label className="flex items-center gap-3 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={meetingForm.cosShouldAttend}
+                              onChange={(event) => setMeetingForm((prev) => ({ ...prev, cosShouldAttend: event.target.checked }))}
+                              className="h-4 w-4 rounded border-gray-300"
+                            />
+                            Acompanhar a reunião
+                          </label>
+                          <label className="flex items-center gap-3 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={meetingForm.cosShouldRecord}
+                              onChange={(event) => setMeetingForm((prev) => ({ ...prev, cosShouldRecord: event.target.checked }))}
+                              className="h-4 w-4 rounded border-gray-300"
+                            />
+                            Gravar quando a integração existir
+                          </label>
+                          <label className="flex items-center gap-3 text-sm text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={meetingForm.cosShouldExtract}
+                              onChange={(event) => setMeetingForm((prev) => ({ ...prev, cosShouldExtract: event.target.checked }))}
+                              className="h-4 w-4 rounded border-gray-300"
+                            />
+                            Extrair pontos importantes
+                          </label>
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
+                        {meetingForm.mode === "video"
+                          ? "Vídeo ao vivo, gravação e transcrição automática ainda não estão conectados neste fluxo. O COS vai registrar sala, link e preferências de acompanhamento de forma honesta."
+                          : "Gravação, upload e transcrição automática ainda não estão ativos neste fluxo. O COS vai registrar a reunião e as preferências para continuidade sem simular execução."}
                       </div>
                       {meetingFeedback?.tone === "error" && (
                         <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
@@ -1039,7 +1160,7 @@ export default function AppHomePage() {
                           Cancelar
                         </button>
                         <button onClick={submitMeeting} disabled={isCreatingMeeting} className="flex-1 rounded-2xl bg-[#0a0a0a] py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50">
-                          {isCreatingMeeting ? "Salvando..." : "Criar reunião"}
+                          {isCreatingMeeting ? "Salvando..." : meetingForm.mode === "video" ? "Preparar reunião por vídeo" : "Preparar fluxo de gravação"}
                         </button>
                       </div>
                     </>
@@ -1054,8 +1175,14 @@ export default function AppHomePage() {
                           <span className="text-sm font-medium text-[#0a0a0a]">Próximo passo</span>
                         </div>
                         <p className="text-xs leading-relaxed text-gray-600">
-                          A reunião já foi criada no backend real e aparecerá em Reuniões e no Histórico do workspace.
+                          A reunião foi criada no backend real e aparecerá em Reuniões e no Histórico do workspace, com a sala, o link e as preferências do COS registradas neste fluxo.
                         </p>
+                        {meetingForm.mode === "video" && (
+                          <div className="mt-3 rounded-2xl border border-gray-200 bg-white p-3 text-xs text-gray-600">
+                            <p><strong>Sala:</strong> {meetingForm.roomName}</p>
+                            <p><strong>Link:</strong> {meetingForm.meetingLink || "Nenhum link real informado ainda."}</p>
+                          </div>
+                        )}
                       </div>
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <Link href="/app/conversas/reunioes" onClick={closeModal} className="rounded-2xl bg-[#0a0a0a] py-3 text-center text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">

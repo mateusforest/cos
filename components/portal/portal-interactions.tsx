@@ -11,7 +11,6 @@ import {
   SlidersHorizontal,
   Smartphone,
   Trash2,
-  Upload,
   UserPlus,
   Video,
   X,
@@ -150,12 +149,31 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
   const [selectedAction, setSelectedAction] = useState<QuickActionType>("cliente")
   const [formValues, setFormValues] = useState<Record<string, string>>({})
   const [meetingValues, setMeetingValues] = useState({
+    mode: "video" as "video" | "recording",
     titulo: "",
+    sala: "",
+    link: "",
     participantes: "",
     observacoes: "",
+    cosAcompanhar: true,
+    cosGravar: false,
+    cosExtrair: true,
   })
   const [filters, setFilters] = useState<Record<FilterKey, string>>(defaultFilters)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const resetMeetingValues = () =>
+    setMeetingValues({
+      mode: "video",
+      titulo: "",
+      sala: "",
+      link: "",
+      participantes: "",
+      observacoes: "",
+      cosAcompanhar: true,
+      cosGravar: false,
+      cosExtrair: true,
+    })
 
   const closeModal = () => {
     setModal(null)
@@ -171,13 +189,36 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
         setModal("quickActionForm")
       },
       openInstall: () => setModal("install"),
-      openMeeting: () => setModal("meeting"),
+      openMeeting: () => {
+        resetMeetingValues()
+        setModal("meeting")
+      },
       openDeleteConfirm: () => setModal("delete"),
       openFilters: () => setModal("filters"),
       closeModal,
     }),
     [],
   )
+
+  const buildMeetingSummary = () =>
+    [
+      meetingValues.participantes ? `Participantes: ${meetingValues.participantes}` : "",
+      meetingValues.observacoes ?? "",
+    ]
+      .filter(Boolean)
+      .join("\n")
+
+  const buildMeetingNextSteps = () =>
+    [
+      `Fluxo COS Meet: ${meetingValues.mode === "video" ? "Reuniao por video" : "Gravacao ou audio"}`,
+      meetingValues.mode === "video" && meetingValues.sala ? `Sala COS Meet: ${meetingValues.sala}` : "",
+      meetingValues.mode === "video" && meetingValues.link ? `Link da reuniao: ${meetingValues.link}` : "",
+      `COS acompanhar: ${meetingValues.cosAcompanhar ? "sim" : "nao"}`,
+      `COS gravar: ${meetingValues.cosGravar ? "sim" : "nao"}`,
+      `COS extrair pontos importantes: ${meetingValues.cosExtrair ? "sim" : "nao"}`,
+    ]
+      .filter(Boolean)
+      .join("\n")
 
   const submitQuickAction = async () => {
     setIsSubmitting(true)
@@ -307,18 +348,24 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
     closeModal()
   }
 
-  const submitMeetingAction = async (mode: "record" | "upload") => {
+  const submitMeetingAction = async () => {
+    if (!meetingValues.titulo.trim()) {
+      toast({ title: "Titulo obrigatorio", description: "Informe o titulo da reuniao." })
+      return
+    }
+
+    if (meetingValues.mode === "video" && !meetingValues.sala.trim()) {
+      toast({ title: "Sala obrigatoria", description: "Informe a sala da reuniao por video." })
+      return
+    }
+
     setIsSubmitting(true)
 
     const result = await createMeetingAction({
       title: meetingValues.titulo ?? "",
-      summary: [
-        meetingValues.participantes ? `Participantes: ${meetingValues.participantes}` : "",
-        meetingValues.observacoes ?? "",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      status: mode === "record" ? "recorded" : "draft",
+      summary: buildMeetingSummary(),
+      nextSteps: buildMeetingNextSteps(),
+      status: "draft",
     })
 
     setIsSubmitting(false)
@@ -329,10 +376,13 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
     }
 
     toast({
-      title: mode === "record" ? "Reuniao gravada" : "Reuniao preparada",
-      description: "A reuniao foi salva com sucesso. A transcricao sera ativada quando a IA estiver conectada.",
+      title: meetingValues.mode === "video" ? "Reuniao por video preparada" : "Fluxo de gravacao preparado",
+      description:
+        meetingValues.mode === "video"
+          ? "A sala, o link e as preferencias do COS foram registrados. O video ao vivo ainda nao esta integrado."
+          : "A reuniao e as preferencias do COS foram registradas sem simular gravacao ou transcricao real.",
     })
-    setMeetingValues({ titulo: "", participantes: "", observacoes: "" })
+    resetMeetingValues()
     closeModal()
   }
 
@@ -462,11 +512,41 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
               )}
 
               {modal === "meeting" && (
-                <ModalShell title="Gravar reuniao" onClose={closeModal}>
+                <ModalShell title="COS Meet" onClose={closeModal}>
                   <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Field label="Tipo de reuniao">
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setMeetingValues((prev) => ({ ...prev, mode: "video" }))}
+                            className={`rounded-2xl border px-4 py-3 text-sm font-medium transition-colors ${meetingValues.mode === "video" ? "border-[#0a0a0a] bg-[#0a0a0a] text-white" : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"}`}
+                          >
+                            Reuniao por video
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMeetingValues((prev) => ({ ...prev, mode: "recording" }))}
+                            className={`rounded-2xl border px-4 py-3 text-sm font-medium transition-colors ${meetingValues.mode === "recording" ? "border-[#0a0a0a] bg-[#0a0a0a] text-white" : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"}`}
+                          >
+                            Gravacao ou audio
+                          </button>
+                        </div>
+                      </Field>
+                    </div>
                     <Field label="Titulo">
                       <input type="text" value={meetingValues.titulo} onChange={(event) => setMeetingValues((prev) => ({ ...prev, titulo: event.target.value }))} placeholder="Titulo" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
                     </Field>
+                    {meetingValues.mode === "video" && (
+                      <>
+                        <Field label="Sala da reuniao">
+                          <input type="text" value={meetingValues.sala} onChange={(event) => setMeetingValues((prev) => ({ ...prev, sala: event.target.value }))} placeholder="Sala semanal comercial" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+                        </Field>
+                        <Field label="Link da reuniao">
+                          <input type="text" value={meetingValues.link} onChange={(event) => setMeetingValues((prev) => ({ ...prev, link: event.target.value }))} placeholder="Cole aqui o link real, se ja existir" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+                        </Field>
+                      </>
+                    )}
                     <Field label="Participantes">
                       <input type="text" value={meetingValues.participantes} onChange={(event) => setMeetingValues((prev) => ({ ...prev, participantes: event.target.value }))} placeholder="Participantes" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
                     </Field>
@@ -474,15 +554,32 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
                       <textarea value={meetingValues.observacoes} onChange={(event) => setMeetingValues((prev) => ({ ...prev, observacoes: event.target.value }))} placeholder="Observacoes" rows={3} className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
                     </Field>
                     <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                      <p className="text-sm text-gray-500">A transcricao sera ativada quando a IA estiver conectada.</p>
+                      <p className="text-sm font-medium text-[#0a0a0a]">Antes de iniciar, o COS deve:</p>
+                      <div className="mt-3 space-y-2">
+                        <label className="flex items-center gap-3 text-sm text-gray-700">
+                          <input type="checkbox" checked={meetingValues.cosAcompanhar} onChange={(event) => setMeetingValues((prev) => ({ ...prev, cosAcompanhar: event.target.checked }))} className="h-4 w-4 rounded border-gray-300" />
+                          Acompanhar a reuniao
+                        </label>
+                        <label className="flex items-center gap-3 text-sm text-gray-700">
+                          <input type="checkbox" checked={meetingValues.cosGravar} onChange={(event) => setMeetingValues((prev) => ({ ...prev, cosGravar: event.target.checked }))} className="h-4 w-4 rounded border-gray-300" />
+                          Gravar quando a integracao existir
+                        </label>
+                        <label className="flex items-center gap-3 text-sm text-gray-700">
+                          <input type="checkbox" checked={meetingValues.cosExtrair} onChange={(event) => setMeetingValues((prev) => ({ ...prev, cosExtrair: event.target.checked }))} className="h-4 w-4 rounded border-gray-300" />
+                          Extrair pontos importantes
+                        </label>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      <button type="button" onClick={() => submitMeetingAction("record")} disabled={isSubmitting} className="rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50">
-                        {isSubmitting ? "Salvando..." : "Iniciar gravacao"}
-                      </button>
-                      <button type="button" onClick={() => submitMeetingAction("upload")} disabled={isSubmitting} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gray-100 px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50">
-                        <Upload className="h-4 w-4" />
-                        Upload de audio
+                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                      <p className="text-sm text-gray-500">
+                        {meetingValues.mode === "video"
+                          ? "Video ao vivo, gravacao e transcricao automatica ainda nao estao conectados. O COS vai registrar sala, link e preferencias de acompanhamento."
+                          : "Gravacao, upload e transcricao automatica ainda nao estao ativos neste fluxo. O COS vai registrar a reuniao e as preferencias sem simular execucao."}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <button type="button" onClick={() => submitMeetingAction()} disabled={isSubmitting} className="rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50">
+                        {isSubmitting ? "Salvando..." : meetingValues.mode === "video" ? "Preparar reuniao por video" : "Preparar fluxo de gravacao"}
                       </button>
                       <button type="button" onClick={closeModal} disabled={isSubmitting} className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
                         Cancelar
