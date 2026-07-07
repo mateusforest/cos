@@ -3,7 +3,24 @@
 import { canManageWorkspace, getUserAccessForUser } from "@/lib/auth"
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server"
 
-export type MeetingStatus = "draft" | "recorded" | "transcribed" | "archived"
+type DatabaseMeetingStatus = "draft" | "recorded" | "transcribed" | "archived"
+
+export type MeetingStatus = "scheduled" | "in_progress" | "finished"
+export type MeetingType = "video" | "in_person"
+
+type MeetingMetadata = {
+  version: 1
+  scheduledAt: string | null
+  participants: string[]
+  meetingType: MeetingType
+  meetingLink: string
+  meetingLocation: string
+  description: string
+  cosShouldAttend: boolean
+  cosShouldRecord: boolean
+  cosShouldExtract: boolean
+  cosShouldReport: boolean
+}
 
 type MeetingRow = {
   id: string
@@ -26,6 +43,28 @@ type MeetingActor = {
   isMaster: boolean
   adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>
 }
+
+type MeetingPayload = {
+  title: string
+  audioUrl?: string
+  transcript?: string
+  summary?: string
+  decisions?: string
+  nextSteps?: string
+  status?: string
+  scheduledAt?: string
+  participants?: string[] | string
+  meetingType?: MeetingType
+  meetingLink?: string
+  meetingLocation?: string
+  description?: string
+  cosShouldAttend?: boolean
+  cosShouldRecord?: boolean
+  cosShouldExtract?: boolean
+  cosShouldReport?: boolean
+}
+
+const MEETING_METADATA_PREFIX = "COS_MEET_META::"
 
 async function getMeetingActor() {
   const supabase = await createSupabaseServerClient()
@@ -55,12 +94,123 @@ async function getMeetingActor() {
   } satisfies MeetingActor
 }
 
-function normalizeMeetingStatus(status: string): MeetingStatus {
+function normalizeDatabaseMeetingStatus(status: string): DatabaseMeetingStatus {
   const normalized = status.trim().toLowerCase()
-  if (normalized === "recorded" || normalized === "gravada" || normalized === "gravado") return "recorded"
-  if (normalized === "transcribed" || normalized === "transcrita" || normalized === "transcrito") return "transcribed"
-  if (normalized === "archived" || normalized === "arquivada" || normalized === "arquivado") return "archived"
+
+  if (normalized === "scheduled" || normalized === "agendada" || normalized === "agendado" || normalized === "draft" || normalized === "rascunho") {
+    return "draft"
+  }
+
+  if (normalized === "in_progress" || normalized === "em andamento" || normalized === "recorded" || normalized === "gravada" || normalized === "gravado") {
+    return "recorded"
+  }
+
+  if (normalized === "finished" || normalized === "finalizada" || normalized === "finalizado" || normalized === "transcribed" || normalized === "transcrita" || normalized === "transcrito") {
+    return "transcribed"
+  }
+
+  if (normalized === "archived" || normalized === "arquivada" || normalized === "arquivado") {
+    return "archived"
+  }
+
   return "draft"
+}
+
+function mapDatabaseStatusToMeetingStatus(status: string | null): MeetingStatus {
+  const normalized = normalizeDatabaseMeetingStatus(status ?? "draft")
+
+  if (normalized === "recorded") return "in_progress"
+  if (normalized === "transcribed") return "finished"
+  return "scheduled"
+}
+
+function normalizeParticipants(input?: string[] | string | null) {
+  if (!input) return [] as string[]
+
+  if (Array.isArray(input)) {
+    return input.map((value) => value.trim()).filter(Boolean)
+  }
+
+  return input
+    .split(/[\n,;]+/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+}
+
+function serializeMeetingMetadata(metadata: MeetingMetadata) {
+  return `${MEETING_METADATA_PREFIX}${JSON.stringify(metadata)}`
+}
+
+function parseMeetingMetadata(value?: string | null) {
+  if (!value || !value.startsWith(MEETING_METADATA_PREFIX)) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(value.slice(MEETING_METADATA_PREFIX.length)) as MeetingMetadata
+    if (parsed.version !== 1) {
+      return null
+    }
+
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function buildMeetingMetadata(payload: Partial<MeetingPayload>, currentRow?: MeetingRow): MeetingMetadata {
+  const currentMetadata = parseMeetingMetadata(currentRow?.transcript)
+  const legacyDescription = payload.summary?.trim() || currentRow?.summary?.trim() || currentMetadata?.description || ""
+
+  return {
+    version: 1,
+    scheduledAt: payload.scheduledAt?.trim() || currentMetadata?.scheduledAt || currentRow?.created_at || null,
+    participants: normalizeParticipants(payload.participants ?? currentMetadata?.participants ?? []),
+    meetingType:
+      payload.meetingType ??
+      currentMetadata?.meetingType ??
+      ((payload.meetingLink?.trim() || payload.audioUrl?.trim()) ? "video" : "in_person"),
+    meetingLink: payload.meetingLink?.trim() || payload.audioUrl?.trim() || currentMetadata?.meetingLink || currentRow?.audio_url || "",
+    meetingLocation: payload.meetingLocation?.trim() || currentMetadata?.meetingLocation || "",
+    description: payload.description?.trim() || legacyDescription,
+    cosShouldAttend: payload.cosShouldAttend ?? currentMetadata?.cosShouldAttend ?? false,
+    cosShouldRecord: payload.cosShouldRecord ?? currentMetadata?.cosShouldRecord ?? false,
+    cosShouldExtract: payload.cosShouldExtract ?? currentMetadata?.cosShouldExtract ?? false,
+    cosShouldReport: payload.cosShouldReport ?? currentMetadata?.cosShouldReport ?? false,
+  }
+}
+
+function hydrateMeeting(meeting: MeetingRow) {
+  const metadata = buildMeetingMetadata({}, meeting)
+  const meetingLink = metadata.meetingType === "video" ? metadata.meetingLink : ""
+
+  return {
+    id: meeting.id,
+    title: meeting.title,
+    audioUrl: meeting.audio_url || "",
+    transcript: meeting.transcript || "",
+    summary: meeting.summary || "",
+    decisions: meeting.decisions || "",
+    nextSteps: meeting.next_steps || "",
+    status: mapDatabaseStatusToMeetingStatus(meeting.status),
+    createdAt: meeting.created_at,
+    scheduledAt: metadata.scheduledAt,
+    participants: metadata.participants,
+    meetingType: metadata.meetingType,
+    meetingLink,
+    meetingLocation: metadata.meetingType === "in_person" ? metadata.meetingLocation : "",
+    description: metadata.description,
+    cosShouldAttend: metadata.cosShouldAttend,
+    cosShouldRecord: metadata.cosShouldRecord,
+    cosShouldExtract: metadata.cosShouldExtract,
+    cosShouldReport: metadata.cosShouldReport,
+    statusLabel:
+      mapDatabaseStatusToMeetingStatus(meeting.status) === "scheduled"
+        ? "Agendada"
+        : mapDatabaseStatusToMeetingStatus(meeting.status) === "in_progress"
+          ? "Em andamento"
+          : "Finalizada",
+  }
 }
 
 async function logMeetingActivity({
@@ -118,6 +268,7 @@ export async function getMeetingsAction() {
     .from("meetings")
     .select("id, workspace_id, title, audio_url, transcript, summary, decisions, next_steps, status, created_by, created_at")
     .eq("workspace_id", actor.workspaceId)
+    .neq("status", "archived")
     .order("created_at", { ascending: false })
     .returns<MeetingRow[]>()
 
@@ -127,17 +278,7 @@ export async function getMeetingsAction() {
 
   return {
     success: true,
-    meetings: (data ?? []).map((meeting) => ({
-      id: meeting.id,
-      title: meeting.title,
-      audioUrl: meeting.audio_url || "",
-      transcript: meeting.transcript || "",
-      summary: meeting.summary || "",
-      decisions: meeting.decisions || "",
-      nextSteps: meeting.next_steps || "",
-      status: normalizeMeetingStatus(meeting.status ?? "draft"),
-      createdAt: meeting.created_at,
-    })),
+    meetings: (data ?? []).map(hydrateMeeting),
     canManage: actor.canManage || actor.isMaster,
   }
 }
@@ -156,59 +297,36 @@ export async function getMeetingByIdAction({ meetingId }: { meetingId: string })
 
   return {
     success: true,
-    meeting: {
-      id: resolved.meeting.id,
-      title: resolved.meeting.title,
-      audioUrl: resolved.meeting.audio_url || "",
-      transcript: resolved.meeting.transcript || "",
-      summary: resolved.meeting.summary || "",
-      decisions: resolved.meeting.decisions || "",
-      nextSteps: resolved.meeting.next_steps || "",
-      status: normalizeMeetingStatus(resolved.meeting.status ?? "draft"),
-      createdAt: resolved.meeting.created_at,
-    },
+    meeting: hydrateMeeting(resolved.meeting),
+    canManage: actor.canManage || actor.isMaster,
   }
 }
 
-export async function createMeetingAction({
-  title,
-  audioUrl,
-  transcript,
-  summary,
-  decisions,
-  nextSteps,
-  status,
-}: {
-  title: string
-  audioUrl?: string
-  transcript?: string
-  summary?: string
-  decisions?: string
-  nextSteps?: string
-  status?: string
-}) {
+export async function createMeetingAction(payload: MeetingPayload) {
   const actor = await getMeetingActor()
 
   if ("error" in actor) {
     return { error: actor.error }
   }
 
-  const trimmedTitle = title.trim()
+  const trimmedTitle = payload.title.trim()
   if (!trimmedTitle) {
     return { error: "Informe o título da reunião." }
   }
+
+  const metadata = buildMeetingMetadata(payload)
 
   const { data, error } = await actor.adminClient
     .from("meetings")
     .insert({
       workspace_id: actor.workspaceId,
       title: trimmedTitle,
-      audio_url: audioUrl?.trim() || null,
-      transcript: transcript?.trim() || null,
-      summary: summary?.trim() || null,
-      decisions: decisions?.trim() || null,
-      next_steps: nextSteps?.trim() || null,
-      status: normalizeMeetingStatus(status ?? "draft"),
+      audio_url: metadata.meetingType === "video" ? metadata.meetingLink || null : null,
+      transcript: serializeMeetingMetadata(metadata),
+      summary: metadata.description || payload.summary?.trim() || null,
+      decisions: payload.decisions?.trim() || null,
+      next_steps: payload.nextSteps?.trim() || null,
+      status: normalizeDatabaseMeetingStatus(payload.status ?? "scheduled"),
       created_by: actor.actorId,
     })
     .select("id, workspace_id, title, audio_url, transcript, summary, decisions, next_steps, status, created_by, created_at")
@@ -229,25 +347,7 @@ export async function createMeetingAction({
   return { success: true, meetingId: data.id }
 }
 
-export async function updateMeetingAction({
-  meetingId,
-  title,
-  audioUrl,
-  transcript,
-  summary,
-  decisions,
-  nextSteps,
-  status,
-}: {
-  meetingId: string
-  title: string
-  audioUrl?: string
-  transcript?: string
-  summary?: string
-  decisions?: string
-  nextSteps?: string
-  status: string
-}) {
+export async function updateMeetingAction({ meetingId, ...payload }: MeetingPayload & { meetingId: string }) {
   const actor = await getMeetingActor()
 
   if ("error" in actor) {
@@ -263,21 +363,23 @@ export async function updateMeetingAction({
     return { error: resolved.error }
   }
 
-  const trimmedTitle = title.trim()
+  const trimmedTitle = payload.title.trim()
   if (!trimmedTitle) {
     return { error: "Informe o título da reunião." }
   }
+
+  const metadata = buildMeetingMetadata(payload, resolved.meeting)
 
   const { error } = await actor.adminClient
     .from("meetings")
     .update({
       title: trimmedTitle,
-      audio_url: audioUrl?.trim() || null,
-      transcript: transcript?.trim() || null,
-      summary: summary?.trim() || null,
-      decisions: decisions?.trim() || null,
-      next_steps: nextSteps?.trim() || null,
-      status: normalizeMeetingStatus(status),
+      audio_url: metadata.meetingType === "video" ? metadata.meetingLink || null : null,
+      transcript: serializeMeetingMetadata(metadata),
+      summary: metadata.description || payload.summary?.trim() || null,
+      decisions: payload.decisions?.trim() || null,
+      next_steps: payload.nextSteps?.trim() || null,
+      status: normalizeDatabaseMeetingStatus(payload.status ?? resolved.meeting.status ?? "scheduled"),
     })
     .eq("id", meetingId)
 

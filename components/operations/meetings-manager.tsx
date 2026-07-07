@@ -1,62 +1,103 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { Loader2, Pencil, Plus, Search, Trash2, Video } from "lucide-react"
+import { CalendarDays, Loader2, MapPin, Pencil, Plus, Search, Users, Video } from "lucide-react"
 import {
   createMeetingAction,
-  deleteMeetingAction,
   getMeetingsAction,
   updateMeetingAction,
   type MeetingStatus,
+  type MeetingType,
 } from "@/actions/meetings"
 import { useAuth } from "@/components/auth/auth-provider"
 
 type MeetingRecord = {
   id: string
   title: string
-  audioUrl: string
-  transcript: string
-  summary: string
-  decisions: string
-  nextSteps: string
   status: MeetingStatus
+  statusLabel: string
   createdAt: string | null
+  scheduledAt: string | null
+  participants: string[]
+  meetingType: MeetingType
+  meetingLink: string
+  meetingLocation: string
+  description: string
+  cosShouldAttend: boolean
+  cosShouldRecord: boolean
+  cosShouldExtract: boolean
+  cosShouldReport: boolean
 }
 
 type MeetingFormState = {
   title: string
-  summary: string
-  decisions: string
-  nextSteps: string
-  audioUrl: string
+  scheduledAt: string
+  participants: string
+  meetingType: MeetingType
+  meetingLink: string
+  meetingLocation: string
+  description: string
   status: MeetingStatus
+  cosShouldAttend: boolean
+  cosShouldRecord: boolean
+  cosShouldExtract: boolean
+  cosShouldReport: boolean
 }
 
 const defaultForm: MeetingFormState = {
   title: "",
-  summary: "",
-  decisions: "",
-  nextSteps: "",
-  audioUrl: "",
-  status: "draft",
+  scheduledAt: "",
+  participants: "",
+  meetingType: "video",
+  meetingLink: "",
+  meetingLocation: "",
+  description: "",
+  status: "scheduled",
+  cosShouldAttend: true,
+  cosShouldRecord: false,
+  cosShouldExtract: true,
+  cosShouldReport: true,
 }
 
-function formatDateLabel(value: string | null) {
-  if (!value) return "—"
+function formatDateTimeLabel(value: string | null) {
+  if (!value) return "Não definida"
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return "—"
+  if (Number.isNaN(date.getTime())) return "Não definida"
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(date)
 }
 
-function statusLabel(status: MeetingStatus) {
-  if (status === "recorded") return "Gravada"
-  if (status === "transcribed") return "Transcrita"
-  if (status === "archived") return "Arquivada"
-  return "Rascunho"
+function toDateTimeLocalValue(value: string | null) {
+  if (!value) return ""
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ""
+  const timezoneOffset = date.getTimezoneOffset()
+  const localDate = new Date(date.getTime() - timezoneOffset * 60_000)
+  return localDate.toISOString().slice(0, 16)
+}
+
+function buildParticipantsLabel(participants: string[]) {
+  if (participants.length === 0) return "Sem participantes informados"
+  if (participants.length === 1) return participants[0]
+  return `${participants[0]} +${participants.length - 1}`
+}
+
+function buildPreferenceSummary(meeting: MeetingRecord) {
+  const enabled = [
+    meeting.cosShouldAttend ? "Acompanhar" : "",
+    meeting.cosShouldRecord ? "Gravar" : "",
+    meeting.cosShouldExtract ? "Extrair" : "",
+    meeting.cosShouldReport ? "Relatório" : "",
+  ].filter(Boolean)
+
+  if (enabled.length === 0) return "Sem preferências do COS"
+  return enabled.join(" · ")
 }
 
 export function MeetingsManager({
@@ -80,6 +121,8 @@ export function MeetingsManager({
   const [editingMeetingId, setEditingMeetingId] = useState<string | null>(null)
   const [form, setForm] = useState<MeetingFormState>(defaultForm)
 
+  const basePath = variant === "portal" ? "/portal/reunioes" : "/app/reunioes"
+
   const loadMeetings = async () => {
     setIsLoading(true)
     setError(null)
@@ -102,15 +145,26 @@ export function MeetingsManager({
   }, [])
 
   const filteredMeetings = useMemo(() => {
+    const term = search.trim().toLowerCase()
+
     return meetings.filter((meeting) => {
       const matchesFilter = filter === "all" ? true : meeting.status === filter
-      const term = search.trim().toLowerCase()
-      const matchesSearch = !term || [meeting.title, meeting.summary, meeting.decisions, meeting.nextSteps].join(" ").toLowerCase().includes(term)
+      const haystack = [
+        meeting.title,
+        meeting.description,
+        meeting.meetingLink,
+        meeting.meetingLocation,
+        meeting.participants.join(" "),
+      ]
+        .join(" ")
+        .toLowerCase()
+
+      const matchesSearch = !term || haystack.includes(term)
       return matchesFilter && matchesSearch
     })
   }, [filter, meetings, search])
 
-  const startCreate = () => {
+  const openCreate = () => {
     setEditingMeetingId(null)
     setForm(defaultForm)
     setError(null)
@@ -118,15 +172,21 @@ export function MeetingsManager({
     setModalOpen(true)
   }
 
-  const startEdit = (meeting: MeetingRecord) => {
+  const openEdit = (meeting: MeetingRecord) => {
     setEditingMeetingId(meeting.id)
     setForm({
       title: meeting.title,
-      summary: meeting.summary,
-      decisions: meeting.decisions,
-      nextSteps: meeting.nextSteps,
-      audioUrl: meeting.audioUrl,
+      scheduledAt: toDateTimeLocalValue(meeting.scheduledAt),
+      participants: meeting.participants.join(", "),
+      meetingType: meeting.meetingType,
+      meetingLink: meeting.meetingLink,
+      meetingLocation: meeting.meetingLocation,
+      description: meeting.description,
       status: meeting.status,
+      cosShouldAttend: meeting.cosShouldAttend,
+      cosShouldRecord: meeting.cosShouldRecord,
+      cosShouldExtract: meeting.cosShouldExtract,
+      cosShouldReport: meeting.cosShouldReport,
     })
     setError(null)
     setFeedback(null)
@@ -140,11 +200,29 @@ export function MeetingsManager({
 
     const payload = {
       title: form.title,
-      summary: form.summary,
-      decisions: form.decisions,
-      nextSteps: form.nextSteps,
-      audioUrl: form.audioUrl,
+      scheduledAt: form.scheduledAt || undefined,
+      participants: form.participants,
+      meetingType: form.meetingType,
+      meetingLink: form.meetingType === "video" ? form.meetingLink : "",
+      meetingLocation: form.meetingType === "in_person" ? form.meetingLocation : "",
+      description: form.description,
+      summary: form.description,
       status: form.status,
+      cosShouldAttend: form.cosShouldAttend,
+      cosShouldRecord: form.cosShouldRecord,
+      cosShouldExtract: form.cosShouldExtract,
+      cosShouldReport: form.cosShouldReport,
+      nextSteps: [
+        `Participantes: ${form.participants || "Não informados"}`,
+        `Preferências do COS: ${[
+          form.cosShouldAttend ? "acompanhar" : "",
+          form.cosShouldRecord ? "gravar" : "",
+          form.cosShouldExtract ? "extrair" : "",
+          form.cosShouldReport ? "relatório" : "",
+        ]
+          .filter(Boolean)
+          .join(", ") || "nenhuma"}`,
+      ].join("\n"),
     }
 
     const result = editingMeetingId
@@ -163,18 +241,33 @@ export function MeetingsManager({
     await loadMeetings()
   }
 
-  const archiveMeeting = async (meetingId: string) => {
+  const finishMeeting = async (meeting: MeetingRecord) => {
     setError(null)
     setFeedback(null)
 
-    const result = await deleteMeetingAction({ meetingId })
+    const result = await updateMeetingAction({
+      meetingId: meeting.id,
+      title: meeting.title,
+      scheduledAt: meeting.scheduledAt || undefined,
+      participants: meeting.participants,
+      meetingType: meeting.meetingType,
+      meetingLink: meeting.meetingLink,
+      meetingLocation: meeting.meetingLocation,
+      description: meeting.description,
+      summary: meeting.description,
+      status: "finished",
+      cosShouldAttend: meeting.cosShouldAttend,
+      cosShouldRecord: meeting.cosShouldRecord,
+      cosShouldExtract: meeting.cosShouldExtract,
+      cosShouldReport: meeting.cosShouldReport,
+    })
 
     if (result.error) {
       setError(result.error)
       return
     }
 
-    setFeedback("Reunião arquivada com sucesso.")
+    setFeedback("Reunião finalizada com sucesso.")
     await loadMeetings()
   }
 
@@ -187,7 +280,7 @@ export function MeetingsManager({
             <p className="text-sm text-gray-500">{description}</p>
           </div>
           <button
-            onClick={startCreate}
+            onClick={openCreate}
             className="inline-flex items-center gap-2 rounded-xl bg-[#0a0a0a] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]"
           >
             <Plus className="h-4 w-4" />
@@ -206,17 +299,16 @@ export function MeetingsManager({
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar por título, resumo ou próximos passos..."
+                placeholder="Buscar por título, participantes, link ou local..."
                 className="w-full rounded-xl bg-gray-50 px-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
               />
             </div>
             <div className="flex flex-wrap gap-2">
               {[
                 { label: "Todas", value: "all" as const },
-                { label: "Rascunhos", value: "draft" as const },
-                { label: "Gravadas", value: "recorded" as const },
-                { label: "Transcritas", value: "transcribed" as const },
-                { label: "Arquivadas", value: "archived" as const },
+                { label: "Agendadas", value: "scheduled" as const },
+                { label: "Em andamento", value: "in_progress" as const },
+                { label: "Finalizadas", value: "finished" as const },
               ].map((option) => (
                 <button
                   key={option.value}
@@ -241,62 +333,70 @@ export function MeetingsManager({
               <p className="text-sm text-gray-500">Nenhuma reunião registrada ainda.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px]">
-                <thead>
-                  <tr className="border-b border-gray-100 text-left text-xs font-medium text-gray-500">
-                    <th className="px-4 py-3">Título</th>
-                    <th className="px-4 py-3">Resumo</th>
-                    <th className="px-4 py-3">Próximos passos</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Criado em</th>
-                    <th className="px-4 py-3 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMeetings.map((meeting) => (
-                    <tr key={meeting.id} className="border-b border-gray-50 last:border-0">
-                      <td className="px-4 py-3.5 text-sm font-medium text-[#0a0a0a]">{meeting.title}</td>
-                      <td className="px-4 py-3.5 text-sm text-gray-500">{meeting.summary || "—"}</td>
-                      <td className="px-4 py-3.5 text-sm text-gray-500">{meeting.nextSteps || "—"}</td>
-                      <td className="px-4 py-3.5">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
-                          meeting.status === "transcribed"
-                            ? "bg-emerald-50 text-emerald-600"
-                            : meeting.status === "recorded"
-                              ? "bg-blue-50 text-blue-600"
-                              : meeting.status === "archived"
-                                ? "bg-gray-100 text-gray-600"
-                                : "bg-amber-50 text-amber-700"
-                        }`}>
-                          {statusLabel(meeting.status)}
+            <div className="space-y-3">
+              {filteredMeetings.map((meeting) => (
+                <div key={meeting.id} className="rounded-2xl border border-gray-100 p-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-base font-semibold text-[#0a0a0a]">{meeting.title}</h2>
+                        <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+                          {meeting.statusLabel}
                         </span>
-                      </td>
-                      <td className="px-4 py-3.5 text-sm text-gray-500">{formatDateLabel(meeting.createdAt)}</td>
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => startEdit(meeting)}
-                            disabled={!canManageWorkspace}
-                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => archiveMeeting(meeting.id)}
-                            disabled={!canManageWorkspace || meeting.status === "archived"}
-                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Arquivar
-                          </button>
+                        <span className="inline-flex rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600">
+                          {meeting.meetingType === "video" ? "Vídeo" : "Presencial"}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 grid gap-2 text-sm text-gray-600 md:grid-cols-2">
+                        <div className="flex items-center gap-2">
+                          <CalendarDays className="h-4 w-4 text-gray-400" />
+                          <span>{formatDateTimeLabel(meeting.scheduledAt)}</span>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-gray-400" />
+                          <span>{buildParticipantsLabel(meeting.participants)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {meeting.meetingType === "video" ? <Video className="h-4 w-4 text-gray-400" /> : <MapPin className="h-4 w-4 text-gray-400" />}
+                          <span className="truncate">
+                            {meeting.meetingType === "video"
+                              ? meeting.meetingLink || "Link ainda não informado"
+                              : meeting.meetingLocation || "Local ainda não informado"}
+                          </span>
+                        </div>
+                        <div className="text-gray-500">{buildPreferenceSummary(meeting)}</div>
+                      </div>
+
+                      <p className="mt-3 text-sm text-gray-500">{meeting.description || "Sem descrição registrada ainda."}</p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Link
+                        href={`${basePath}/${meeting.id}`}
+                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+                      >
+                        Abrir
+                      </Link>
+                      <button
+                        onClick={() => openEdit(meeting)}
+                        disabled={!canManageWorkspace}
+                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => finishMeeting(meeting)}
+                        disabled={!canManageWorkspace || meeting.status === "finished"}
+                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Finalizar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -305,49 +405,71 @@ export function MeetingsManager({
       {modalOpen && (
         <>
           <div className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
-          <div className="fixed inset-x-0 bottom-0 z-[80] max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 lg:inset-0 lg:m-auto lg:h-fit lg:max-h-[80vh] lg:max-w-lg lg:rounded-3xl">
+          <div className="fixed inset-x-0 bottom-0 z-[80] max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 lg:inset-0 lg:m-auto lg:h-fit lg:max-h-[80vh] lg:max-w-2xl lg:rounded-3xl">
             <div className="mb-4 flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-red-50">
                 <Video className="h-5 w-5 text-red-500" />
               </span>
               <div>
                 <h2 className="text-lg font-semibold text-[#0a0a0a]">{editingMeetingId ? "Editar reunião" : "Nova reunião"}</h2>
-                <p className="text-sm text-gray-500">Transcrição será ativada quando a IA estiver conectada.</p>
+                <p className="text-sm text-gray-500">Configure o COS Meet com os campos reais da reunião e mantenha estados honestos para o que ainda não está conectado.</p>
               </div>
             </div>
 
-            {!canManageWorkspace && editingMeetingId && (
-              <div className="mb-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-700">
-                Apenas owner, admin ou master podem editar e arquivar reuniões.
-              </div>
-            )}
-
             {error && <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 
-            <div className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
               <FormField label="Título">
                 <input value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} placeholder="Título da reunião" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
               </FormField>
-              <FormField label="Participantes e observações">
-                <textarea value={form.summary} onChange={(event) => setForm((prev) => ({ ...prev, summary: event.target.value }))} placeholder="Participantes, observações e contexto da reunião" rows={4} className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+              <FormField label="Data e hora">
+                <input type="datetime-local" value={form.scheduledAt} onChange={(event) => setForm((prev) => ({ ...prev, scheduledAt: event.target.value }))} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
               </FormField>
-              <FormField label="Decisões">
-                <textarea value={form.decisions} onChange={(event) => setForm((prev) => ({ ...prev, decisions: event.target.value }))} placeholder="Principais decisões" rows={3} className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
-              </FormField>
-              <FormField label="Próximos passos">
-                <textarea value={form.nextSteps} onChange={(event) => setForm((prev) => ({ ...prev, nextSteps: event.target.value }))} placeholder="Próximos passos" rows={3} className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
-              </FormField>
-              <FormField label="Áudio">
-                <input value={form.audioUrl} onChange={(event) => setForm((prev) => ({ ...prev, audioUrl: event.target.value }))} placeholder="Referência do áudio, se houver" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+              <FormField label="Participantes">
+                <input value={form.participants} onChange={(event) => setForm((prev) => ({ ...prev, participants: event.target.value }))} placeholder="Separe por vírgula" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
               </FormField>
               <FormField label="Status">
                 <select value={form.status} onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as MeetingStatus }))} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none">
-                  <option value="draft">Rascunho</option>
-                  <option value="recorded">Gravada</option>
-                  <option value="transcribed">Transcrita</option>
-                  <option value="archived">Arquivada</option>
+                  <option value="scheduled">Agendada</option>
+                  <option value="in_progress">Em andamento</option>
+                  <option value="finished">Finalizada</option>
                 </select>
               </FormField>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setForm((prev) => ({ ...prev, meetingType: "video" }))} className={`rounded-2xl border px-4 py-3 text-sm font-medium transition-colors ${form.meetingType === "video" ? "border-[#0a0a0a] bg-[#0a0a0a] text-white" : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"}`}>Vídeo</button>
+              <button type="button" onClick={() => setForm((prev) => ({ ...prev, meetingType: "in_person" }))} className={`rounded-2xl border px-4 py-3 text-sm font-medium transition-colors ${form.meetingType === "in_person" ? "border-[#0a0a0a] bg-[#0a0a0a] text-white" : "border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100"}`}>Presencial</button>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              {form.meetingType === "video" ? (
+                <FormField label="Link da reunião">
+                  <input value={form.meetingLink} onChange={(event) => setForm((prev) => ({ ...prev, meetingLink: event.target.value }))} placeholder="Cole aqui o link real da reunião" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+                </FormField>
+              ) : (
+                <FormField label="Local">
+                  <input value={form.meetingLocation} onChange={(event) => setForm((prev) => ({ ...prev, meetingLocation: event.target.value }))} placeholder="Ex: Sala 2, matriz" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+                </FormField>
+              )}
+
+              <FormField label="Descrição">
+                <textarea value={form.description} onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))} placeholder="Contexto e objetivo da reunião" rows={4} className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+              </FormField>
+            </div>
+
+            <div className="mt-3 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+              <p className="text-sm font-medium text-[#0a0a0a]">Deseja que o COS acompanhe esta reunião?</p>
+              <div className="mt-3 space-y-2">
+                <ToggleRow label="Gravar reunião" checked={form.cosShouldRecord} onChange={(checked) => setForm((prev) => ({ ...prev, cosShouldRecord: checked, cosShouldAttend: checked || prev.cosShouldAttend }))} />
+                <ToggleRow label="Extrair informações importantes" checked={form.cosShouldExtract} onChange={(checked) => setForm((prev) => ({ ...prev, cosShouldExtract: checked, cosShouldAttend: checked || prev.cosShouldAttend }))} />
+                <ToggleRow label="Gerar relatório automático" checked={form.cosShouldReport} onChange={(checked) => setForm((prev) => ({ ...prev, cosShouldReport: checked, cosShouldAttend: checked || prev.cosShouldAttend }))} />
+                <ToggleRow label="Acompanhar a reunião" checked={form.cosShouldAttend} onChange={(checked) => setForm((prev) => ({ ...prev, cosShouldAttend: checked }))} />
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
+              Vídeo, gravação e transcrição em tempo real ainda não estão implementados neste módulo. O COS Meet registra os dados e as preferências reais da reunião sem simular execução.
             </div>
 
             <div className="mt-5 flex gap-2">
@@ -374,6 +496,28 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
     <label className="block space-y-1.5">
       <span className="text-sm font-medium text-[#0a0a0a]">{label}</span>
       {children}
+    </label>
+  )
+}
+
+function ToggleRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <label className="flex items-center gap-3 text-sm text-gray-700">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 rounded border-gray-300"
+      />
+      {label}
     </label>
   )
 }

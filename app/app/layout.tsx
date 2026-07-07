@@ -103,7 +103,7 @@ function ActionSheetMenu() {
     { icon: Briefcase, label: "Operação", href: "/app/novo/operacao", color: "#8b5cf6", bg: "#ede9fe" },
     { icon: FileText, label: "Contrato", href: "/app/novo/contrato", color: "#ef4444", bg: "#fee2e2" },
     { icon: DollarSign, label: "Financeiro", href: "/app/novo/financeiro", color: "#22c55e", bg: "#dcfce7" },
-    { icon: Calendar, label: "Reunião", href: "/app/novo/reuniao", color: "#0ea5e9", bg: "#e0f2fe" },
+    { icon: Calendar, label: "Reunião", href: "/app/reunioes", color: "#0ea5e9", bg: "#e0f2fe" },
     { icon: Users, label: "Equipe", action: "equipe" as const, color: "#f97316", bg: "#ffedd5" },
     { icon: Paperclip, label: "Arquivo", href: "/app/novo/arquivo", color: "#6b7280", bg: "#f3f4f6" },
     { icon: Camera, label: "Foto", action: "foto" as const, color: "#ec4899", bg: "#fce7f3" },

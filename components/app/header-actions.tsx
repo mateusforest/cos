@@ -16,7 +16,7 @@ const searchSuggestions = [
   { label: "Clientes", href: "/app/conversas/cadastros" },
   { label: "Operações em andamento", href: "/app/conversas/operacoes" },
   { label: "Balanço financeiro", href: "/app/conversas/financeiro" },
-  { label: "Reuniões da semana", href: "/app/conversas/reunioes" },
+  { label: "Reuniões da semana", href: "/app/reunioes" },
   { label: "Documentos recentes", href: "/app/conversas/documentos" },
 ]
 

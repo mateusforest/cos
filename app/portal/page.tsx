@@ -153,7 +153,7 @@ const AUDIO_WAVEFORM = Array.from({ length: 50 }, (_, i) => Math.round((Math.sin
 
 export default function PortalHomePage() {
   const router = useRouter()
-  const { openQuickActions, openMeeting, openDeleteConfirm } = usePortalInteractions()
+  const { openQuickActions, openDeleteConfirm } = usePortalInteractions()
   const [chatInput, setChatInput] = useState("")
   const [insights, setInsights] = useState(initialInsights)
   const [audioTranscript, setAudioTranscript] = useState("")
@@ -479,7 +479,7 @@ export default function PortalHomePage() {
                 <h2 className="font-semibold mb-1">COS Meet</h2>
                 <p className="text-sm text-muted-foreground mb-4">Abra o COS Meet para preparar reunião por vídeo, registrar gravação ou configurar o acompanhamento do COS de forma honesta.</p>
                 <div className="flex items-center gap-4">
-                  <button onClick={openMeeting} className="flex items-center gap-2 px-4 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 transition-colors">
+                  <button onClick={() => router.push("/portal/reunioes")} className="flex items-center gap-2 px-4 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 transition-colors">
                     <Video className="w-4 h-4" />
                     Abrir COS Meet
                   </button>
@@ -586,7 +586,7 @@ export default function PortalHomePage() {
               >
                 <Mic className="w-5 h-5" />
               </button>
-              <button onClick={openMeeting} className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-xl text-sm text-muted-foreground hover:bg-gray-200 transition-colors">
+              <button onClick={() => router.push("/portal/reunioes")} className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-xl text-sm text-muted-foreground hover:bg-gray-200 transition-colors">
                 <Video className="w-4 h-4" />
                 <span>COS Meet</span>
               </button>

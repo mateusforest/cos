@@ -352,9 +352,7 @@ export default function AppHomePage() {
       icon: Video,
       label: "COS Meet",
       onClick: () => {
-        setMeetingForm(defaultMeetingForm)
-        setMeetingFeedback(null)
-        setModal("meet")
+        router.push("/app/reunioes")
       },
     },
     { icon: LifeBuoy, label: "Suporte", onClick: () => openSupport() },
@@ -385,9 +383,7 @@ export default function AppHomePage() {
   const displayName = profile?.full_name || user?.email?.split("@")[0] || "sua equipe"
 
   const openMeetModal = () => {
-    setMeetingForm(defaultMeetingForm)
-    setMeetingFeedback(null)
-    setModal("meet")
+    router.push("/app/reunioes")
   }
 
   const handleShortcutAction = (shortcutId: string) => {
@@ -417,7 +413,7 @@ export default function AppHomePage() {
     }
 
     if (shortcutId === "reunioes") {
-      router.push("/app/conversas/reunioes")
+      router.push("/app/reunioes")
     }
   }
 
@@ -729,8 +725,8 @@ export default function AppHomePage() {
     await refreshSummary({ silent: true, force: true })
 
     toast({
-      title: "Reunião criada com sucesso.",
-      description: "A reunião já pode ser vista em Reuniões.",
+      title: meetingForm.mode === "video" ? "Reunião por vídeo preparada." : "Fluxo de gravação preparado.",
+      description: "A reunião já pode ser vista no módulo oficial do COS Meet.",
     })
   }
 
@@ -1185,10 +1181,10 @@ export default function AppHomePage() {
                         )}
                       </div>
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <Link href="/app/conversas/reunioes" onClick={closeModal} className="rounded-2xl bg-[#0a0a0a] py-3 text-center text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">
+                        <Link href="/app/reunioes" onClick={closeModal} className="rounded-2xl bg-[#0a0a0a] py-3 text-center text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]">
                           Abrir reuniões
                         </Link>
-                        <Link href="/app/conversas/reunioes" onClick={closeModal} className="rounded-2xl bg-gray-100 py-3 text-center text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200">
+                        <Link href="/app/reunioes" onClick={closeModal} className="rounded-2xl bg-gray-100 py-3 text-center text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200">
                           Ver em Reuniões
                         </Link>
                       </div>
