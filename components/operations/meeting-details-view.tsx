@@ -2,12 +2,10 @@
 
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   CalendarDays,
   Check,
-  Mic,
-  MicOff,
   FileText,
   Loader2,
   MapPin,
@@ -17,7 +15,6 @@ import {
   Upload,
   Users,
   Video,
-  VideoOff,
 } from "lucide-react"
 import {
   decidePublicMeetingEntryAction,
@@ -38,6 +35,7 @@ import {
 } from "@/actions/meetings"
 import { useAuth } from "@/components/auth/auth-provider"
 import { uploadDocumentFile } from "@/lib/document-upload"
+import { LiveKitMeetingRoom } from "@/components/operations/livekit-meeting-room"
 
 type MeetingRecord = {
   id: string
@@ -182,7 +180,7 @@ export function MeetingDetailsView({
   meetingId: string
   variant: "app" | "portal"
 }) {
-  const { canManageWorkspace, user, workspace } = useAuth()
+  const { canManageWorkspace, profile, user, workspace } = useAuth()
   const searchParams = useSearchParams()
   const [meeting, setMeeting] = useState<MeetingRecord | null>(null)
   const [form, setForm] = useState<MeetingFormState | null>(null)
@@ -198,19 +196,11 @@ export function MeetingDetailsView({
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [attachmentKind, setAttachmentKind] = useState<MeetingAttachmentKind>("document")
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false)
-  const [callError, setCallError] = useState<string | null>(null)
-  const [hasMediaAccess, setHasMediaAccess] = useState(false)
-  const [isCallActive, setIsCallActive] = useState(false)
-  const [isCameraEnabled, setIsCameraEnabled] = useState(true)
-  const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(true)
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
 
   const listHref = variant === "portal" ? "/portal/reunioes" : "/app/reunioes"
-  const roomHref = `${listHref}/${meetingId}?sala=video`
   const orderedTimeline = useMemo(
     () => (meeting?.timeline ?? []).slice().sort((a, b) => (b.occurredAt ?? "").localeCompare(a.occurredAt ?? "")),
     [meeting?.timeline],
@@ -272,97 +262,10 @@ export function MeetingDetailsView({
   }, [analysisOpen, meeting, meetingId])
 
   useEffect(() => {
-    if (!videoRef.current || !streamRef.current) return
-    videoRef.current.srcObject = streamRef.current
-  }, [hasMediaAccess])
-
-  useEffect(() => {
     if (meeting?.meetingType !== "video") return
     if (searchParams.get("sala") !== "video") return
     setIsVideoModalOpen(true)
   }, [meeting?.meetingType, searchParams])
-
-  useEffect(() => {
-    return () => {
-      stopMediaTracks()
-    }
-  }, [])
-
-  const stopMediaTracks = () => {
-    if (!streamRef.current) return
-
-    streamRef.current.getTracks().forEach((track) => track.stop())
-    streamRef.current = null
-    setHasMediaAccess(false)
-    setIsCallActive(false)
-    setIsCameraEnabled(true)
-    setIsMicrophoneEnabled(true)
-  }
-
-  const requestMediaAccess = async () => {
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      setCallError("Camera e microfone nao sao suportados neste navegador.")
-      return
-    }
-
-    setCallError(null)
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      })
-
-      stopMediaTracks()
-      streamRef.current = stream
-      setHasMediaAccess(true)
-      setIsCameraEnabled(stream.getVideoTracks().some((track) => track.enabled))
-      setIsMicrophoneEnabled(stream.getAudioTracks().some((track) => track.enabled))
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
-    } catch (mediaError) {
-      const resolvedError = mediaError instanceof Error ? mediaError.message : "Nao foi possivel acessar camera e microfone."
-      setCallError(resolvedError)
-      setHasMediaAccess(false)
-    }
-  }
-
-  const toggleTrack = (kind: "video" | "audio") => {
-    const stream = streamRef.current
-    if (!stream) return
-
-    const tracks = kind === "video" ? stream.getVideoTracks() : stream.getAudioTracks()
-    const nextEnabled = !tracks.every((track) => track.enabled === false)
-
-    tracks.forEach((track) => {
-      track.enabled = !nextEnabled
-    })
-
-    if (kind === "video") {
-      setIsCameraEnabled(!nextEnabled)
-      return
-    }
-
-    setIsMicrophoneEnabled(!nextEnabled)
-  }
-
-  const startCall = () => {
-    if (!streamRef.current) {
-      void requestMediaAccess()
-      return
-    }
-
-    setIsCallActive(true)
-    setFeedback("Chamada local iniciada no COS Meet.")
-    setCallError(null)
-  }
-
-  const endCall = () => {
-    stopMediaTracks()
-    setFeedback("Chamada encerrada.")
-  }
 
   const openVideoModal = () => {
     setIsVideoModalOpen(true)
@@ -370,8 +273,6 @@ export function MeetingDetailsView({
 
   const closeVideoModal = () => {
     setIsVideoModalOpen(false)
-    stopMediaTracks()
-    setCallError(null)
   }
 
   const copyPublicMeetingLink = async () => {
@@ -698,7 +599,7 @@ export function MeetingDetailsView({
             <div>
               <h2 className="text-lg font-semibold text-[#0a0a0a]">Sala de video do COS Meet</h2>
               <p className="text-sm text-gray-500">
-                Abra o modal da sala para autorizar camera e microfone, ver o preview local e controlar a chamada sem alterar o link existente.
+                Abra o modal da sala para entrar no mesmo room real do LiveKit usado pelos convidados aprovados.
               </p>
             </div>
             <a href={meeting.publicRoomLink || "#"} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
@@ -724,7 +625,7 @@ export function MeetingDetailsView({
           {copyFeedback && <p className="mt-3 text-sm text-green-600">{copyFeedback}</p>}
 
           <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
-            Esta etapa entrega camera, microfone, preview local e controles reais no navegador. A distribuicao da chamada para outros participantes continua pelo link/sala ja configurado na reuniao.
+            A sala do COS Meet agora usa o LiveKit com audio e video em tempo real, mantendo o mesmo fluxo de aprovacao da sala publica.
           </div>
         </div>
       )}
@@ -781,13 +682,15 @@ export function MeetingDetailsView({
                 <p className="rounded-2xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500">Nenhum participante conectado ainda.</p>
               ) : (
                 connectedParticipants.map((participant) => (
-                  <div key={participant.requestId} className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                  <div key={participant.identity} className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                       <div>
                         <p className="text-sm font-medium text-[#0a0a0a]">{participant.participantName}</p>
                         <p className="mt-1 text-xs text-gray-500">Conectado ha {formatConnectedDuration(participant.connectedAt)}</p>
                       </div>
-                      <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Status online</span>
+                      <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                        {participant.role === "organizer" ? "Organizador online" : "Status online"}
+                      </span>
                     </div>
                   </div>
                 ))
@@ -804,72 +707,24 @@ export function MeetingDetailsView({
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-[#0a0a0a]">Sala de video do COS Meet</h2>
-                <p className="text-sm text-gray-500">Autorize camera e microfone para exibir o preview local e controlar a chamada desta reuniao.</p>
+                <p className="text-sm text-gray-500">Entre na sala real do LiveKit para se conectar com os convidados aprovados.</p>
               </div>
               <button onClick={closeVideoModal} className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                 Fechar
               </button>
             </div>
 
-            {callError && <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{callError}</div>}
-
-            <div className="mt-4 overflow-hidden rounded-3xl border border-gray-100 bg-[#0a0a0a]">
-              <div className="aspect-video w-full">
-                {hasMediaAccess ? (
-                  <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center px-6 text-center text-sm text-white/80">
-                    Clique em &quot;Autorizar camera e microfone&quot; para exibir o preview local desta reuniao.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="flex flex-wrap gap-2">
-                <button onClick={() => void requestMediaAccess()} className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                  Autorizar camera e microfone
-                </button>
-                <button
-                  onClick={() => void startCall()}
-                  disabled={isCallActive}
-                  className="rounded-xl bg-[#0a0a0a] px-4 py-2 text-sm text-white hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Iniciar chamada
-                </button>
-                <button
-                  onClick={endCall}
-                  disabled={!hasMediaAccess}
-                  className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Encerrar chamada
-                </button>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => toggleTrack("video")}
-                  disabled={!hasMediaAccess}
-                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isCameraEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
-                  {isCameraEnabled ? "Camera ligada" : "Camera desligada"}
-                </button>
-                <button
-                  onClick={() => toggleTrack("audio")}
-                  disabled={!hasMediaAccess}
-                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isMicrophoneEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
-                  {isMicrophoneEnabled ? "Microfone ligado" : "Microfone desligado"}
-                </button>
-                <button
-                  onClick={closeVideoModal}
-                  className="rounded-xl border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50"
-                >
-                  Sair
-                </button>
-              </div>
+            <div className="mt-4">
+              <LiveKitMeetingRoom
+                meetingId={meeting.id}
+                participantName={profile?.full_name?.trim() || user?.email?.trim() || workspace?.name?.trim() || "Organizador"}
+                role="organizer"
+                canManage={canManageWorkspace}
+                onEnded={async () => {
+                  setIsVideoModalOpen(false)
+                  await loadMeeting({ openAnalysis: true })
+                }}
+              />
             </div>
           </div>
         </>

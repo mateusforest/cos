@@ -2,6 +2,7 @@
 
 import { createHash } from "crypto"
 import { canManageWorkspace, getUserAccessForUser } from "@/lib/auth"
+import { buildLiveKitRoomName, createLiveKitRoomServiceClient, createLiveKitToken, getLiveKitUrl } from "@/lib/meet/livekit"
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server"
 
 type DatabaseMeetingStatus = "draft" | "recorded" | "transcribed" | "archived"
@@ -20,6 +21,7 @@ export type MeetingAttachmentKind = "audio" | "video" | "document"
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const PUBLIC_ROOM_SLUG_PATTERN = /^cos-[a-f0-9]{16}$/i
 export type MeetingJoinRequestStatus = "waiting" | "approved" | "denied"
+export type MeetingParticipantRole = "organizer" | "guest"
 
 export type MeetingAnalysisItem = {
   id: string
@@ -68,9 +70,11 @@ export type MeetingJoinRequest = {
 
 export type ConnectedMeetingParticipant = {
   requestId: string
+  identity: string
   participantName: string
   connectedAt: string
   status: "online"
+  role: MeetingParticipantRole
 }
 
 type MeetingMetadataV1 = {
@@ -236,12 +240,18 @@ function normalizeConnectedParticipants(value?: ConnectedMeetingParticipant[] | 
 
   return value
     .filter((item): item is ConnectedMeetingParticipant => Boolean(item?.requestId && item?.participantName))
-    .map((item) => ({
-      requestId: item.requestId,
-      participantName: item.participantName.trim(),
-      connectedAt: item.connectedAt ?? new Date().toISOString(),
-      status: "online" as const,
-    }))
+    .map((item) => {
+      const role: MeetingParticipantRole = item.role === "organizer" ? "organizer" : "guest"
+
+      return {
+        requestId: item.requestId,
+        identity: item.identity?.trim() || item.requestId,
+        participantName: item.participantName.trim(),
+        connectedAt: item.connectedAt ?? new Date().toISOString(),
+        status: "online" as const,
+        role,
+      }
+    })
     .filter((item) => Boolean(item.participantName))
 }
 
@@ -578,6 +588,34 @@ async function resolveMeetingForActor(actor: MeetingActor, meetingId: string) {
   return { meeting: data }
 }
 
+async function findPublicMeetingBySlug(adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>, slug: string) {
+  const { data, error } = await adminClient
+    .from("meetings")
+    .select("id, workspace_id, title, audio_url, transcript, summary, decisions, next_steps, status, created_by, created_at")
+    .neq("status", "archived")
+    .returns<MeetingRow[]>()
+
+  if (error) {
+    return { error: error.message } as const
+  }
+
+  const matchedMeeting = (data ?? []).find((meeting) => buildPublicRoomSlug(meeting.id) === slug)
+  if (!matchedMeeting) {
+    return { error: "Sala publica nao encontrada." } as const
+  }
+
+  return { meeting: matchedMeeting } as const
+}
+
+function buildMeetingTranscriptUpdate(metadata: MeetingMetadata, history?: MeetingHistoryEntry[]) {
+  return {
+    transcript: serializeMeetingMetadata({
+      ...metadata,
+      history: history ?? metadata.history,
+    }),
+  }
+}
+
 export async function getMeetingsAction() {
   const actor = await getMeetingActor()
 
@@ -633,23 +671,12 @@ export async function getPublicMeetingBySlugAction({ slug }: { slug: string }) {
     return { error: "SUPABASE_SERVICE_ROLE_KEY nao configurada para reunioes." }
   }
 
-  const { data, error } = await adminClient
-    .from("meetings")
-    .select("id, workspace_id, title, audio_url, transcript, summary, decisions, next_steps, status, created_by, created_at")
-    .neq("status", "archived")
-    .returns<MeetingRow[]>()
-
-  if (error) {
-    return { error: error.message }
+  const resolved = await findPublicMeetingBySlug(adminClient, slug)
+  if ("error" in resolved) {
+    return { error: resolved.error }
   }
 
-  const matchedMeeting = (data ?? []).find((meeting) => buildPublicRoomSlug(meeting.id) === slug)
-
-  if (!matchedMeeting) {
-    return { error: "Sala publica nao encontrada." }
-  }
-
-  const hydratedMeeting = hydrateMeeting(matchedMeeting)
+  const hydratedMeeting = hydrateMeeting(resolved.meeting)
   if (hydratedMeeting.meetingType !== "video") {
     return { error: "Sala publica nao encontrada." }
   }
@@ -681,21 +708,12 @@ export async function requestPublicMeetingEntryAction({
     return { error: "SUPABASE_SERVICE_ROLE_KEY nao configurada para reunioes." }
   }
 
-  const { data, error } = await adminClient
-    .from("meetings")
-    .select("id, workspace_id, title, audio_url, transcript, summary, decisions, next_steps, status, created_by, created_at")
-    .neq("status", "archived")
-    .returns<MeetingRow[]>()
-
-  if (error) {
-    return { error: error.message }
+  const resolved = await findPublicMeetingBySlug(adminClient, slug)
+  if ("error" in resolved) {
+    return { error: resolved.error }
   }
 
-  const matchedMeeting = (data ?? []).find((meeting) => buildPublicRoomSlug(meeting.id) === slug)
-  if (!matchedMeeting) {
-    return { error: "Sala publica nao encontrada." }
-  }
-
+  const matchedMeeting = resolved.meeting
   const hydratedMeeting = hydrateMeeting(matchedMeeting)
   const requestedAt = new Date().toISOString()
   const requestId = createId("join")
@@ -741,12 +759,7 @@ export async function requestPublicMeetingEntryAction({
 
   const { error: updateError } = await adminClient
     .from("meetings")
-    .update({
-      transcript: serializeMeetingMetadata({
-        ...metadata,
-        history,
-      }),
-    })
+    .update(buildMeetingTranscriptUpdate(metadata, history))
     .eq("id", matchedMeeting.id)
 
   if (updateError) {
@@ -802,15 +815,7 @@ export async function decidePublicMeetingEntryAction({
 
   const nextConnectedParticipants =
     decision === "approved"
-      ? [
-          ...hydratedMeeting.connectedParticipants.filter((participant) => participant.requestId !== requestId),
-          {
-            requestId,
-            participantName: targetRequest.participantName,
-            connectedAt: decidedAt,
-            status: "online" as const,
-          },
-        ]
+      ? hydratedMeeting.connectedParticipants.filter((participant) => participant.requestId !== requestId)
       : hydratedMeeting.connectedParticipants.filter((participant) => participant.requestId !== requestId)
 
   const metadata = buildMeetingMetadata(
@@ -857,12 +862,7 @@ export async function decidePublicMeetingEntryAction({
 
   const { error } = await actor.adminClient
     .from("meetings")
-    .update({
-      transcript: serializeMeetingMetadata({
-        ...metadata,
-        history,
-      }),
-    })
+    .update(buildMeetingTranscriptUpdate(metadata, history))
     .eq("id", meetingId)
 
   if (error) {
@@ -876,6 +876,418 @@ export async function decidePublicMeetingEntryAction({
     action: decision === "approved" ? "meeting_join_approved" : "meeting_join_denied",
     description: description.toLowerCase(),
   })
+
+  return { success: true }
+}
+
+export async function getMeetingLiveKitTokenAction({
+  role,
+  participantName,
+  meetingId,
+  slug,
+  requestId,
+}: {
+  role: MeetingParticipantRole
+  participantName: string
+  meetingId?: string
+  slug?: string
+  requestId?: string
+}) {
+  const trimmedName = participantName.trim()
+  if (!trimmedName) {
+    return { error: "Informe o nome do participante." }
+  }
+
+  try {
+    const liveKitUrl = getLiveKitUrl()
+
+    if (role === "organizer") {
+      if (!meetingId) {
+        return { error: "Reuniao nao informada para o organizador." }
+      }
+
+      const actor = await getMeetingActor()
+      if ("error" in actor) {
+        return { error: actor.error }
+      }
+
+      const resolved = await resolveMeetingForActor(actor, meetingId)
+      if ("error" in resolved) {
+        return { error: resolved.error }
+      }
+
+      const hydratedMeeting = hydrateMeeting(resolved.meeting)
+      if (hydratedMeeting.meetingType !== "video") {
+        return { error: "Apenas reunioes por video usam o COS Meet ao vivo." }
+      }
+
+      const identity = `organizer:${actor.actorId}`
+      const roomName = buildLiveKitRoomName(hydratedMeeting.id)
+      const token = await createLiveKitToken({
+        roomName,
+        identity,
+        participantName: trimmedName,
+        role,
+      })
+
+      return {
+        success: true,
+        token,
+        url: liveKitUrl,
+        roomName,
+        identity,
+        meetingId: hydratedMeeting.id,
+      }
+    }
+
+    if (!slug || !requestId) {
+      return { error: "Solicitacao de entrada nao encontrada." }
+    }
+
+    if (!PUBLIC_ROOM_SLUG_PATTERN.test(slug)) {
+      return { error: "Sala publica nao encontrada." }
+    }
+
+    const adminClient = createSupabaseAdminClient()
+    if (!adminClient) {
+      return { error: "SUPABASE_SERVICE_ROLE_KEY nao configurada para reunioes." }
+    }
+
+    const resolved = await findPublicMeetingBySlug(adminClient, slug)
+    if ("error" in resolved) {
+      return { error: resolved.error }
+    }
+
+    const hydratedMeeting = hydrateMeeting(resolved.meeting)
+    if (hydratedMeeting.meetingType !== "video") {
+      return { error: "Sala publica nao encontrada." }
+    }
+
+    const joinRequest = hydratedMeeting.joinRequests.find((item) => item.id === requestId)
+    if (!joinRequest || joinRequest.status !== "approved") {
+      return { error: "Sua entrada ainda nao foi aprovada pelo organizador." }
+    }
+
+    const identity = `guest:${requestId}`
+    const roomName = buildLiveKitRoomName(hydratedMeeting.id)
+    const token = await createLiveKitToken({
+      roomName,
+      identity,
+      participantName: trimmedName,
+      role,
+    })
+
+    return {
+      success: true,
+      token,
+      url: liveKitUrl,
+      roomName,
+      identity,
+      meetingId: hydratedMeeting.id,
+    }
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Nao foi possivel gerar o token do LiveKit.",
+    }
+  }
+}
+
+export async function syncMeetingParticipantConnectionAction({
+  role,
+  status,
+  identity,
+  participantName,
+  meetingId,
+  slug,
+  requestId,
+}: {
+  role: MeetingParticipantRole
+  status: "connected" | "disconnected"
+  identity: string
+  participantName: string
+  meetingId?: string
+  slug?: string
+  requestId?: string
+}) {
+  const trimmedName = participantName.trim()
+  if (!trimmedName) {
+    return { error: "Informe o nome do participante." }
+  }
+
+  let targetMeeting: MeetingRow | null = null
+  let adminClient = createSupabaseAdminClient()
+
+  if (role === "organizer") {
+    const actor = await getMeetingActor()
+    if ("error" in actor) {
+      return { error: actor.error }
+    }
+
+    if (!meetingId) {
+      return { error: "Reuniao nao informada para o organizador." }
+    }
+
+    const resolved = await resolveMeetingForActor(actor, meetingId)
+    if ("error" in resolved) {
+      return { error: resolved.error }
+    }
+
+    adminClient = actor.adminClient
+    targetMeeting = resolved.meeting
+    requestId = requestId ?? `organizer:${actor.actorId}`
+  } else {
+    if (!adminClient) {
+      return { error: "SUPABASE_SERVICE_ROLE_KEY nao configurada para reunioes." }
+    }
+
+    if (!slug || !requestId) {
+      return { error: "Solicitacao de entrada nao encontrada." }
+    }
+
+    const resolved = await findPublicMeetingBySlug(adminClient, slug)
+    if ("error" in resolved) {
+      return { error: resolved.error }
+    }
+
+    const hydratedMeeting = hydrateMeeting(resolved.meeting)
+    const joinRequest = hydratedMeeting.joinRequests.find((item) => item.id === requestId)
+    if (!joinRequest || joinRequest.status !== "approved") {
+      return { error: "Sua entrada ainda nao foi aprovada pelo organizador." }
+    }
+
+    targetMeeting = resolved.meeting
+  }
+
+  if (!adminClient || !targetMeeting) {
+    return { error: "Nao foi possivel atualizar a presenca da reuniao." }
+  }
+
+  const hydratedMeeting = hydrateMeeting(targetMeeting)
+  const existingParticipants = hydratedMeeting.connectedParticipants.filter((participant) => participant.identity !== identity)
+  const nextConnectedParticipants =
+    status === "connected"
+      ? [
+          ...existingParticipants,
+          {
+            requestId: requestId ?? identity,
+            identity,
+            participantName: trimmedName,
+            connectedAt: new Date().toISOString(),
+            status: "online" as const,
+            role,
+          },
+        ]
+      : existingParticipants
+
+  const historyDescription =
+    status === "connected"
+      ? `${trimmedName} entrou na sala do LiveKit.`
+      : `${trimmedName} saiu da sala do LiveKit.`
+
+  const timelineLabel =
+    status === "connected"
+      ? `${trimmedName} conectou audio e video em tempo real`
+      : `${trimmedName} saiu da reuniao ao vivo`
+
+  const nextStatus = status === "connected" && hydratedMeeting.status !== "finished" ? "in_progress" : hydratedMeeting.status
+
+  const metadata = buildMeetingMetadata(
+    {
+      title: hydratedMeeting.title,
+      scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+      participants: hydratedMeeting.participants,
+      meetingType: hydratedMeeting.meetingType,
+      meetingLink: hydratedMeeting.meetingLink,
+      meetingLocation: hydratedMeeting.meetingLocation,
+      description: hydratedMeeting.description,
+      cosShouldAttend: hydratedMeeting.cosShouldAttend,
+      cosShouldRecord: hydratedMeeting.cosShouldRecord,
+      cosShouldExtract: hydratedMeeting.cosShouldExtract,
+      cosShouldReport: hydratedMeeting.cosShouldReport,
+      analysisSections: hydratedMeeting.analysisSections,
+      attachments: hydratedMeeting.attachments,
+      timeline: [
+        ...hydratedMeeting.timeline,
+        createTimelineEvent(status === "connected" ? "meeting_live_connected" : "meeting_live_disconnected", timelineLabel),
+      ],
+      transcriptionState: hydratedMeeting.transcriptionState,
+      joinRequests: hydratedMeeting.joinRequests,
+      connectedParticipants: nextConnectedParticipants,
+    },
+    targetMeeting,
+  )
+
+  const history = [
+    ...metadata.history,
+    createHistoryEntry(status === "connected" ? "meeting_live_connected" : "meeting_live_disconnected", historyDescription),
+  ]
+
+  const { error } = await adminClient
+    .from("meetings")
+    .update({
+      status: normalizeDatabaseMeetingStatus(nextStatus),
+      ...buildMeetingTranscriptUpdate(metadata, history),
+    })
+    .eq("id", targetMeeting.id)
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  return { success: true, meetingId: targetMeeting.id }
+}
+
+export async function removeMeetingParticipantAction({
+  meetingId,
+  identity,
+}: {
+  meetingId: string
+  identity: string
+}) {
+  const actor = await getMeetingActor()
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  if (!actor.canManage && !actor.isMaster) {
+    return { error: "Apenas owner, admin ou master podem remover participantes." }
+  }
+
+  const resolved = await resolveMeetingForActor(actor, meetingId)
+  if ("error" in resolved) {
+    return { error: resolved.error }
+  }
+
+  const hydratedMeeting = hydrateMeeting(resolved.meeting)
+  const targetParticipant = hydratedMeeting.connectedParticipants.find((participant) => participant.identity === identity)
+  if (!targetParticipant) {
+    return { error: "Participante conectado nao encontrado." }
+  }
+
+  try {
+    const roomServiceClient = createLiveKitRoomServiceClient()
+    await roomServiceClient.removeParticipant(buildLiveKitRoomName(meetingId), identity)
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Nao foi possivel remover o participante do LiveKit.",
+    }
+  }
+
+  const nextJoinRequests =
+    targetParticipant.role === "guest"
+      ? hydratedMeeting.joinRequests.map((request) =>
+          request.id === targetParticipant.requestId ? { ...request, status: "denied" as const } : request,
+        )
+      : hydratedMeeting.joinRequests
+
+  const metadata = buildMeetingMetadata(
+    {
+      title: hydratedMeeting.title,
+      scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+      participants: hydratedMeeting.participants,
+      meetingType: hydratedMeeting.meetingType,
+      meetingLink: hydratedMeeting.meetingLink,
+      meetingLocation: hydratedMeeting.meetingLocation,
+      description: hydratedMeeting.description,
+      cosShouldAttend: hydratedMeeting.cosShouldAttend,
+      cosShouldRecord: hydratedMeeting.cosShouldRecord,
+      cosShouldExtract: hydratedMeeting.cosShouldExtract,
+      cosShouldReport: hydratedMeeting.cosShouldReport,
+      analysisSections: hydratedMeeting.analysisSections,
+      attachments: hydratedMeeting.attachments,
+      timeline: [
+        ...hydratedMeeting.timeline,
+        createTimelineEvent("meeting_live_removed", `${targetParticipant.participantName} foi removido da sala ao vivo`),
+      ],
+      transcriptionState: hydratedMeeting.transcriptionState,
+      joinRequests: nextJoinRequests,
+      connectedParticipants: hydratedMeeting.connectedParticipants.filter((participant) => participant.identity !== identity),
+    },
+    resolved.meeting,
+  )
+
+  const history = [
+    ...metadata.history,
+    createHistoryEntry("meeting_live_removed", `${targetParticipant.participantName} foi removido da sala ao vivo.`),
+  ]
+
+  const { error } = await actor.adminClient
+    .from("meetings")
+    .update(buildMeetingTranscriptUpdate(metadata, history))
+    .eq("id", meetingId)
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  return { success: true }
+}
+
+export async function endMeetingLiveRoomAction({ meetingId }: { meetingId: string }) {
+  const actor = await getMeetingActor()
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  if (!actor.canManage && !actor.isMaster) {
+    return { error: "Apenas owner, admin ou master podem encerrar a reuniao." }
+  }
+
+  const resolved = await resolveMeetingForActor(actor, meetingId)
+  if ("error" in resolved) {
+    return { error: resolved.error }
+  }
+
+  const hydratedMeeting = hydrateMeeting(resolved.meeting)
+
+  try {
+    const roomServiceClient = createLiveKitRoomServiceClient()
+    await roomServiceClient.deleteRoom(buildLiveKitRoomName(meetingId))
+  } catch {
+  }
+
+  const metadata = buildMeetingMetadata(
+    {
+      title: hydratedMeeting.title,
+      scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+      participants: hydratedMeeting.participants,
+      meetingType: hydratedMeeting.meetingType,
+      meetingLink: hydratedMeeting.meetingLink,
+      meetingLocation: hydratedMeeting.meetingLocation,
+      description: hydratedMeeting.description,
+      cosShouldAttend: hydratedMeeting.cosShouldAttend,
+      cosShouldRecord: hydratedMeeting.cosShouldRecord,
+      cosShouldExtract: hydratedMeeting.cosShouldExtract,
+      cosShouldReport: hydratedMeeting.cosShouldReport,
+      analysisSections: hydratedMeeting.analysisSections,
+      attachments: hydratedMeeting.attachments,
+      timeline: [
+        ...hydratedMeeting.timeline,
+        createTimelineEvent("meeting_finished", "Reuniao finalizada"),
+      ],
+      transcriptionState: hydratedMeeting.transcriptionState,
+      joinRequests: hydratedMeeting.joinRequests,
+      connectedParticipants: [],
+    },
+    resolved.meeting,
+  )
+
+  const history = [
+    ...metadata.history,
+    createHistoryEntry("meeting_finished", "Reuniao finalizada pelo organizador no COS Meet ao vivo."),
+  ]
+
+  const { error } = await actor.adminClient
+    .from("meetings")
+    .update({
+      status: normalizeDatabaseMeetingStatus("finished"),
+      ...buildMeetingTranscriptUpdate(metadata, history),
+    })
+    .eq("id", meetingId)
+
+  if (error) {
+    return { error: error.message }
+  }
 
   return { success: true }
 }
