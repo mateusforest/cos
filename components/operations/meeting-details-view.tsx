@@ -1,10 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   CalendarDays,
   Check,
+  Mic,
+  MicOff,
   FileText,
   Loader2,
   MapPin,
@@ -14,6 +16,7 @@ import {
   Upload,
   Users,
   Video,
+  VideoOff,
 } from "lucide-react"
 import {
   getMeetingByIdAction,
@@ -169,8 +172,16 @@ export function MeetingDetailsView({
   const [editingItemText, setEditingItemText] = useState("")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [attachmentKind, setAttachmentKind] = useState<MeetingAttachmentKind>("document")
+  const [cameraPermissionRequested, setCameraPermissionRequested] = useState(false)
+  const [callError, setCallError] = useState<string | null>(null)
+  const [hasMediaAccess, setHasMediaAccess] = useState(false)
+  const [isCallActive, setIsCallActive] = useState(false)
+  const [isCameraEnabled, setIsCameraEnabled] = useState(true)
+  const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
 
   const listHref = variant === "portal" ? "/portal/reunioes" : "/app/reunioes"
   const orderedTimeline = useMemo(
@@ -206,6 +217,102 @@ export function MeetingDetailsView({
   useEffect(() => {
     void loadMeeting()
   }, [meetingId])
+
+  useEffect(() => {
+    if (!videoRef.current || !streamRef.current) return
+    videoRef.current.srcObject = streamRef.current
+  }, [hasMediaAccess])
+
+  useEffect(() => {
+    if (meeting?.meetingType !== "video" || cameraPermissionRequested) {
+      return
+    }
+
+    setCameraPermissionRequested(true)
+    void requestMediaAccess()
+  }, [cameraPermissionRequested, meeting?.meetingType])
+
+  useEffect(() => {
+    return () => {
+      stopMediaTracks()
+    }
+  }, [])
+
+  const stopMediaTracks = () => {
+    if (!streamRef.current) return
+
+    streamRef.current.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+    setHasMediaAccess(false)
+    setIsCallActive(false)
+    setIsCameraEnabled(true)
+    setIsMicrophoneEnabled(true)
+  }
+
+  const requestMediaAccess = async () => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setCallError("Camera e microfone nao sao suportados neste navegador.")
+      return
+    }
+
+    setCallError(null)
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      })
+
+      stopMediaTracks()
+      streamRef.current = stream
+      setHasMediaAccess(true)
+      setIsCameraEnabled(stream.getVideoTracks().some((track) => track.enabled))
+      setIsMicrophoneEnabled(stream.getAudioTracks().some((track) => track.enabled))
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+      }
+    } catch (mediaError) {
+      const resolvedError = mediaError instanceof Error ? mediaError.message : "Nao foi possivel acessar camera e microfone."
+      setCallError(resolvedError)
+      setHasMediaAccess(false)
+    }
+  }
+
+  const toggleTrack = (kind: "video" | "audio") => {
+    const stream = streamRef.current
+    if (!stream) return
+
+    const tracks = kind === "video" ? stream.getVideoTracks() : stream.getAudioTracks()
+    const nextEnabled = !tracks.every((track) => track.enabled === false)
+
+    tracks.forEach((track) => {
+      track.enabled = !nextEnabled
+    })
+
+    if (kind === "video") {
+      setIsCameraEnabled(!nextEnabled)
+      return
+    }
+
+    setIsMicrophoneEnabled(!nextEnabled)
+  }
+
+  const startCall = () => {
+    if (!streamRef.current) {
+      void requestMediaAccess()
+      return
+    }
+
+    setIsCallActive(true)
+    setFeedback("Chamada local iniciada no COS Meet.")
+    setCallError(null)
+  }
+
+  const endCall = () => {
+    stopMediaTracks()
+    setFeedback("Chamada encerrada.")
+  }
 
   const save = async (nextStatus?: MeetingStatus) => {
     if (!form) return
@@ -483,6 +590,98 @@ export function MeetingDetailsView({
           </div>
         </div>
       </div>
+
+      {meeting.meetingType === "video" && (
+        <div className="rounded-2xl border border-gray-100 bg-white p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-[#0a0a0a]">Sala de video do COS Meet</h2>
+              <p className="text-sm text-gray-500">
+                A sala usa camera e microfone reais deste dispositivo. O link da reuniao continua disponivel para entrada dos participantes.
+              </p>
+            </div>
+            {meeting.meetingLink ? (
+              <a
+                href={meeting.meetingLink}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Abrir link da reuniao
+              </a>
+            ) : null}
+          </div>
+
+          {callError && <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{callError}</div>}
+
+          <div className="mt-4 overflow-hidden rounded-3xl border border-gray-100 bg-[#0a0a0a]">
+            <div className="aspect-video w-full">
+              {hasMediaAccess ? (
+                <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-white/80">
+                  Permita acesso a camera e ao microfone para exibir o preview local da reuniao.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => void startCall()}
+                disabled={isCallActive}
+                className="rounded-xl bg-[#0a0a0a] px-4 py-2 text-sm text-white hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Iniciar chamada
+              </button>
+              <button
+                onClick={endCall}
+                disabled={!hasMediaAccess}
+                className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Encerrar chamada
+              </button>
+              <button
+                onClick={() => void requestMediaAccess()}
+                className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Solicitar acesso novamente
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => toggleTrack("video")}
+                disabled={!hasMediaAccess}
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isCameraEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                {isCameraEnabled ? "Camera ligada" : "Camera desligada"}
+              </button>
+              <button
+                onClick={() => toggleTrack("audio")}
+                disabled={!hasMediaAccess}
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isMicrophoneEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                {isMicrophoneEnabled ? "Microfone ligado" : "Microfone desligado"}
+              </button>
+              <button
+                onClick={endCall}
+                disabled={!hasMediaAccess}
+                className="rounded-xl border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Sair
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
+            Esta etapa entrega camera, microfone, preview local e controles reais no navegador. A distribuicao da chamada para outros participantes continua pelo link/sala ja configurado na reuniao.
+          </div>
+        </div>
+      )}
 
       {meeting.status === "finished" && (
         <div className="rounded-2xl border border-gray-100 bg-white p-5">
