@@ -2,13 +2,15 @@
 
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   CalendarDays,
   Check,
   FileText,
   Loader2,
+  Maximize2,
   MapPin,
+  Minimize2,
   Paperclip,
   Save,
   Trash2,
@@ -196,9 +198,11 @@ export function MeetingDetailsView({
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [attachmentKind, setAttachmentKind] = useState<MeetingAttachmentKind>("document")
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false)
+  const [isVideoModalFullscreen, setIsVideoModalFullscreen] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const videoModalRef = useRef<HTMLDivElement | null>(null)
 
   const listHref = variant === "portal" ? "/portal/reunioes" : "/app/reunioes"
   const orderedTimeline = useMemo(
@@ -267,12 +271,33 @@ export function MeetingDetailsView({
     setIsVideoModalOpen(true)
   }, [meeting?.meetingType, searchParams])
 
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      setIsVideoModalFullscreen(document.fullscreenElement === videoModalRef.current)
+    }
+
+    document.addEventListener("fullscreenchange", syncFullscreenState)
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState)
+  }, [])
+
   const openVideoModal = () => {
     setIsVideoModalOpen(true)
   }
 
   const closeVideoModal = () => {
     setIsVideoModalOpen(false)
+  }
+
+  const toggleVideoModalFullscreen = async () => {
+    const modalElement = videoModalRef.current
+    if (!modalElement) return
+
+    if (document.fullscreenElement === modalElement) {
+      await document.exitFullscreen()
+      return
+    }
+
+    await modalElement.requestFullscreen()
   }
 
   const copyPublicMeetingLink = async () => {
@@ -700,18 +725,30 @@ export function MeetingDetailsView({
         </div>
       )}
 
-      {meeting.meetingType === "video" && isVideoModalOpen && (
+      {meeting.meetingType === "video" && (
         <>
-          <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm" onClick={closeVideoModal} />
-          <div className="fixed inset-x-0 bottom-0 z-[80] max-h-[90vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 lg:inset-0 lg:m-auto lg:h-fit lg:max-h-[85vh] lg:max-w-4xl lg:rounded-3xl">
+          <div className={`fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm transition-opacity ${isVideoModalOpen ? "opacity-100" : "pointer-events-none opacity-0"}`} />
+          <div
+            className={`fixed inset-x-0 bottom-0 z-[80] transition-all lg:inset-0 lg:flex lg:items-center lg:justify-center ${isVideoModalOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
+          >
+            <div
+              ref={videoModalRef}
+              className={`w-full overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 lg:rounded-3xl ${isVideoModalFullscreen ? "h-full max-h-full rounded-none" : "max-h-[90vh] lg:h-fit lg:max-h-[85vh] lg:max-w-6xl"}`}
+            >
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-[#0a0a0a]">Sala de video do COS Meet</h2>
                 <p className="text-sm text-gray-500">Entre na sala real do COS Meet para se conectar com os convidados aprovados.</p>
               </div>
-              <button onClick={closeVideoModal} className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                Fechar
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => void toggleVideoModalFullscreen()} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  {isVideoModalFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  Tela cheia
+                </button>
+                <button onClick={closeVideoModal} className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  Fechar
+                </button>
+              </div>
             </div>
 
             <div className="mt-4">
@@ -726,6 +763,7 @@ export function MeetingDetailsView({
                 }}
               />
             </div>
+          </div>
           </div>
         </>
       )}

@@ -67,13 +67,13 @@ function buildRoomParticipants(room: Room) {
 
 function buildGridClass(count: number, hasScreenShare: boolean) {
   if (hasScreenShare) {
-    return "grid-cols-1 xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.8fr)]"
+    return "grid-cols-1 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.9fr)]"
   }
 
   if (count <= 1) return "grid-cols-1"
   if (count === 2) return "grid-cols-1 md:grid-cols-2"
-  if (count <= 4) return "grid-cols-1 md:grid-cols-2"
-  return "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+  if (count <= 4) return "grid-cols-1 sm:grid-cols-2"
+  return "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
 }
 
 function formatChatTime(value: string) {
@@ -444,8 +444,8 @@ export function LiveKitMeetingRoom({
       {error && <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
       {feedback && <div className="rounded-2xl border border-green-100 bg-green-50 p-4 text-sm text-green-700">{feedback}</div>}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_320px]">
-        <div className={`grid gap-4 ${gridClass}`}>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_320px]">
+        <div className={`mx-auto grid w-full max-w-[1600px] auto-rows-fr gap-4 ${gridClass}`}>
           {participants.length === 0 ? (
             <div className="col-span-full flex aspect-video items-center justify-center rounded-3xl border border-gray-100 bg-[#0a0a0a] px-6 text-center text-sm text-white/80">
               Entre na sala para iniciar o audio e video em tempo real.
@@ -476,7 +476,7 @@ export function LiveKitMeetingRoom({
                         <p className="text-sm font-medium text-[#0a0a0a]">{participant.name}</p>
                         <p className="mt-1 text-xs text-gray-500">
                           {participant.isLocal ? "Voce" : "Conectado"}
-                          {participant.screenShareTrack ? " • Compartilhando tela" : ""}
+                          {participant.screenShareTrack ? " - Compartilhando tela" : ""}
                         </p>
                       </div>
                       {!participant.isLocal && canManage ? (
@@ -637,9 +637,15 @@ function ParticipantTile({
 
   return (
     <div className={`overflow-hidden rounded-3xl border border-gray-100 bg-[#0a0a0a] ${prioritizeScreenShare ? "min-h-[420px]" : ""}`}>
-      <div className={`relative w-full ${prioritizeScreenShare ? "h-full min-h-[420px]" : "aspect-video"}`}>
+      <div className={`relative w-full ${prioritizeScreenShare ? "aspect-video min-h-[420px]" : "aspect-video"}`}>
         {participant.screenShareTrack || participant.videoTrack ? (
-          <video ref={videoRef} autoPlay playsInline muted={participant.isLocal} className="h-full w-full object-cover" />
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted={participant.isLocal}
+            className={`h-full w-full ${participant.screenShareTrack ? "object-contain" : "object-cover"}`}
+          />
         ) : (
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-white/80">
             {participant.name} entrou com camera desligada.
