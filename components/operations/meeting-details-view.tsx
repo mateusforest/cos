@@ -182,6 +182,7 @@ export function MeetingDetailsView({
   const [isCallActive, setIsCallActive] = useState(false)
   const [isCameraEnabled, setIsCameraEnabled] = useState(true)
   const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(true)
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -324,6 +325,21 @@ export function MeetingDetailsView({
     setIsVideoModalOpen(false)
     stopMediaTracks()
     setCallError(null)
+  }
+
+  const copyPublicMeetingLink = async () => {
+    if (!meeting?.publicRoomLink) {
+      setError("Nenhum link publico disponivel para copiar.")
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(meeting.publicRoomLink)
+      setCopyFeedback("Link copiado")
+      window.setTimeout(() => setCopyFeedback(null), 2000)
+    } catch {
+      setError("Nao foi possivel copiar o link da reuniao.")
+    }
   }
 
   const save = async (nextStatus?: MeetingStatus) => {
@@ -616,15 +632,14 @@ export function MeetingDetailsView({
               Abrir link da reuniao
             </a>
             {meeting.meetingLink ? (
-              <a
-                href={meeting.meetingLink}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              >
-                Abrir link de video opcional
-              </a>
-            ) : null}
+              <button onClick={() => void copyPublicMeetingLink()} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                Copiar link
+              </button>
+            ) : (
+              <button onClick={() => void copyPublicMeetingLink()} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                Copiar link
+              </button>
+            )}
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -632,6 +647,8 @@ export function MeetingDetailsView({
               Abrir sala de video
             </button>
           </div>
+
+          {copyFeedback && <p className="mt-3 text-sm text-green-600">{copyFeedback}</p>}
 
           <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
             Esta etapa entrega camera, microfone, preview local e controles reais no navegador. A distribuicao da chamada para outros participantes continua pelo link/sala ja configurado na reuniao.
