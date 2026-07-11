@@ -1,5 +1,6 @@
 "use server"
 
+import { createHash } from "crypto"
 import { canManageWorkspace, getUserAccessForUser } from "@/lib/auth"
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server"
 
@@ -17,6 +18,7 @@ export type MeetingAnalysisSectionKey =
   | "nextSteps"
 export type MeetingAttachmentKind = "audio" | "video" | "document"
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const PUBLIC_ROOM_SLUG_PATTERN = /^cos-[a-f0-9]{16}$/i
 
 export type MeetingAnalysisItem = {
   id: string
@@ -152,6 +154,10 @@ const ANALYSIS_SECTION_ORDER: MeetingAnalysisSectionKey[] = [
 
 function createId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function buildPublicRoomSlug(meetingId: string) {
+  return `cos-${createHash("sha256").update(`cos-meet:${meetingId}`).digest("hex").slice(0, 16)}`
 }
 
 function createAnalysisItem(text: string, status: MeetingAnalysisItemStatus = "pending"): MeetingAnalysisItem {
@@ -436,6 +442,7 @@ function hydrateMeeting(meeting: MeetingRow) {
   const metadata = buildMeetingMetadata({}, meeting)
   const meetingLink = metadata.meetingType === "video" ? metadata.meetingLink : ""
   const status = mapDatabaseStatusToMeetingStatus(meeting.status)
+  const publicRoomSlug = metadata.meetingType === "video" ? buildPublicRoomSlug(meeting.id) : ""
 
   return {
     id: meeting.id,
@@ -451,6 +458,8 @@ function hydrateMeeting(meeting: MeetingRow) {
     participants: metadata.participants,
     meetingType: metadata.meetingType,
     meetingLink,
+    publicRoomSlug,
+    publicRoomLink: publicRoomSlug ? `/meet/${publicRoomSlug}` : "",
     meetingLocation: metadata.meetingType === "in_person" ? metadata.meetingLocation : "",
     description: metadata.description,
     cosShouldAttend: metadata.cosShouldAttend,
@@ -556,6 +565,43 @@ export async function getMeetingByIdAction({ meetingId }: { meetingId: string })
     success: true,
     meeting: hydrateMeeting(resolved.meeting),
     canManage: actor.canManage || actor.isMaster,
+  }
+}
+
+export async function getPublicMeetingBySlugAction({ slug }: { slug: string }) {
+  if (!PUBLIC_ROOM_SLUG_PATTERN.test(slug)) {
+    return { error: "Sala publica nao encontrada." }
+  }
+
+  const adminClient = createSupabaseAdminClient()
+  if (!adminClient) {
+    return { error: "SUPABASE_SERVICE_ROLE_KEY nao configurada para reunioes." }
+  }
+
+  const { data, error } = await adminClient
+    .from("meetings")
+    .select("id, workspace_id, title, audio_url, transcript, summary, decisions, next_steps, status, created_by, created_at")
+    .neq("status", "archived")
+    .returns<MeetingRow[]>()
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  const matchedMeeting = (data ?? []).find((meeting) => buildPublicRoomSlug(meeting.id) === slug)
+
+  if (!matchedMeeting) {
+    return { error: "Sala publica nao encontrada." }
+  }
+
+  const hydratedMeeting = hydrateMeeting(matchedMeeting)
+  if (hydratedMeeting.meetingType !== "video") {
+    return { error: "Sala publica nao encontrada." }
+  }
+
+  return {
+    success: true,
+    meeting: hydratedMeeting,
   }
 }
 

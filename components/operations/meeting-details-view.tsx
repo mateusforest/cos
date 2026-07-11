@@ -46,6 +46,8 @@ type MeetingRecord = {
   participants: string[]
   meetingType: MeetingType
   meetingLink: string
+  publicRoomSlug: string
+  publicRoomLink: string
   meetingLocation: string
   description: string
   cosShouldAttend: boolean
@@ -584,8 +586,8 @@ export function MeetingDetailsView({
           <InfoRow icon={Users} label="Participantes" value={meeting.participants.length > 0 ? meeting.participants.join(", ") : "Nenhum participante informado"} />
           <InfoRow
             icon={meeting.meetingType === "video" ? Video : MapPin}
-            label={meeting.meetingType === "video" ? "Sala interna" : "Local"}
-            value={meeting.meetingType === "video" ? roomHref : meeting.meetingLocation || "Nenhum local informado ainda."}
+            label={meeting.meetingType === "video" ? "Link publico da sala" : "Local"}
+            value={meeting.meetingType === "video" ? meeting.publicRoomLink || "Nenhum link publico gerado ainda." : meeting.meetingLocation || "Nenhum local informado ainda."}
           />
           <InfoRow icon={Video} label="Transcricao em tempo real" value={meeting.transcriptionState.note} />
         </div>
@@ -610,9 +612,9 @@ export function MeetingDetailsView({
                 Abra o modal da sala para autorizar camera e microfone, ver o preview local e controlar a chamada sem alterar o link existente.
               </p>
             </div>
-            <Link href={roomHref} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            <a href={meeting.publicRoomLink || "#"} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
               Abrir link da reuniao
-            </Link>
+            </a>
             {meeting.meetingLink ? (
               <a
                 href={meeting.meetingLink}
@@ -620,7 +622,7 @@ export function MeetingDetailsView({
                 rel="noreferrer"
                 className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
               >
-                Abrir link externo
+                Abrir link de video opcional
               </a>
             ) : null}
           </div>
@@ -957,7 +959,7 @@ export function MeetingDetailsView({
 
           <div className="mt-3 space-y-3">
             {form.meetingType === "video" ? (
-              <FormField label="Link externo da reuniao (opcional)">
+              <FormField label="Link de video opcional">
                 <input value={form.meetingLink} onChange={(event) => setForm((prev) => (prev ? { ...prev, meetingLink: event.target.value } : prev))} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
               </FormField>
             ) : (
