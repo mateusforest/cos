@@ -334,7 +334,12 @@ export function MeetingDetailsView({
     }
 
     try {
-      await navigator.clipboard.writeText(meeting.publicRoomLink)
+      const absoluteMeetingLink =
+        typeof window === "undefined"
+          ? meeting.publicRoomLink
+          : new URL(meeting.publicRoomLink, window.location.origin).toString()
+
+      await navigator.clipboard.writeText(absoluteMeetingLink)
       setCopyFeedback("Link copiado")
       window.setTimeout(() => setCopyFeedback(null), 2000)
     } catch {
