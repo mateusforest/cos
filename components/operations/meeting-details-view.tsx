@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   CalendarDays,
@@ -159,6 +160,7 @@ export function MeetingDetailsView({
   variant: "app" | "portal"
 }) {
   const { canManageWorkspace, user, workspace } = useAuth()
+  const searchParams = useSearchParams()
   const [meeting, setMeeting] = useState<MeetingRecord | null>(null)
   const [form, setForm] = useState<MeetingFormState | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -184,6 +186,7 @@ export function MeetingDetailsView({
   const streamRef = useRef<MediaStream | null>(null)
 
   const listHref = variant === "portal" ? "/portal/reunioes" : "/app/reunioes"
+  const roomHref = `${listHref}/${meetingId}?sala=video`
   const orderedTimeline = useMemo(
     () => (meeting?.timeline ?? []).slice().sort((a, b) => (b.occurredAt ?? "").localeCompare(a.occurredAt ?? "")),
     [meeting?.timeline],
@@ -222,6 +225,12 @@ export function MeetingDetailsView({
     if (!videoRef.current || !streamRef.current) return
     videoRef.current.srcObject = streamRef.current
   }, [hasMediaAccess])
+
+  useEffect(() => {
+    if (meeting?.meetingType !== "video") return
+    if (searchParams.get("sala") !== "video") return
+    setIsVideoModalOpen(true)
+  }, [meeting?.meetingType, searchParams])
 
   useEffect(() => {
     return () => {
@@ -575,8 +584,8 @@ export function MeetingDetailsView({
           <InfoRow icon={Users} label="Participantes" value={meeting.participants.length > 0 ? meeting.participants.join(", ") : "Nenhum participante informado"} />
           <InfoRow
             icon={meeting.meetingType === "video" ? Video : MapPin}
-            label={meeting.meetingType === "video" ? "Link da reuniao" : "Local"}
-            value={meeting.meetingType === "video" ? meeting.meetingLink || "Nenhum link real informado ainda." : meeting.meetingLocation || "Nenhum local informado ainda."}
+            label={meeting.meetingType === "video" ? "Sala interna" : "Local"}
+            value={meeting.meetingType === "video" ? roomHref : meeting.meetingLocation || "Nenhum local informado ainda."}
           />
           <InfoRow icon={Video} label="Transcricao em tempo real" value={meeting.transcriptionState.note} />
         </div>
@@ -601,6 +610,9 @@ export function MeetingDetailsView({
                 Abra o modal da sala para autorizar camera e microfone, ver o preview local e controlar a chamada sem alterar o link existente.
               </p>
             </div>
+            <Link href={roomHref} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              Abrir link da reuniao
+            </Link>
             {meeting.meetingLink ? (
               <a
                 href={meeting.meetingLink}
@@ -608,7 +620,7 @@ export function MeetingDetailsView({
                 rel="noreferrer"
                 className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
               >
-                Abrir link da reuniao
+                Abrir link externo
               </a>
             ) : null}
           </div>
@@ -945,7 +957,7 @@ export function MeetingDetailsView({
 
           <div className="mt-3 space-y-3">
             {form.meetingType === "video" ? (
-              <FormField label="Link da reuniao">
+              <FormField label="Link externo da reuniao (opcional)">
                 <input value={form.meetingLink} onChange={(event) => setForm((prev) => (prev ? { ...prev, meetingLink: event.target.value } : prev))} className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
               </FormField>
             ) : (

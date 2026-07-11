@@ -100,6 +100,10 @@ function buildPreferenceSummary(meeting: MeetingRecord) {
   return enabled.join(" · ")
 }
 
+function buildInternalRoomLabel(basePath: string, meetingId: string) {
+  return `${basePath}/${meetingId}`
+}
+
 export function MeetingsManager({
   title,
   description,
@@ -361,7 +365,7 @@ export function MeetingsManager({
                           {meeting.meetingType === "video" ? <Video className="h-4 w-4 text-gray-400" /> : <MapPin className="h-4 w-4 text-gray-400" />}
                           <span className="truncate">
                             {meeting.meetingType === "video"
-                              ? meeting.meetingLink || "Link ainda não informado"
+                              ? meeting.meetingLink || buildInternalRoomLabel(basePath, meeting.id)
                               : meeting.meetingLocation || "Local ainda não informado"}
                           </span>
                         </div>
@@ -444,8 +448,8 @@ export function MeetingsManager({
 
             <div className="mt-3 space-y-3">
               {form.meetingType === "video" ? (
-                <FormField label="Link da reunião">
-                  <input value={form.meetingLink} onChange={(event) => setForm((prev) => ({ ...prev, meetingLink: event.target.value }))} placeholder="Cole aqui o link real da reunião" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
+                <FormField label="Link externo da reunião (opcional)">
+                  <input value={form.meetingLink} onChange={(event) => setForm((prev) => ({ ...prev, meetingLink: event.target.value }))} placeholder="Cole aqui um link externo, se existir" className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none" />
                 </FormField>
               ) : (
                 <FormField label="Local">

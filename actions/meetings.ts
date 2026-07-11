@@ -16,6 +16,7 @@ export type MeetingAnalysisSectionKey =
   | "responsibles"
   | "nextSteps"
 export type MeetingAttachmentKind = "audio" | "video" | "document"
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export type MeetingAnalysisItem = {
   id: string
@@ -492,6 +493,10 @@ async function logMeetingActivity({
 }
 
 async function resolveMeetingForActor(actor: MeetingActor, meetingId: string) {
+  if (!UUID_PATTERN.test(meetingId)) {
+    return { error: "Reuniao nao encontrada neste workspace." }
+  }
+
   const { data, error } = await actor.adminClient
     .from("meetings")
     .select("id, workspace_id, title, audio_url, transcript, summary, decisions, next_steps, status, created_by, created_at")
