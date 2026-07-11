@@ -20,13 +20,16 @@ import {
   VideoOff,
 } from "lucide-react"
 import {
+  decidePublicMeetingEntryAction,
   getMeetingByIdAction,
   updateMeetingAction,
   type MeetingAnalysisItem,
   type MeetingAnalysisSectionKey,
   type MeetingAnalysisSections,
+  type MeetingJoinRequest,
   type MeetingAttachment,
   type MeetingAttachmentKind,
+  type ConnectedMeetingParticipant,
   type MeetingHistoryEntry,
   type MeetingStatus,
   type MeetingTimelineEvent,
@@ -59,6 +62,8 @@ type MeetingRecord = {
   timeline: MeetingTimelineEvent[]
   history: MeetingHistoryEntry[]
   transcriptionState: MeetingTranscriptionState
+  joinRequests: MeetingJoinRequest[]
+  connectedParticipants: ConnectedMeetingParticipant[]
 }
 
 type MeetingFormState = {
@@ -154,6 +159,22 @@ function statusLabel(status: MeetingAnalysisItem["status"]) {
   return "Em revisao"
 }
 
+function formatConnectedDuration(value: string) {
+  const startedAt = new Date(value)
+  if (Number.isNaN(startedAt.getTime())) return "Agora"
+
+  const diffMs = Date.now() - startedAt.getTime()
+  const totalMinutes = Math.max(0, Math.floor(diffMs / 60_000))
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}min`
+  }
+
+  return `${minutes}min`
+}
+
 export function MeetingDetailsView({
   meetingId,
   variant,
@@ -198,18 +219,32 @@ export function MeetingDetailsView({
     () => (meeting?.history ?? []).slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [meeting?.history],
   )
+  const waitingParticipants = useMemo(
+    () => (meeting?.joinRequests ?? []).filter((request) => request.status === "waiting"),
+    [meeting?.joinRequests],
+  )
+  const connectedParticipants = useMemo(
+    () => (meeting?.connectedParticipants ?? []).slice().sort((a, b) => b.connectedAt.localeCompare(a.connectedAt)),
+    [meeting?.connectedParticipants],
+  )
 
-  const loadMeeting = async (options?: { openAnalysis?: boolean }) => {
-    setIsLoading(true)
+  const loadMeeting = async (options?: { openAnalysis?: boolean; silent?: boolean }) => {
+    if (!options?.silent) {
+      setIsLoading(true)
+    }
     setError(null)
 
     const result = await getMeetingByIdAction({ meetingId })
 
     if (result.error || !result.meeting) {
       setError(result.error ?? "Nao foi possivel carregar a reuniao.")
-      setMeeting(null)
-      setForm(null)
-      setIsLoading(false)
+      if (!options?.silent) {
+        setMeeting(null)
+        setForm(null)
+      }
+      if (!options?.silent) {
+        setIsLoading(false)
+      }
       return
     }
 
@@ -217,12 +252,24 @@ export function MeetingDetailsView({
     setMeeting(nextMeeting)
     setForm(buildForm(nextMeeting))
     setAnalysisOpen(options?.openAnalysis ?? nextMeeting.status === "finished")
-    setIsLoading(false)
+    if (!options?.silent) {
+      setIsLoading(false)
+    }
   }
 
   useEffect(() => {
     void loadMeeting()
   }, [meetingId])
+
+  useEffect(() => {
+    if (!meeting || meeting.meetingType !== "video") return
+
+    const interval = window.setInterval(() => {
+      void loadMeeting({ openAnalysis: analysisOpen, silent: true })
+    }, 3000)
+
+    return () => window.clearInterval(interval)
+  }, [analysisOpen, meeting, meetingId])
 
   useEffect(() => {
     if (!videoRef.current || !streamRef.current) return
@@ -345,6 +392,27 @@ export function MeetingDetailsView({
     } catch {
       setError("Nao foi possivel copiar o link da reuniao.")
     }
+  }
+
+  const decideParticipantEntry = async (requestId: string, decision: "approved" | "denied") => {
+    if (!meeting) return
+
+    setError(null)
+    setFeedback(null)
+
+    const result = await decidePublicMeetingEntryAction({
+      meetingId: meeting.id,
+      requestId,
+      decision,
+    })
+
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+
+    setFeedback(decision === "approved" ? "Participante liberado para entrar na reuniao." : "Solicitacao negada e removida da fila.")
+    await loadMeeting({ openAnalysis: analysisOpen })
   }
 
   const save = async (nextStatus?: MeetingStatus) => {
@@ -657,6 +725,74 @@ export function MeetingDetailsView({
 
           <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
             Esta etapa entrega camera, microfone, preview local e controles reais no navegador. A distribuicao da chamada para outros participantes continua pelo link/sala ja configurado na reuniao.
+          </div>
+        </div>
+      )}
+
+      {meeting.meetingType === "video" && canManageWorkspace && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-gray-100 bg-white p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-[#0a0a0a]">Participantes aguardando</h2>
+                <p className="text-sm text-gray-500">Solicitacoes reais de entrada enviadas pela sala publica.</p>
+              </div>
+              <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">{waitingParticipants.length} aguardando</span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {waitingParticipants.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500">Nenhuma solicitacao pendente no momento.</p>
+              ) : (
+                waitingParticipants.map((request) => (
+                  <div key={request.id} className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-[#0a0a0a]">{request.participantName}</p>
+                        <p className="mt-1 text-xs text-gray-500">Solicitado em {formatDateTimeLabel(request.requestedAt)}</p>
+                        <p className="mt-2 text-xs font-medium text-amber-700">Status: Aguardando</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => void decideParticipantEntry(request.id, "approved")} className="rounded-xl bg-[#0a0a0a] px-4 py-2 text-sm text-white hover:bg-[#1a1a1a]">
+                          Permitir
+                        </button>
+                        <button onClick={() => void decideParticipantEntry(request.id, "denied")} className="rounded-xl border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50">
+                          Negar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-100 bg-white p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-[#0a0a0a]">Participantes conectados</h2>
+                <p className="text-sm text-gray-500">Participantes liberados pelo organizador nesta reuniao.</p>
+              </div>
+              <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">{connectedParticipants.length} online</span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {connectedParticipants.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500">Nenhum participante conectado ainda.</p>
+              ) : (
+                connectedParticipants.map((participant) => (
+                  <div key={participant.requestId} className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-[#0a0a0a]">{participant.participantName}</p>
+                        <p className="mt-1 text-xs text-gray-500">Conectado ha {formatConnectedDuration(participant.connectedAt)}</p>
+                      </div>
+                      <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Status online</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}

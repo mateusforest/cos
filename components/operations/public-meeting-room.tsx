@@ -1,7 +1,22 @@
 "use client"
 
+import { getPublicMeetingBySlugAction, requestPublicMeetingEntryAction } from "@/actions/meetings"
 import { useEffect, useRef, useState } from "react"
 import { Loader2, Mic, MicOff, Video, VideoOff } from "lucide-react"
+
+type MeetingJoinRequest = {
+  id: string
+  participantName: string
+  requestedAt: string
+  status: "waiting" | "approved" | "denied"
+}
+
+type ConnectedMeetingParticipant = {
+  requestId: string
+  participantName: string
+  connectedAt: string
+  status: "online"
+}
 
 type PublicMeetingRecord = {
   id: string
@@ -11,6 +26,8 @@ type PublicMeetingRecord = {
   description: string
   meetingLink: string
   publicRoomLink: string
+  joinRequests: MeetingJoinRequest[]
+  connectedParticipants: ConnectedMeetingParticipant[]
 }
 
 function formatDateTimeLabel(value: string | null) {
@@ -26,9 +43,11 @@ function formatDateTimeLabel(value: string | null) {
   }).format(date)
 }
 
-export function PublicMeetingRoom({ meeting }: { meeting: PublicMeetingRecord }) {
+export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRecord; slug: string }) {
   const [guestName, setGuestName] = useState("")
   const [joined, setJoined] = useState(false)
+  const [requestId, setRequestId] = useState<string | null>(null)
+  const [requestStatus, setRequestStatus] = useState<MeetingJoinRequest["status"] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [callError, setCallError] = useState<string | null>(null)
   const [hasMediaAccess, setHasMediaAccess] = useState(false)
@@ -36,6 +55,7 @@ export function PublicMeetingRoom({ meeting }: { meeting: PublicMeetingRecord })
   const [isCameraEnabled, setIsCameraEnabled] = useState(true)
   const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(true)
   const [isRequestingMedia, setIsRequestingMedia] = useState(false)
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -50,6 +70,37 @@ export function PublicMeetingRoom({ meeting }: { meeting: PublicMeetingRecord })
       stopMediaTracks()
     }
   }, [])
+
+  useEffect(() => {
+    if (!slug || !requestId || requestStatus === "denied") return
+
+    const interval = window.setInterval(() => {
+      void (async () => {
+        const result = await getPublicMeetingBySlugAction({ slug })
+        if (result.error || !result.meeting) return
+
+        const nextRequest = result.meeting.joinRequests.find((item) => item.id === requestId)
+        if (!nextRequest) return
+
+        setRequestStatus(nextRequest.status)
+
+        if (nextRequest.status === "approved") {
+          setJoined(true)
+          setFeedback(`Entrada liberada para ${nextRequest.participantName}.`)
+          setError(null)
+        }
+
+        if (nextRequest.status === "denied") {
+          setJoined(false)
+          setRequestId(null)
+          setError("Seu acesso a esta reuniao foi negado pelo organizador.")
+          setFeedback(null)
+        }
+      })()
+    }, 3000)
+
+    return () => window.clearInterval(interval)
+  }, [requestId, requestStatus, slug])
 
   const stopMediaTracks = () => {
     if (!streamRef.current) return
@@ -113,15 +164,32 @@ export function PublicMeetingRoom({ meeting }: { meeting: PublicMeetingRecord })
     setIsMicrophoneEnabled(!nextEnabled)
   }
 
-  const joinRoom = () => {
+  const joinRoom = async () => {
     if (!guestName.trim()) {
-      setError("Informe seu nome para entrar na sala.")
+      setError("Informe seu nome para solicitar entrada.")
       return
     }
 
+    setIsSubmittingRequest(true)
     setError(null)
-    setJoined(true)
-    setFeedback(`Entrada liberada para ${guestName.trim()}.`)
+    setFeedback(null)
+
+    const result = await requestPublicMeetingEntryAction({
+      slug,
+      participantName: guestName.trim(),
+    })
+
+    setIsSubmittingRequest(false)
+
+    if (result.error || !result.requestId) {
+      setError(result.error ?? "Nao foi possivel solicitar entrada na reuniao.")
+      return
+    }
+
+    setRequestId(result.requestId)
+    setRequestStatus("waiting")
+    setJoined(false)
+    setFeedback("Solicitacao enviada. Aguarde a aprovacao do organizador.")
   }
 
   const startCall = async () => {
@@ -147,18 +215,13 @@ export function PublicMeetingRoom({ meeting }: { meeting: PublicMeetingRecord })
         <section className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
           <span className="inline-flex rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-600">COS Meet</span>
           <h1 className="mt-4 text-3xl font-semibold text-[#0a0a0a]">{meeting.title}</h1>
-          <p className="mt-2 text-sm text-gray-500">{meeting.description || "Sala publica da reuniao por video."}</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <InfoCard label="Data e hora" value={formatDateTimeLabel(meeting.scheduledAt)} />
-            <InfoCard label="Participantes previstos" value={meeting.participants.length > 0 ? meeting.participants.join(", ") : "Nao informados"} />
-            <InfoCard label="Link publico" value={meeting.publicRoomLink} />
-          </div>
+          <p className="mt-2 text-sm text-gray-500">{meeting.description || `Reuniao agendada para ${formatDateTimeLabel(meeting.scheduledAt)}.`}</p>
         </section>
 
         {!joined ? (
           <section className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-[#0a0a0a]">Entrar na sala</h2>
-            <p className="mt-2 text-sm text-gray-500">Informe seu nome para acessar esta reuniao publica do COS Meet.</p>
+            <h2 className="text-xl font-semibold text-[#0a0a0a]">Solicitar entrada</h2>
+            <p className="mt-2 text-sm text-gray-500">Informe seu nome, autorize camera e microfone e solicite a aprovacao do organizador para entrar nesta reuniao.</p>
             <div className="mt-4 space-y-3">
               <label className="block space-y-1.5">
                 <span className="text-sm font-medium text-[#0a0a0a]">Seu nome</span>
@@ -169,10 +232,54 @@ export function PublicMeetingRoom({ meeting }: { meeting: PublicMeetingRecord })
                   className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
                 />
               </label>
+              {callError && <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{callError}</div>}
+              {feedback && <div className="rounded-2xl border border-green-100 bg-green-50 p-4 text-sm text-green-700">{feedback}</div>}
               {error && <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
-              <button onClick={joinRoom} className="rounded-2xl bg-[#0a0a0a] px-5 py-3 text-sm font-medium text-white hover:bg-[#1a1a1a]">
-                Entrar na sala
-              </button>
+
+              <div className="overflow-hidden rounded-3xl border border-gray-100 bg-[#0a0a0a]">
+                <div className="aspect-video w-full">
+                  {hasMediaAccess ? (
+                    <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-white/80">
+                      Autorize camera e microfone para exibir o preview local desta sala.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => void requestMediaAccess()} disabled={isRequestingMedia} className="rounded-2xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
+                    {isRequestingMedia ? (
+                      <>
+                        <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                        Autorizando...
+                      </>
+                    ) : (
+                      "Autorizar camera e microfone"
+                    )}
+                  </button>
+                  <button
+                    onClick={() => void joinRoom()}
+                    disabled={isSubmittingRequest || requestStatus === "waiting"}
+                    className="rounded-2xl bg-[#0a0a0a] px-5 py-3 text-sm font-medium text-white hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isSubmittingRequest ? "Solicitando..." : requestStatus === "waiting" ? "Aguardando aprovacao" : "Solicitar entrada"}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => toggleTrack("video")} disabled={!hasMediaAccess} className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
+                    {isCameraEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                    {isCameraEnabled ? "Camera ligada" : "Camera desligada"}
+                  </button>
+                  <button onClick={() => toggleTrack("audio")} disabled={!hasMediaAccess} className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
+                    {isMicrophoneEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                    {isMicrophoneEnabled ? "Microfone ligado" : "Microfone desligado"}
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
         ) : (
@@ -182,11 +289,6 @@ export function PublicMeetingRoom({ meeting }: { meeting: PublicMeetingRecord })
                 <h2 className="text-xl font-semibold text-[#0a0a0a]">Sala publica do COS Meet</h2>
                 <p className="mt-2 text-sm text-gray-500">Bem-vindo, {guestName.trim()}. Autorize camera e microfone para usar o preview local e participar da chamada.</p>
               </div>
-              {meeting.meetingLink ? (
-                <a href={meeting.meetingLink} target="_blank" rel="noreferrer" className="rounded-2xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                  Abrir link de video opcional
-                </a>
-              ) : null}
             </div>
 
             {feedback && <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-4 text-sm text-green-700">{feedback}</div>}
@@ -239,14 +341,5 @@ export function PublicMeetingRoom({ meeting }: { meeting: PublicMeetingRecord })
         )}
       </div>
     </main>
-  )
-}
-
-function InfoCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-      <p className="mt-2 text-sm text-[#0a0a0a]">{value}</p>
-    </div>
   )
 }

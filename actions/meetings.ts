@@ -19,6 +19,7 @@ export type MeetingAnalysisSectionKey =
 export type MeetingAttachmentKind = "audio" | "video" | "document"
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const PUBLIC_ROOM_SLUG_PATTERN = /^cos-[a-f0-9]{16}$/i
+export type MeetingJoinRequestStatus = "waiting" | "approved" | "denied"
 
 export type MeetingAnalysisItem = {
   id: string
@@ -58,6 +59,20 @@ export type MeetingTranscriptionState = {
   note: string
 }
 
+export type MeetingJoinRequest = {
+  id: string
+  participantName: string
+  requestedAt: string
+  status: MeetingJoinRequestStatus
+}
+
+export type ConnectedMeetingParticipant = {
+  requestId: string
+  participantName: string
+  connectedAt: string
+  status: "online"
+}
+
 type MeetingMetadataV1 = {
   version: 1
   scheduledAt: string | null
@@ -89,6 +104,8 @@ type MeetingMetadata = {
   timeline: MeetingTimelineEvent[]
   history: MeetingHistoryEntry[]
   transcriptionState: MeetingTranscriptionState
+  joinRequests: MeetingJoinRequest[]
+  connectedParticipants: ConnectedMeetingParticipant[]
 }
 
 type MeetingRow = {
@@ -135,6 +152,8 @@ type MeetingPayload = {
   attachments?: MeetingAttachment[]
   timeline?: MeetingTimelineEvent[]
   transcriptionState?: MeetingTranscriptionState
+  joinRequests?: MeetingJoinRequest[]
+  connectedParticipants?: ConnectedMeetingParticipant[]
   historyDescription?: string
   historyAction?: string
   timelineEvent?: Omit<MeetingTimelineEvent, "id">
@@ -196,6 +215,34 @@ function createEmptyAnalysisSections(): MeetingAnalysisSections {
     responsibles: [],
     nextSteps: [],
   }
+}
+
+function normalizeJoinRequests(value?: MeetingJoinRequest[] | null) {
+  if (!Array.isArray(value)) return [] as MeetingJoinRequest[]
+
+  return value
+    .filter((item): item is MeetingJoinRequest => Boolean(item?.id && item?.participantName))
+    .map((item) => ({
+      id: item.id,
+      participantName: item.participantName.trim(),
+      requestedAt: item.requestedAt ?? new Date().toISOString(),
+      status: item.status ?? "waiting",
+    }))
+    .filter((item) => Boolean(item.participantName))
+}
+
+function normalizeConnectedParticipants(value?: ConnectedMeetingParticipant[] | null) {
+  if (!Array.isArray(value)) return [] as ConnectedMeetingParticipant[]
+
+  return value
+    .filter((item): item is ConnectedMeetingParticipant => Boolean(item?.requestId && item?.participantName))
+    .map((item) => ({
+      requestId: item.requestId,
+      participantName: item.participantName.trim(),
+      connectedAt: item.connectedAt ?? new Date().toISOString(),
+      status: "online" as const,
+    }))
+    .filter((item) => Boolean(item.participantName))
 }
 
 function normalizeAnalysisSections(value?: Partial<MeetingAnalysisSections> | null) {
@@ -381,6 +428,8 @@ function parseMeetingMetadata(value?: string | null): MeetingMetadata | null {
         timeline: Array.isArray(parsed.timeline) ? parsed.timeline : [],
         history: Array.isArray(parsed.history) ? parsed.history : [],
         transcriptionState: parsed.transcriptionState ?? { status: "not_available", note: TRANSCRIPTION_NOTE },
+        joinRequests: normalizeJoinRequests(parsed.joinRequests),
+        connectedParticipants: normalizeConnectedParticipants(parsed.connectedParticipants),
       }
     }
 
@@ -393,6 +442,8 @@ function parseMeetingMetadata(value?: string | null): MeetingMetadata | null {
         timeline: [],
         history: [],
         transcriptionState: { status: "not_available", note: TRANSCRIPTION_NOTE },
+        joinRequests: [],
+        connectedParticipants: [],
       }
     }
 
@@ -425,6 +476,8 @@ function buildMeetingMetadata(payload: Partial<MeetingPayload>, currentRow?: Mee
     timeline: payload.timeline ?? currentMetadata?.timeline ?? [],
     history: currentMetadata?.history ?? [],
     transcriptionState: payload.transcriptionState ?? currentMetadata?.transcriptionState ?? { status: "not_available", note: TRANSCRIPTION_NOTE },
+    joinRequests: normalizeJoinRequests(payload.joinRequests ?? currentMetadata?.joinRequests),
+    connectedParticipants: normalizeConnectedParticipants(payload.connectedParticipants ?? currentMetadata?.connectedParticipants),
   }
 
   return {
@@ -471,6 +524,8 @@ function hydrateMeeting(meeting: MeetingRow) {
     timeline: metadata.timeline.sort((a, b) => (b.occurredAt ?? "").localeCompare(a.occurredAt ?? "")),
     history: metadata.history.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     transcriptionState: metadata.transcriptionState,
+    joinRequests: metadata.joinRequests.sort((a, b) => b.requestedAt.localeCompare(a.requestedAt)),
+    connectedParticipants: metadata.connectedParticipants.sort((a, b) => b.connectedAt.localeCompare(a.connectedAt)),
     statusLabel: status === "scheduled" ? "Agendada" : status === "in_progress" ? "Em andamento" : "Finalizada",
   }
 }
@@ -603,6 +658,226 @@ export async function getPublicMeetingBySlugAction({ slug }: { slug: string }) {
     success: true,
     meeting: hydratedMeeting,
   }
+}
+
+export async function requestPublicMeetingEntryAction({
+  slug,
+  participantName,
+}: {
+  slug: string
+  participantName: string
+}) {
+  const trimmedName = participantName.trim()
+  if (!trimmedName) {
+    return { error: "Informe o nome do participante." }
+  }
+
+  if (!PUBLIC_ROOM_SLUG_PATTERN.test(slug)) {
+    return { error: "Sala publica nao encontrada." }
+  }
+
+  const adminClient = createSupabaseAdminClient()
+  if (!adminClient) {
+    return { error: "SUPABASE_SERVICE_ROLE_KEY nao configurada para reunioes." }
+  }
+
+  const { data, error } = await adminClient
+    .from("meetings")
+    .select("id, workspace_id, title, audio_url, transcript, summary, decisions, next_steps, status, created_by, created_at")
+    .neq("status", "archived")
+    .returns<MeetingRow[]>()
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  const matchedMeeting = (data ?? []).find((meeting) => buildPublicRoomSlug(meeting.id) === slug)
+  if (!matchedMeeting) {
+    return { error: "Sala publica nao encontrada." }
+  }
+
+  const hydratedMeeting = hydrateMeeting(matchedMeeting)
+  const requestedAt = new Date().toISOString()
+  const requestId = createId("join")
+  const nextJoinRequests = [
+    ...hydratedMeeting.joinRequests.filter((request) => request.status !== "denied"),
+    {
+      id: requestId,
+      participantName: trimmedName,
+      requestedAt,
+      status: "waiting" as const,
+    },
+  ]
+
+  const metadata = buildMeetingMetadata(
+    {
+      title: hydratedMeeting.title,
+      scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+      participants: hydratedMeeting.participants,
+      meetingType: hydratedMeeting.meetingType,
+      meetingLink: hydratedMeeting.meetingLink,
+      meetingLocation: hydratedMeeting.meetingLocation,
+      description: hydratedMeeting.description,
+      cosShouldAttend: hydratedMeeting.cosShouldAttend,
+      cosShouldRecord: hydratedMeeting.cosShouldRecord,
+      cosShouldExtract: hydratedMeeting.cosShouldExtract,
+      cosShouldReport: hydratedMeeting.cosShouldReport,
+      analysisSections: hydratedMeeting.analysisSections,
+      attachments: hydratedMeeting.attachments,
+      timeline: [
+        ...hydratedMeeting.timeline,
+        createTimelineEvent("meeting_join_requested", `${trimmedName} solicitou entrada`, requestedAt),
+      ],
+      transcriptionState: hydratedMeeting.transcriptionState,
+      joinRequests: nextJoinRequests,
+      connectedParticipants: hydratedMeeting.connectedParticipants,
+      historyAction: "meeting_join_requested",
+      historyDescription: `${trimmedName} solicitou entrada na reuniao.`,
+    },
+    matchedMeeting,
+  )
+
+  const history = [...metadata.history, createHistoryEntry("meeting_join_requested", `${trimmedName} solicitou entrada na reuniao.`, requestedAt)]
+
+  const { error: updateError } = await adminClient
+    .from("meetings")
+    .update({
+      transcript: serializeMeetingMetadata({
+        ...metadata,
+        history,
+      }),
+    })
+    .eq("id", matchedMeeting.id)
+
+  if (updateError) {
+    return { error: updateError.message }
+  }
+
+  return {
+    success: true,
+    requestId,
+  }
+}
+
+export async function decidePublicMeetingEntryAction({
+  meetingId,
+  requestId,
+  decision,
+}: {
+  meetingId: string
+  requestId: string
+  decision: "approved" | "denied"
+}) {
+  const actor = await getMeetingActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  if (!actor.canManage && !actor.isMaster) {
+    return { error: "Apenas owner, admin ou master podem aprovar participantes." }
+  }
+
+  const resolved = await resolveMeetingForActor(actor, meetingId)
+  if ("error" in resolved) {
+    return { error: resolved.error }
+  }
+
+  const hydratedMeeting = hydrateMeeting(resolved.meeting)
+  const targetRequest = hydratedMeeting.joinRequests.find((request) => request.id === requestId)
+
+  if (!targetRequest) {
+    return { error: "Solicitacao de entrada nao encontrada." }
+  }
+
+  const decidedAt = new Date().toISOString()
+  const nextJoinRequests =
+    decision === "approved"
+      ? hydratedMeeting.joinRequests.map((request) =>
+          request.id === requestId ? { ...request, status: "approved" as const } : request,
+        )
+      : hydratedMeeting.joinRequests.map((request) =>
+          request.id === requestId ? { ...request, status: "denied" as const } : request,
+        )
+
+  const nextConnectedParticipants =
+    decision === "approved"
+      ? [
+          ...hydratedMeeting.connectedParticipants.filter((participant) => participant.requestId !== requestId),
+          {
+            requestId,
+            participantName: targetRequest.participantName,
+            connectedAt: decidedAt,
+            status: "online" as const,
+          },
+        ]
+      : hydratedMeeting.connectedParticipants.filter((participant) => participant.requestId !== requestId)
+
+  const metadata = buildMeetingMetadata(
+    {
+      title: hydratedMeeting.title,
+      scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+      participants: hydratedMeeting.participants,
+      meetingType: hydratedMeeting.meetingType,
+      meetingLink: hydratedMeeting.meetingLink,
+      meetingLocation: hydratedMeeting.meetingLocation,
+      description: hydratedMeeting.description,
+      cosShouldAttend: hydratedMeeting.cosShouldAttend,
+      cosShouldRecord: hydratedMeeting.cosShouldRecord,
+      cosShouldExtract: hydratedMeeting.cosShouldExtract,
+      cosShouldReport: hydratedMeeting.cosShouldReport,
+      analysisSections: hydratedMeeting.analysisSections,
+      attachments: hydratedMeeting.attachments,
+      timeline: [
+        ...hydratedMeeting.timeline,
+        createTimelineEvent(
+          decision === "approved" ? "meeting_join_approved" : "meeting_join_denied",
+          decision === "approved"
+            ? `${targetRequest.participantName} entrou na reuniao`
+            : `${targetRequest.participantName} teve a entrada negada`,
+          decidedAt,
+        ),
+      ],
+      transcriptionState: hydratedMeeting.transcriptionState,
+      joinRequests: nextJoinRequests,
+      connectedParticipants: nextConnectedParticipants,
+    },
+    resolved.meeting,
+  )
+
+  const description =
+    decision === "approved"
+      ? `${targetRequest.participantName} teve a entrada permitida.`
+      : `${targetRequest.participantName} teve a entrada negada.`
+
+  const history = [
+    ...metadata.history,
+    createHistoryEntry(decision === "approved" ? "meeting_join_approved" : "meeting_join_denied", description, decidedAt),
+  ]
+
+  const { error } = await actor.adminClient
+    .from("meetings")
+    .update({
+      transcript: serializeMeetingMetadata({
+        ...metadata,
+        history,
+      }),
+    })
+    .eq("id", meetingId)
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  await logMeetingActivity({
+    adminClient: actor.adminClient,
+    workspaceId: actor.workspaceId,
+    userId: actor.actorId,
+    action: decision === "approved" ? "meeting_join_approved" : "meeting_join_denied",
+    description: description.toLowerCase(),
+  })
+
+  return { success: true }
 }
 
 export async function createMeetingAction(payload: MeetingPayload) {

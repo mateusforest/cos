@@ -20,5 +20,5 @@ export default async function PublicMeetRoomPage({
     )
   }
 
-  return <PublicMeetingRoom meeting={result.meeting} />
+  return <PublicMeetingRoom meeting={result.meeting} slug={slug} />
 }
