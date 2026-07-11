@@ -293,7 +293,7 @@ export function LiveKitMeetingRoom({
       setMessages([])
       setIsConnected(false)
       setIsScreenShareEnabled(false)
-      setFeedback(role === "guest" ? "Voce saiu da sala." : "Sala desconectada.")
+      setFeedback(isLeavingRef.current ? "Voce saiu da sala." : "Reuniao encerrada pelo organizador.")
     })
 
     try {

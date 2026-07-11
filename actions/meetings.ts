@@ -77,6 +77,26 @@ export type ConnectedMeetingParticipant = {
   role: MeetingParticipantRole
 }
 
+export type MeetingSessionParticipant = {
+  identity: string
+  participantName: string
+  role: MeetingParticipantRole
+  firstJoinedAt: string
+}
+
+export type MeetingSessionRecord = {
+  startedAt: string | null
+  endedAt: string | null
+  durationSeconds: number | null
+  endedByUserId: string | null
+  endedByName: string | null
+  participants: MeetingSessionParticipant[]
+  finalState: "idle" | "active" | "ended"
+  summaryDraft: string
+  decisionsDraft: string[]
+  tasksDraft: string[]
+}
+
 type MeetingMetadataV1 = {
   version: 1
   scheduledAt: string | null
@@ -110,6 +130,7 @@ type MeetingMetadata = {
   transcriptionState: MeetingTranscriptionState
   joinRequests: MeetingJoinRequest[]
   connectedParticipants: ConnectedMeetingParticipant[]
+  sessionRecord: MeetingSessionRecord
 }
 
 type MeetingRow = {
@@ -128,6 +149,7 @@ type MeetingRow = {
 
 type MeetingActor = {
   actorId: string
+  actorName: string
   workspaceId: string
   canManage: boolean
   isMaster: boolean
@@ -158,6 +180,7 @@ type MeetingPayload = {
   transcriptionState?: MeetingTranscriptionState
   joinRequests?: MeetingJoinRequest[]
   connectedParticipants?: ConnectedMeetingParticipant[]
+  sessionRecord?: Partial<MeetingSessionRecord>
   historyDescription?: string
   historyAction?: string
   timelineEvent?: Omit<MeetingTimelineEvent, "id">
@@ -253,6 +276,39 @@ function normalizeConnectedParticipants(value?: ConnectedMeetingParticipant[] | 
       }
     })
     .filter((item) => Boolean(item.participantName))
+}
+
+function normalizeSessionParticipants(value?: MeetingSessionParticipant[] | null) {
+  if (!Array.isArray(value)) return [] as MeetingSessionParticipant[]
+
+  return value
+    .filter((item): item is MeetingSessionParticipant => Boolean(item?.identity && item?.participantName))
+    .map((item) => {
+      const role: MeetingParticipantRole = item.role === "organizer" ? "organizer" : "guest"
+
+      return {
+        identity: item.identity,
+        participantName: item.participantName.trim(),
+        role,
+        firstJoinedAt: item.firstJoinedAt ?? new Date().toISOString(),
+      }
+    })
+    .filter((item) => Boolean(item.participantName))
+}
+
+function normalizeSessionRecord(value?: Partial<MeetingSessionRecord> | null): MeetingSessionRecord {
+  return {
+    startedAt: value?.startedAt ?? null,
+    endedAt: value?.endedAt ?? null,
+    durationSeconds: typeof value?.durationSeconds === "number" ? value.durationSeconds : null,
+    endedByUserId: value?.endedByUserId ?? null,
+    endedByName: value?.endedByName?.trim() || null,
+    participants: normalizeSessionParticipants(value?.participants),
+    finalState: value?.finalState === "active" || value?.finalState === "ended" ? value.finalState : "idle",
+    summaryDraft: value?.summaryDraft?.trim() || "",
+    decisionsDraft: Array.isArray(value?.decisionsDraft) ? value.decisionsDraft.map((item) => item.trim()).filter(Boolean) : [],
+    tasksDraft: Array.isArray(value?.tasksDraft) ? value.tasksDraft.map((item) => item.trim()).filter(Boolean) : [],
+  }
 }
 
 function normalizeAnalysisSections(value?: Partial<MeetingAnalysisSections> | null) {
@@ -368,6 +424,7 @@ async function getMeetingActor() {
 
   return {
     actorId: authData.user.id,
+    actorName: access.profile?.full_name?.trim() || authData.user.email?.trim() || "Organizador",
     workspaceId: access.workspace.id,
     canManage: canManageWorkspace(access),
     isMaster: access.profile?.global_role === "master",
@@ -440,6 +497,7 @@ function parseMeetingMetadata(value?: string | null): MeetingMetadata | null {
         transcriptionState: parsed.transcriptionState ?? { status: "not_available", note: TRANSCRIPTION_NOTE },
         joinRequests: normalizeJoinRequests(parsed.joinRequests),
         connectedParticipants: normalizeConnectedParticipants(parsed.connectedParticipants),
+        sessionRecord: normalizeSessionRecord(parsed.sessionRecord),
       }
     }
 
@@ -454,6 +512,7 @@ function parseMeetingMetadata(value?: string | null): MeetingMetadata | null {
         transcriptionState: { status: "not_available", note: TRANSCRIPTION_NOTE },
         joinRequests: [],
         connectedParticipants: [],
+        sessionRecord: normalizeSessionRecord(),
       }
     }
 
@@ -488,6 +547,7 @@ function buildMeetingMetadata(payload: Partial<MeetingPayload>, currentRow?: Mee
     transcriptionState: payload.transcriptionState ?? currentMetadata?.transcriptionState ?? { status: "not_available", note: TRANSCRIPTION_NOTE },
     joinRequests: normalizeJoinRequests(payload.joinRequests ?? currentMetadata?.joinRequests),
     connectedParticipants: normalizeConnectedParticipants(payload.connectedParticipants ?? currentMetadata?.connectedParticipants),
+    sessionRecord: normalizeSessionRecord(payload.sessionRecord ?? currentMetadata?.sessionRecord),
   }
 
   return {
@@ -536,6 +596,7 @@ function hydrateMeeting(meeting: MeetingRow) {
     transcriptionState: metadata.transcriptionState,
     joinRequests: metadata.joinRequests.sort((a, b) => b.requestedAt.localeCompare(a.requestedAt)),
     connectedParticipants: metadata.connectedParticipants.sort((a, b) => b.connectedAt.localeCompare(a.connectedAt)),
+    sessionRecord: metadata.sessionRecord,
     statusLabel: status === "scheduled" ? "Agendada" : status === "in_progress" ? "Em andamento" : "Finalizada",
   }
 }
@@ -1064,6 +1125,7 @@ export async function syncMeetingParticipantConnectionAction({
 
   const hydratedMeeting = hydrateMeeting(targetMeeting)
   const existingParticipants = hydratedMeeting.connectedParticipants.filter((participant) => participant.identity !== identity)
+  const currentTimestamp = new Date().toISOString()
   const nextConnectedParticipants =
     status === "connected"
       ? [
@@ -1072,12 +1134,40 @@ export async function syncMeetingParticipantConnectionAction({
             requestId: requestId ?? identity,
             identity,
             participantName: trimmedName,
-            connectedAt: new Date().toISOString(),
+            connectedAt: currentTimestamp,
             status: "online" as const,
             role,
           },
         ]
       : existingParticipants
+  const existingSessionParticipant = hydratedMeeting.sessionRecord.participants.find((participant) => participant.identity === identity)
+  const nextSessionParticipants =
+    status === "connected" && !existingSessionParticipant
+      ? [
+          ...hydratedMeeting.sessionRecord.participants,
+          {
+            identity,
+            participantName: trimmedName,
+            role,
+            firstJoinedAt: currentTimestamp,
+          },
+        ]
+      : hydratedMeeting.sessionRecord.participants
+  const nextSessionStartedAt =
+    status === "connected"
+      ? hydratedMeeting.sessionRecord.startedAt ?? currentTimestamp
+      : hydratedMeeting.sessionRecord.startedAt
+  const nextSessionRecord = normalizeSessionRecord({
+    ...hydratedMeeting.sessionRecord,
+    startedAt: nextSessionStartedAt,
+    participants: nextSessionParticipants,
+    finalState:
+      status === "connected"
+        ? "active"
+        : hydratedMeeting.status === "finished"
+          ? "ended"
+          : hydratedMeeting.sessionRecord.finalState,
+  })
 
   const historyDescription =
     status === "connected"
@@ -1113,6 +1203,7 @@ export async function syncMeetingParticipantConnectionAction({
       transcriptionState: hydratedMeeting.transcriptionState,
       joinRequests: hydratedMeeting.joinRequests,
       connectedParticipants: nextConnectedParticipants,
+      sessionRecord: nextSessionRecord,
     },
     targetMeeting,
   )
@@ -1202,6 +1293,7 @@ export async function removeMeetingParticipantAction({
       transcriptionState: hydratedMeeting.transcriptionState,
       joinRequests: nextJoinRequests,
       connectedParticipants: hydratedMeeting.connectedParticipants.filter((participant) => participant.identity !== identity),
+      sessionRecord: hydratedMeeting.sessionRecord,
     },
     resolved.meeting,
   )
@@ -1239,6 +1331,38 @@ export async function endMeetingLiveRoomAction({ meetingId }: { meetingId: strin
   }
 
   const hydratedMeeting = hydrateMeeting(resolved.meeting)
+  const endedAt = new Date().toISOString()
+  const startedAt =
+    hydratedMeeting.sessionRecord.startedAt ??
+    hydratedMeeting.connectedParticipants
+      .map((participant) => participant.connectedAt)
+      .sort((a, b) => a.localeCompare(b))[0] ??
+    null
+  const durationSeconds =
+    startedAt && !Number.isNaN(new Date(startedAt).getTime())
+      ? Math.max(0, Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000))
+      : null
+  const nextSessionRecord = normalizeSessionRecord({
+    ...hydratedMeeting.sessionRecord,
+    startedAt,
+    endedAt,
+    durationSeconds,
+    endedByUserId: actor.actorId,
+    endedByName: actor.actorName,
+    participants:
+      hydratedMeeting.sessionRecord.participants.length > 0
+        ? hydratedMeeting.sessionRecord.participants
+        : hydratedMeeting.connectedParticipants.map((participant) => ({
+            identity: participant.identity,
+            participantName: participant.participantName,
+            role: participant.role,
+            firstJoinedAt: participant.connectedAt,
+          })),
+    finalState: "ended",
+    summaryDraft: hydratedMeeting.sessionRecord.summaryDraft,
+    decisionsDraft: hydratedMeeting.sessionRecord.decisionsDraft,
+    tasksDraft: hydratedMeeting.sessionRecord.tasksDraft,
+  })
 
   try {
     const roomServiceClient = createLiveKitRoomServiceClient()
@@ -1264,17 +1388,27 @@ export async function endMeetingLiveRoomAction({ meetingId }: { meetingId: strin
       timeline: [
         ...hydratedMeeting.timeline,
         createTimelineEvent("meeting_finished", "Reuniao finalizada"),
+        createTimelineEvent(
+          "meeting_session_recorded",
+          durationSeconds !== null ? `Sessao registrada com duracao de ${durationSeconds} segundo(s)` : "Sessao registrada",
+          endedAt,
+        ),
       ],
       transcriptionState: hydratedMeeting.transcriptionState,
       joinRequests: hydratedMeeting.joinRequests,
       connectedParticipants: [],
+      sessionRecord: nextSessionRecord,
     },
     resolved.meeting,
   )
 
   const history = [
     ...metadata.history,
-    createHistoryEntry("meeting_finished", "Reuniao finalizada pelo organizador no COS Meet ao vivo."),
+    createHistoryEntry(
+      "meeting_finished",
+      `Reuniao finalizada por ${actor.actorName}. Sessao registrada${durationSeconds !== null ? ` com ${durationSeconds} segundo(s)` : ""}.`,
+      endedAt,
+    ),
   ]
 
   const { error } = await actor.adminClient
