@@ -1,8 +1,8 @@
 "use client"
 
 import { getPublicMeetingBySlugAction, requestPublicMeetingEntryAction } from "@/actions/meetings"
-import { useEffect, useState } from "react"
-import { Loader2 } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Loader2, Maximize2, Minimize2 } from "lucide-react"
 import { LiveKitMeetingRoom } from "@/components/operations/livekit-meeting-room"
 
 type MeetingJoinRequest = {
@@ -47,11 +47,14 @@ function formatDateTimeLabel(value: string | null) {
 export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRecord; slug: string }) {
   const [guestName, setGuestName] = useState("")
   const [joined, setJoined] = useState(false)
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false)
+  const [isVideoModalFullscreen, setIsVideoModalFullscreen] = useState(false)
   const [requestId, setRequestId] = useState<string | null>(null)
   const [requestStatus, setRequestStatus] = useState<MeetingJoinRequest["status"] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const videoModalRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!slug || !requestId || requestStatus === "denied") return
@@ -68,6 +71,7 @@ export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRec
 
         if (nextRequest.status === "approved") {
           setJoined(true)
+          setIsVideoModalOpen(true)
           setFeedback(`Entrada liberada para ${nextRequest.participantName}.`)
           setError(null)
         }
@@ -83,6 +87,26 @@ export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRec
 
     return () => window.clearInterval(interval)
   }, [requestId, requestStatus, slug])
+
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      setIsVideoModalFullscreen(document.fullscreenElement === videoModalRef.current)
+    }
+
+    document.addEventListener("fullscreenchange", syncFullscreenState)
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState)
+  }, [])
+
+  useEffect(() => {
+    if (!isVideoModalOpen) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isVideoModalOpen])
 
   const joinRoom = async () => {
     if (!guestName.trim()) {
@@ -110,6 +134,26 @@ export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRec
     setRequestStatus("waiting")
     setJoined(false)
     setFeedback("Solicitacao enviada. Aguarde a aprovacao do organizador.")
+  }
+
+  const closeVideoModal = () => {
+    setIsVideoModalOpen(false)
+  }
+
+  const openVideoModal = () => {
+    setIsVideoModalOpen(true)
+  }
+
+  const toggleVideoModalFullscreen = async () => {
+    const modalElement = videoModalRef.current
+    if (!modalElement) return
+
+    if (document.fullscreenElement === modalElement) {
+      await document.exitFullscreen()
+      return
+    }
+
+    await modalElement.requestFullscreen()
   }
 
   return (
@@ -162,19 +206,56 @@ export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRec
                 <h2 className="text-xl font-semibold text-[#0a0a0a]">Sala publica do COS Meet</h2>
                 <p className="mt-2 text-sm text-gray-500">Bem-vindo, {guestName.trim()}. Entre na mesma sala real do organizador pelo COS Meet.</p>
               </div>
+              <button onClick={openVideoModal} className="rounded-2xl bg-[#0a0a0a] px-5 py-3 text-sm font-medium text-white hover:bg-[#1a1a1a]">
+                Abrir sala de video
+              </button>
             </div>
 
             {feedback && <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-4 text-sm text-green-700">{feedback}</div>}
-            <div className="mt-4">
-              <LiveKitMeetingRoom
-                meetingId={meeting.id}
-                slug={slug}
-                participantName={guestName.trim()}
-                role="guest"
-                requestId={requestId ?? undefined}
-              />
-            </div>
           </section>
+        )}
+
+        {joined && (
+          <>
+            <div className={`fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm transition-opacity ${isVideoModalOpen ? "opacity-100" : "pointer-events-none opacity-0"}`} />
+            <div
+              className={`fixed inset-x-0 bottom-0 z-[80] transition-all lg:inset-0 lg:flex lg:items-center lg:justify-center ${isVideoModalOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
+            >
+              <div
+                ref={videoModalRef}
+                className={`w-full overflow-hidden rounded-t-3xl bg-white lg:rounded-3xl ${isVideoModalFullscreen ? "h-[100dvh] rounded-none" : "max-h-[92vh] lg:max-h-[88vh] lg:max-w-6xl"}`}
+              >
+                <div className="flex h-full flex-col p-5 pb-6">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-[#0a0a0a]">Sala de video do COS Meet</h2>
+                      <p className="text-sm text-gray-500">Entre na mesma estrutura da sala interna, sem desconectar ao fechar este modal.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => void toggleVideoModalFullscreen()} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        {isVideoModalFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                        Tela cheia
+                      </button>
+                      <button onClick={closeVideoModal} className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        Fechar
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 min-h-0 flex-1 overflow-hidden">
+                    <LiveKitMeetingRoom
+                      meetingId={meeting.id}
+                      slug={slug}
+                      participantName={guestName.trim()}
+                      role="guest"
+                      requestId={requestId ?? undefined}
+                      className="h-full overflow-hidden"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </main>
