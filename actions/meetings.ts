@@ -918,7 +918,7 @@ export async function getMeetingLiveKitTokenAction({
 
       const hydratedMeeting = hydrateMeeting(resolved.meeting)
       if (hydratedMeeting.meetingType !== "video") {
-        return { error: "Apenas reunioes por video usam o COS Meet ao vivo." }
+        return { error: "Apenas reunioes por video usam a sala do COS Meet." }
       }
 
       const identity = `organizer:${actor.actorId}`
@@ -987,7 +987,7 @@ export async function getMeetingLiveKitTokenAction({
     }
   } catch (error) {
     return {
-      error: error instanceof Error ? error.message : "Nao foi possivel gerar o token do LiveKit.",
+      error: error instanceof Error ? error.message : "Nao foi possivel gerar o acesso da sala.",
     }
   }
 }
@@ -1081,8 +1081,8 @@ export async function syncMeetingParticipantConnectionAction({
 
   const historyDescription =
     status === "connected"
-      ? `${trimmedName} entrou na sala do LiveKit.`
-      : `${trimmedName} saiu da sala do LiveKit.`
+      ? `${trimmedName} entrou na sala do COS Meet.`
+      : `${trimmedName} saiu da sala do COS Meet.`
 
   const timelineLabel =
     status === "connected"
@@ -1169,7 +1169,7 @@ export async function removeMeetingParticipantAction({
     await roomServiceClient.removeParticipant(buildLiveKitRoomName(meetingId), identity)
   } catch (error) {
     return {
-      error: error instanceof Error ? error.message : "Nao foi possivel remover o participante do LiveKit.",
+      error: error instanceof Error ? error.message : "Nao foi possivel remover o participante da sala.",
     }
   }
 

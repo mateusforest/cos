@@ -599,7 +599,7 @@ export function MeetingDetailsView({
             <div>
               <h2 className="text-lg font-semibold text-[#0a0a0a]">Sala de video do COS Meet</h2>
               <p className="text-sm text-gray-500">
-                Abra o modal da sala para entrar no mesmo room real do LiveKit usado pelos convidados aprovados.
+                Abra o modal da sala para entrar na mesma reuniao real usada pelos convidados aprovados.
               </p>
             </div>
             <a href={meeting.publicRoomLink || "#"} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
@@ -625,7 +625,7 @@ export function MeetingDetailsView({
           {copyFeedback && <p className="mt-3 text-sm text-green-600">{copyFeedback}</p>}
 
           <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
-            A sala do COS Meet agora usa o LiveKit com audio e video em tempo real, mantendo o mesmo fluxo de aprovacao da sala publica.
+            A sala do COS Meet agora usa audio e video em tempo real, mantendo o mesmo fluxo de aprovacao da sala publica.
           </div>
         </div>
       )}
@@ -707,7 +707,7 @@ export function MeetingDetailsView({
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-[#0a0a0a]">Sala de video do COS Meet</h2>
-                <p className="text-sm text-gray-500">Entre na sala real do LiveKit para se conectar com os convidados aprovados.</p>
+                <p className="text-sm text-gray-500">Entre na sala real do COS Meet para se conectar com os convidados aprovados.</p>
               </div>
               <button onClick={closeVideoModal} className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                 Fechar

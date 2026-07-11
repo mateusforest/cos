@@ -8,7 +8,7 @@ function requireLiveKitEnv() {
   const apiSecret = process.env.LIVEKIT_API_SECRET?.trim()
 
   if (!url || !apiKey || !apiSecret) {
-    throw new Error("LiveKit nao configurado. Defina LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET.")
+    throw new Error("Sala de reuniao nao configurada. Defina LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET.")
   }
 
   return {

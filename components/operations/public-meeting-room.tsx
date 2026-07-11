@@ -160,7 +160,7 @@ export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRec
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-xl font-semibold text-[#0a0a0a]">Sala publica do COS Meet</h2>
-                <p className="mt-2 text-sm text-gray-500">Bem-vindo, {guestName.trim()}. Entre na mesma sala real do organizador pelo LiveKit.</p>
+                <p className="mt-2 text-sm text-gray-500">Bem-vindo, {guestName.trim()}. Entre na mesma sala real do organizador pelo COS Meet.</p>
               </div>
             </div>
 
