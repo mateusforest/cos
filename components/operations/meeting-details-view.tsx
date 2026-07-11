@@ -172,7 +172,7 @@ export function MeetingDetailsView({
   const [editingItemText, setEditingItemText] = useState("")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [attachmentKind, setAttachmentKind] = useState<MeetingAttachmentKind>("document")
-  const [cameraPermissionRequested, setCameraPermissionRequested] = useState(false)
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false)
   const [callError, setCallError] = useState<string | null>(null)
   const [hasMediaAccess, setHasMediaAccess] = useState(false)
   const [isCallActive, setIsCallActive] = useState(false)
@@ -222,15 +222,6 @@ export function MeetingDetailsView({
     if (!videoRef.current || !streamRef.current) return
     videoRef.current.srcObject = streamRef.current
   }, [hasMediaAccess])
-
-  useEffect(() => {
-    if (meeting?.meetingType !== "video" || cameraPermissionRequested) {
-      return
-    }
-
-    setCameraPermissionRequested(true)
-    void requestMediaAccess()
-  }, [cameraPermissionRequested, meeting?.meetingType])
 
   useEffect(() => {
     return () => {
@@ -312,6 +303,16 @@ export function MeetingDetailsView({
   const endCall = () => {
     stopMediaTracks()
     setFeedback("Chamada encerrada.")
+  }
+
+  const openVideoModal = () => {
+    setIsVideoModalOpen(true)
+  }
+
+  const closeVideoModal = () => {
+    setIsVideoModalOpen(false)
+    stopMediaTracks()
+    setCallError(null)
   }
 
   const save = async (nextStatus?: MeetingStatus) => {
@@ -597,7 +598,7 @@ export function MeetingDetailsView({
             <div>
               <h2 className="text-lg font-semibold text-[#0a0a0a]">Sala de video do COS Meet</h2>
               <p className="text-sm text-gray-500">
-                A sala usa camera e microfone reais deste dispositivo. O link da reuniao continua disponivel para entrada dos participantes.
+                Abra o modal da sala para autorizar camera e microfone, ver o preview local e controlar a chamada sem alterar o link existente.
               </p>
             </div>
             {meeting.meetingLink ? (
@@ -612,75 +613,94 @@ export function MeetingDetailsView({
             ) : null}
           </div>
 
-          {callError && <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{callError}</div>}
-
-          <div className="mt-4 overflow-hidden rounded-3xl border border-gray-100 bg-[#0a0a0a]">
-            <div className="aspect-video w-full">
-              {hasMediaAccess ? (
-                <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-white/80">
-                  Permita acesso a camera e ao microfone para exibir o preview local da reuniao.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => void startCall()}
-                disabled={isCallActive}
-                className="rounded-xl bg-[#0a0a0a] px-4 py-2 text-sm text-white hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Iniciar chamada
-              </button>
-              <button
-                onClick={endCall}
-                disabled={!hasMediaAccess}
-                className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Encerrar chamada
-              </button>
-              <button
-                onClick={() => void requestMediaAccess()}
-                className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              >
-                Solicitar acesso novamente
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => toggleTrack("video")}
-                disabled={!hasMediaAccess}
-                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isCameraEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
-                {isCameraEnabled ? "Camera ligada" : "Camera desligada"}
-              </button>
-              <button
-                onClick={() => toggleTrack("audio")}
-                disabled={!hasMediaAccess}
-                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isMicrophoneEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
-                {isMicrophoneEnabled ? "Microfone ligado" : "Microfone desligado"}
-              </button>
-              <button
-                onClick={endCall}
-                disabled={!hasMediaAccess}
-                className="rounded-xl border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Sair
-              </button>
-            </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={openVideoModal} className="rounded-xl bg-[#0a0a0a] px-4 py-2 text-sm text-white hover:bg-[#1a1a1a]">
+              Abrir sala de video
+            </button>
           </div>
 
           <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
             Esta etapa entrega camera, microfone, preview local e controles reais no navegador. A distribuicao da chamada para outros participantes continua pelo link/sala ja configurado na reuniao.
           </div>
         </div>
+      )}
+
+      {meeting.meetingType === "video" && isVideoModalOpen && (
+        <>
+          <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm" onClick={closeVideoModal} />
+          <div className="fixed inset-x-0 bottom-0 z-[80] max-h-[90vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 lg:inset-0 lg:m-auto lg:h-fit lg:max-h-[85vh] lg:max-w-4xl lg:rounded-3xl">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-[#0a0a0a]">Sala de video do COS Meet</h2>
+                <p className="text-sm text-gray-500">Autorize camera e microfone para exibir o preview local e controlar a chamada desta reuniao.</p>
+              </div>
+              <button onClick={closeVideoModal} className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                Fechar
+              </button>
+            </div>
+
+            {callError && <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{callError}</div>}
+
+            <div className="mt-4 overflow-hidden rounded-3xl border border-gray-100 bg-[#0a0a0a]">
+              <div className="aspect-video w-full">
+                {hasMediaAccess ? (
+                  <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center px-6 text-center text-sm text-white/80">
+                    Clique em &quot;Autorizar camera e microfone&quot; para exibir o preview local desta reuniao.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => void requestMediaAccess()} className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                  Autorizar camera e microfone
+                </button>
+                <button
+                  onClick={() => void startCall()}
+                  disabled={isCallActive}
+                  className="rounded-xl bg-[#0a0a0a] px-4 py-2 text-sm text-white hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Iniciar chamada
+                </button>
+                <button
+                  onClick={endCall}
+                  disabled={!hasMediaAccess}
+                  className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Encerrar chamada
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => toggleTrack("video")}
+                  disabled={!hasMediaAccess}
+                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isCameraEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                  {isCameraEnabled ? "Camera ligada" : "Camera desligada"}
+                </button>
+                <button
+                  onClick={() => toggleTrack("audio")}
+                  disabled={!hasMediaAccess}
+                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isMicrophoneEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                  {isMicrophoneEnabled ? "Microfone ligado" : "Microfone desligado"}
+                </button>
+                <button
+                  onClick={closeVideoModal}
+                  className="rounded-xl border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50"
+                >
+                  Sair
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       {meeting.status === "finished" && (
