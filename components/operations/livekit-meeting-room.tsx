@@ -104,6 +104,7 @@ export function LiveKitMeetingRoom({
   requestId,
   canManage,
   onEnded,
+  className,
 }: {
   meetingId: string
   slug?: string
@@ -112,6 +113,7 @@ export function LiveKitMeetingRoom({
   requestId?: string
   canManage?: boolean
   onEnded?: () => void
+  className?: string
 }) {
   const [room, setRoom] = useState<Room | null>(null)
   const [identity, setIdentity] = useState<string | null>(null)
@@ -440,12 +442,12 @@ export function LiveKitMeetingRoom({
   const gridClass = buildGridClass(participants.length, Boolean(screenShareParticipant))
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${className ?? ""}`}>
       {error && <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
       {feedback && <div className="rounded-2xl border border-green-100 bg-green-50 p-4 text-sm text-green-700">{feedback}</div>}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_320px]">
-        <div className={`mx-auto grid w-full max-w-[1600px] auto-rows-fr gap-4 ${gridClass}`}>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.55fr)_320px]">
+        <div className={`mx-auto grid w-full max-w-[1600px] gap-4 ${gridClass}`}>
           {participants.length === 0 ? (
             <div className="col-span-full flex aspect-video items-center justify-center rounded-3xl border border-gray-100 bg-[#0a0a0a] px-6 text-center text-sm text-white/80">
               Entre na sala para iniciar o audio e video em tempo real.
@@ -462,7 +464,7 @@ export function LiveKitMeetingRoom({
           )}
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 xl:max-h-[inherit] xl:overflow-y-auto xl:pr-1">
           <div className="rounded-2xl border border-gray-100 bg-white p-4">
             <h3 className="text-sm font-semibold text-[#0a0a0a]">Participantes</h3>
             <div className="mt-3 space-y-3">
@@ -636,8 +638,8 @@ function ParticipantTile({
   }, [participant.audioTrack, participant.isLocal, participant.screenShareTrack, participant.videoTrack])
 
   return (
-    <div className={`overflow-hidden rounded-3xl border border-gray-100 bg-[#0a0a0a] ${prioritizeScreenShare ? "min-h-[420px]" : ""}`}>
-      <div className={`relative w-full ${prioritizeScreenShare ? "aspect-video min-h-[420px]" : "aspect-video"}`}>
+    <div className="overflow-hidden rounded-3xl border border-gray-100 bg-[#0a0a0a]">
+      <div className="relative aspect-video w-full">
         {participant.screenShareTrack || participant.videoTrack ? (
           <video
             ref={videoRef}

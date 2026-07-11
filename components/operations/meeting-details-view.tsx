@@ -280,6 +280,17 @@ export function MeetingDetailsView({
     return () => document.removeEventListener("fullscreenchange", syncFullscreenState)
   }, [])
 
+  useEffect(() => {
+    if (!isVideoModalOpen) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isVideoModalOpen])
+
   const openVideoModal = () => {
     setIsVideoModalOpen(true)
   }
@@ -733,37 +744,40 @@ export function MeetingDetailsView({
           >
             <div
               ref={videoModalRef}
-              className={`w-full overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 lg:rounded-3xl ${isVideoModalFullscreen ? "h-full max-h-full rounded-none" : "max-h-[90vh] lg:h-fit lg:max-h-[85vh] lg:max-w-6xl"}`}
+              className={`w-full overflow-hidden rounded-t-3xl bg-white lg:rounded-3xl ${isVideoModalFullscreen ? "h-[100dvh] rounded-none" : "max-h-[92vh] lg:max-h-[88vh] lg:max-w-6xl"}`}
             >
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-[#0a0a0a]">Sala de video do COS Meet</h2>
-                <p className="text-sm text-gray-500">Entre na sala real do COS Meet para se conectar com os convidados aprovados.</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={() => void toggleVideoModalFullscreen()} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                  {isVideoModalFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                  Tela cheia
-                </button>
-                <button onClick={closeVideoModal} className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                  Fechar
-                </button>
-              </div>
-            </div>
+              <div className="flex h-full flex-col p-5 pb-6">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-[#0a0a0a]">Sala de video do COS Meet</h2>
+                    <p className="text-sm text-gray-500">Entre na sala real do COS Meet para se conectar com os convidados aprovados.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => void toggleVideoModalFullscreen()} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                      {isVideoModalFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                      Tela cheia
+                    </button>
+                    <button onClick={closeVideoModal} className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                      Fechar
+                    </button>
+                  </div>
+                </div>
 
-            <div className="mt-4">
-              <LiveKitMeetingRoom
-                meetingId={meeting.id}
-                participantName={profile?.full_name?.trim() || user?.email?.trim() || workspace?.name?.trim() || "Organizador"}
-                role="organizer"
-                canManage={canManageWorkspace}
-                onEnded={async () => {
-                  setIsVideoModalOpen(false)
-                  await loadMeeting({ openAnalysis: true })
-                }}
-              />
+                <div className="mt-4 min-h-0 flex-1 overflow-hidden">
+                  <LiveKitMeetingRoom
+                    meetingId={meeting.id}
+                    participantName={profile?.full_name?.trim() || user?.email?.trim() || workspace?.name?.trim() || "Organizador"}
+                    role="organizer"
+                    canManage={canManageWorkspace}
+                    className="h-full overflow-hidden"
+                    onEnded={async () => {
+                      setIsVideoModalOpen(false)
+                      await loadMeeting({ openAnalysis: true })
+                    }}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
           </div>
         </>
       )}
