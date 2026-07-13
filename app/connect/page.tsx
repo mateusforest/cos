@@ -32,10 +32,7 @@ export default function ConnectHomePage() {
   const displayName = profile?.full_name || user?.email?.split("@")[0] || "sua equipe"
 
   const onboardingCtas = [
-    { icon: Database, label: "Conectar sistema", modal: "system" as const },
-    { icon: FileSpreadsheet, label: "Importar planilha", modal: "spreadsheet" as const },
-    { icon: Mail, label: "Conectar e-mail", modal: "email" as const },
-    { icon: MessageCircle, label: "Conectar WhatsApp", modal: "whatsapp" as const },
+    { icon: Plug, label: "Nova fonte", modal: "source" as const },
     { icon: LifeBuoy, label: "Suporte", action: () => openSupport() },
   ]
 
@@ -94,7 +91,7 @@ export default function ConnectHomePage() {
         <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.15, duration: 0.3 }} className="flex max-w-md flex-wrap justify-center gap-2">
           {hasSources
             ? [
-                { icon: Plug, label: `${summary.totalSources} fontes`, action: () => openModal("system") },
+                { icon: Plug, label: `${summary.totalSources} fontes`, action: () => openModal("source") },
                 { icon: Layers, label: `${summary.totalSections} sessoes`, action: () => openModal("section", { sourceId: sources[0]?.id }) },
                 { icon: Wrench, label: `${summary.totalActions} acoes`, action: () => openModal("action", { sourceId: sources[0]?.id }) },
                 { icon: LifeBuoy, label: "Suporte", action: () => openSupport() },
@@ -200,21 +197,15 @@ export default function ConnectHomePage() {
             </p>
             <div className="space-y-2">
               <button
-                onClick={() => openModal("system")}
+                onClick={() => openModal("source")}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0a0a0a] py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]"
               >
-                <Plug className="h-4 w-4" /> Conectar primeira fonte
+                <Plug className="h-4 w-4" /> Nova fonte
               </button>
               <div className="flex gap-2">
                 <button
-                  onClick={() => openModal("spreadsheet")}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 py-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100"
-                >
-                  <FileSpreadsheet className="h-4 w-4" /> Importar planilha
-                </button>
-                <button
                   onClick={() => openSupport()}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 py-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 py-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100"
                 >
                   <LifeBuoy className="h-4 w-4" /> Suporte
                 </button>

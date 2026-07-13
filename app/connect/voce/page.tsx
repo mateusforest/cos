@@ -510,12 +510,12 @@ export default function ConnectVocePage() {
 
       <Section title="Fontes conectadas" delay={0.24}>
         {connected.length === 0 ? (
-          <button onClick={() => openModal("system")} className="flex w-full items-center gap-4 p-4 transition-colors hover:bg-gray-50">
+          <button onClick={() => openModal("source")} className="flex w-full items-center gap-4 p-4 transition-colors hover:bg-gray-50">
             <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gray-100">
               <Plug className="h-5 w-5 text-gray-600" />
             </div>
             <div className="flex-1 text-left">
-              <div className="font-medium text-[#0a0a0a]">Conectar primeira fonte</div>
+              <div className="font-medium text-[#0a0a0a]">Nova fonte</div>
               <div className="text-sm text-gray-500">Sistemas, planilhas, e-mail ou WhatsApp</div>
             </div>
             <ChevronRight className="h-5 w-5 text-gray-300" />
@@ -531,12 +531,12 @@ export default function ConnectVocePage() {
                 onClick={() => openModal("section", { sourceId: source.id })}
               />
             ))}
-            <button onClick={() => openModal("system")} className="flex w-full items-center gap-4 p-4 transition-colors hover:bg-gray-50">
+            <button onClick={() => openModal("source")} className="flex w-full items-center gap-4 p-4 transition-colors hover:bg-gray-50">
               <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gray-100">
                 <Plug className="h-5 w-5 text-gray-600" />
               </div>
               <div className="flex-1 text-left">
-                <div className="font-medium text-[#0a0a0a]">Conectar nova fonte</div>
+                <div className="font-medium text-[#0a0a0a]">Nova fonte</div>
                 <div className="text-sm text-gray-500">Adicione mais sistemas ou canais</div>
               </div>
               <ChevronRight className="h-5 w-5 text-gray-300" />

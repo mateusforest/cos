@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState, type ChangeEvent } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Database, FileSpreadsheet, Mail, MessageCircle, Users, Paperclip, Camera, Settings2, Wrench, X, ExternalLink, Plus } from "lucide-react"
 import {
@@ -14,34 +14,17 @@ import {
 import { addWorkspaceMemberAction } from "@/actions/workspace"
 import { useConnect } from "@/components/connect/connect-store"
 
-const sourceTemplates = {
-  system: {
-    title: "Conectar fonte",
-    type: "ERP",
-    status: "configured" as ConnectSourceStatus,
-    icon: Database,
-  },
-  spreadsheet: {
-    title: "Importar planilha",
-    type: "Planilha",
-    status: "configured" as ConnectSourceStatus,
-    icon: FileSpreadsheet,
-  },
-  email: {
-    title: "Conectar e-mail",
-    type: "E-mail",
-    status: "not_configured" as ConnectSourceStatus,
-    icon: Mail,
-  },
-  whatsapp: {
-    title: "Conectar WhatsApp",
-    type: "WhatsApp",
-    status: "not_configured" as ConnectSourceStatus,
-    icon: MessageCircle,
-  },
-} as const
-
-const sourceTypes = ["ERP", "CRM", "Planilha", "Banco de dados", "API", "WhatsApp", "E-mail", "Portal interno", "Outro"]
+const sourceTypeOptions = [
+  { value: "ERP", label: "Sistema", icon: Database },
+  { value: "API", label: "API", icon: ExternalLink },
+  { value: "Planilha", label: "Planilha", icon: FileSpreadsheet },
+  { value: "E-mail", label: "E-mail", icon: Mail },
+  { value: "WhatsApp", label: "WhatsApp", icon: MessageCircle },
+  { value: "CRM", label: "CRM", icon: Users },
+  { value: "Banco de dados", label: "Banco", icon: Database },
+  { value: "Portal interno", label: "Portal", icon: Database },
+  { value: "Outro", label: "Outro", icon: Database },
+] as const
 const sourceStatuses: Array<{ value: ConnectSourceStatus; label: string }> = [
   { value: "not_configured", label: "Nao configurado" },
   { value: "configured", label: "Configurado" },
@@ -69,6 +52,16 @@ type SourceFormState = {
   status: ConnectSourceStatus
   accessUrl: string
   notes: string
+  spreadsheetFileName: string
+  spreadsheetSheetName: string
+  emailConnectionType: string
+  emailAddress: string
+  whatsappConnectionType: string
+  whatsappNumber: string
+  whatsappInstance: string
+  credentialsMode: string
+  credentialUser: string
+  credentialSecret: string
 }
 
 type SectionFormState = {
@@ -87,14 +80,48 @@ type TeamFormState = {
   role: "owner" | "admin" | "member"
 }
 
-function defaultSourceForm(type: string, status: ConnectSourceStatus): SourceFormState {
+function defaultSourceForm(type = "", status: ConnectSourceStatus = "configured"): SourceFormState {
   return {
     name: "",
     sourceType: type,
     status,
     accessUrl: "",
     notes: "",
+    spreadsheetFileName: "",
+    spreadsheetSheetName: "",
+    emailConnectionType: "imap_smtp",
+    emailAddress: "",
+    whatsappConnectionType: "cloud_api",
+    whatsappNumber: "",
+    whatsappInstance: "",
+    credentialsMode: "none",
+    credentialUser: "",
+    credentialSecret: "",
   }
+}
+
+function getSourceTypeIcon(sourceType: string) {
+  return sourceTypeOptions.find((option) => option.value === sourceType)?.icon ?? Database
+}
+
+function getSourceInfoText(sourceType: string) {
+  if (sourceType === "Planilha") {
+    return "A fonte sera criada agora e o arquivo selecionado ficara registrado apenas como referencia desta configuracao."
+  }
+
+  if (sourceType === "E-mail") {
+    return "Nesta etapa, o Connect salva o tipo de conexao e os dados do canal, sem ativar a integracao externa ainda."
+  }
+
+  if (sourceType === "WhatsApp") {
+    return "Nesta etapa, o Connect salva a configuracao do canal WhatsApp, sem ativar mensagens externas ainda."
+  }
+
+  if (sourceType === "ERP" || sourceType === "API" || sourceType === "CRM" || sourceType === "Banco de dados" || sourceType === "Portal interno") {
+    return "Nesta etapa, a fonte sera salva de forma real no Connect com URL e credenciais quando informadas, mas a integracao operacional ainda sera ativada depois."
+  }
+
+  return "Nesta etapa, a fonte sera salva de forma real no Connect, mas a integracao operacional ainda sera ativada depois."
 }
 
 export function ConnectModals() {
@@ -118,25 +145,20 @@ export function ConnectModals() {
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const template = modal?.type ? sourceTemplates[modal.type as keyof typeof sourceTemplates] : null
-
   const resetAndClose = () => {
     setError("")
     setIsSubmitting(false)
     closeModal()
   }
 
-  const openSourceTemplate = useMemo(() => {
-    if (!template) return null
-    return template
-  }, [template])
-
   useEffect(() => {
-    if (!openSourceTemplate) return
+    if (modal?.type !== "source") return
 
-    setSourceForm(defaultSourceForm(openSourceTemplate.type, openSourceTemplate.status))
+    const presetType = modal.sourceTypePreset ?? ""
+    const defaultStatus = presetType === "E-mail" || presetType === "WhatsApp" ? "not_configured" : "configured"
+    setSourceForm(defaultSourceForm(presetType, defaultStatus))
     setError("")
-  }, [openSourceTemplate])
+  }, [modal?.type, modal?.sourceTypePreset])
 
   useEffect(() => {
     if (modal?.type !== "mainSystem") return
@@ -150,24 +172,73 @@ export function ConnectModals() {
     setError("")
   }, [mainSystem, modal?.type])
 
-  const syncSourceTemplate = () => {
-    if (!openSourceTemplate) return
+  const handleSourceTypeChange = (nextType: string) => {
+    const nextStatus = nextType === "E-mail" || nextType === "WhatsApp" ? "not_configured" : "configured"
+
+    setSourceForm((current) => ({
+      ...defaultSourceForm(nextType, nextStatus),
+      name: current.name,
+      notes: current.notes,
+    }))
+  }
+
+  const handleSpreadsheetFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+
     setSourceForm((current) => ({
       ...current,
-      sourceType: openSourceTemplate.type,
-      status: openSourceTemplate.status,
+      spreadsheetFileName: file?.name || "",
     }))
   }
 
   const handleCreateSource = async () => {
     setIsSubmitting(true)
     setError("")
+
+    const isSpreadsheet = sourceForm.sourceType === "Planilha"
+    const isEmail = sourceForm.sourceType === "E-mail"
+    const isWhatsapp = sourceForm.sourceType === "WhatsApp"
+    const usesUrlAndCredentials =
+      sourceForm.sourceType === "ERP" ||
+      sourceForm.sourceType === "API" ||
+      sourceForm.sourceType === "CRM" ||
+      sourceForm.sourceType === "Banco de dados" ||
+      sourceForm.sourceType === "Portal interno"
+
+    const nextConfig: Record<string, unknown> = {}
+
+    if (sourceForm.notes.trim()) {
+      nextConfig.notes = sourceForm.notes.trim()
+    }
+
+    if (isSpreadsheet) {
+      nextConfig.uploadFileName = sourceForm.spreadsheetFileName.trim() || null
+      nextConfig.sheetName = sourceForm.spreadsheetSheetName.trim() || null
+    }
+
+    if (isEmail) {
+      nextConfig.connectionType = sourceForm.emailConnectionType
+      nextConfig.emailAddress = sourceForm.emailAddress.trim() || null
+    }
+
+    if (isWhatsapp) {
+      nextConfig.connectionType = sourceForm.whatsappConnectionType
+      nextConfig.phoneNumber = sourceForm.whatsappNumber.trim() || null
+      nextConfig.instanceName = sourceForm.whatsappInstance.trim() || null
+    }
+
+    if (usesUrlAndCredentials) {
+      nextConfig.credentialsMode = sourceForm.credentialsMode
+      nextConfig.credentialUser = sourceForm.credentialUser.trim() || null
+      nextConfig.credentialSecret = sourceForm.credentialSecret.trim() || null
+    }
+
     const result = await createConnectSourceAction({
       name: sourceForm.name,
       sourceType: sourceForm.sourceType,
       status: sourceForm.status,
-      accessUrl: sourceForm.accessUrl,
-      config: sourceForm.notes.trim() ? { notes: sourceForm.notes.trim() } : {},
+      accessUrl: usesUrlAndCredentials ? sourceForm.accessUrl : "",
+      config: nextConfig,
     })
     setIsSubmitting(false)
     if (result.error) {
@@ -176,7 +247,7 @@ export function ConnectModals() {
     }
     await refreshData({ silent: true })
     toast("Fonte criada com sucesso.")
-    setSourceForm(defaultSourceForm(openSourceTemplate?.type ?? "ERP", openSourceTemplate?.status ?? "configured"))
+    setSourceForm(defaultSourceForm())
     resetAndClose()
   }
 
@@ -289,39 +360,58 @@ export function ConnectModals() {
   const renderBody = () => {
     if (!modal?.type) return null
 
-    if (modal.type in sourceTemplates) {
-      const currentTemplate = sourceTemplates[modal.type as keyof typeof sourceTemplates]
+    if (modal.type === "source") {
+      const SourceIcon = getSourceTypeIcon(sourceForm.sourceType)
+      const isSpreadsheet = sourceForm.sourceType === "Planilha"
+      const isEmail = sourceForm.sourceType === "E-mail"
+      const isWhatsapp = sourceForm.sourceType === "WhatsApp"
+      const usesUrlAndCredentials =
+        sourceForm.sourceType === "ERP" ||
+        sourceForm.sourceType === "API" ||
+        sourceForm.sourceType === "CRM" ||
+        sourceForm.sourceType === "Banco de dados" ||
+        sourceForm.sourceType === "Portal interno"
+
       return (
         <>
-          <ModalHeader
-            title={currentTemplate.title}
-            onClose={resetAndClose}
-            icon={currentTemplate.icon}
-          />
+          <ModalHeader title="Nova fonte" onClose={resetAndClose} icon={SourceIcon} />
           <div className="space-y-4">
-            <InfoCard text="Nesta etapa, a fonte sera salva de forma real no Connect, mas a integracao operacional ainda sera ativada depois." />
+            <InfoCard text={getSourceInfoText(sourceForm.sourceType)} />
+            <Field label="Tipo de fonte">
+              <div className="grid grid-cols-3 gap-2">
+                {sourceTypeOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => handleSourceTypeChange(option.value)}
+                    className={`rounded-2xl border px-3 py-3 text-left transition-colors ${
+                      sourceForm.sourceType === option.value
+                        ? "border-[#0a0a0a] bg-[#0a0a0a] text-white"
+                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <option.icon className="mb-2 h-4 w-4" />
+                    <span className="block text-sm font-medium">{option.label}</span>
+                  </button>
+                ))}
+              </div>
+            </Field>
             <Field label="Nome da fonte">
               <input
                 type="text"
                 value={sourceForm.name}
-                onFocus={syncSourceTemplate}
                 onChange={(event) => setSourceForm((current) => ({ ...current, name: event.target.value }))}
-                placeholder="Ex.: Planilha Comercial"
+                placeholder={
+                  isSpreadsheet
+                    ? "Ex.: Planilha Comercial"
+                    : isEmail
+                      ? "Ex.: Caixa de atendimento"
+                      : isWhatsapp
+                        ? "Ex.: WhatsApp Comercial"
+                        : "Ex.: ERP Interno"
+                }
                 className={fieldClassName}
               />
-            </Field>
-            <Field label="Tipo de fonte">
-              <select
-                value={sourceForm.sourceType}
-                onChange={(event) => setSourceForm((current) => ({ ...current, sourceType: event.target.value }))}
-                className={fieldClassName}
-              >
-                {sourceTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
             </Field>
             <Field label="Status inicial">
               <select
@@ -341,15 +431,136 @@ export function ConnectModals() {
                 ))}
               </select>
             </Field>
-            <Field label="URL de acesso">
-              <input
-                type="text"
-                value={sourceForm.accessUrl}
-                onChange={(event) => setSourceForm((current) => ({ ...current, accessUrl: event.target.value }))}
-                placeholder="https://..."
-                className={fieldClassName}
-              />
-            </Field>
+
+            {isSpreadsheet && (
+              <>
+                <Field label="Upload da planilha">
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={handleSpreadsheetFileChange}
+                    className={fieldClassName}
+                  />
+                </Field>
+                <Field label="Aba ou referencia da planilha">
+                  <input
+                    type="text"
+                    value={sourceForm.spreadsheetSheetName}
+                    onChange={(event) => setSourceForm((current) => ({ ...current, spreadsheetSheetName: event.target.value }))}
+                    placeholder="Ex.: Clientes"
+                    className={fieldClassName}
+                  />
+                </Field>
+              </>
+            )}
+
+            {isEmail && (
+              <>
+                <Field label="Tipo de conexao">
+                  <select
+                    value={sourceForm.emailConnectionType}
+                    onChange={(event) => setSourceForm((current) => ({ ...current, emailConnectionType: event.target.value }))}
+                    className={fieldClassName}
+                  >
+                    <option value="imap_smtp">IMAP / SMTP</option>
+                    <option value="google_workspace">Google Workspace</option>
+                    <option value="microsoft_365">Microsoft 365</option>
+                    <option value="other">Outro</option>
+                  </select>
+                </Field>
+                <Field label="E-mail da conta">
+                  <input
+                    type="email"
+                    value={sourceForm.emailAddress}
+                    onChange={(event) => setSourceForm((current) => ({ ...current, emailAddress: event.target.value }))}
+                    placeholder="contato@empresa.com"
+                    className={fieldClassName}
+                  />
+                </Field>
+              </>
+            )}
+
+            {isWhatsapp && (
+              <>
+                <Field label="Modo de conexao">
+                  <select
+                    value={sourceForm.whatsappConnectionType}
+                    onChange={(event) => setSourceForm((current) => ({ ...current, whatsappConnectionType: event.target.value }))}
+                    className={fieldClassName}
+                  >
+                    <option value="cloud_api">Cloud API</option>
+                    <option value="webhook">Webhook</option>
+                    <option value="other">Outro</option>
+                  </select>
+                </Field>
+                <Field label="Numero">
+                  <input
+                    type="text"
+                    value={sourceForm.whatsappNumber}
+                    onChange={(event) => setSourceForm((current) => ({ ...current, whatsappNumber: event.target.value }))}
+                    placeholder="+55 11 99999-9999"
+                    className={fieldClassName}
+                  />
+                </Field>
+                <Field label="Instancia ou identificador">
+                  <input
+                    type="text"
+                    value={sourceForm.whatsappInstance}
+                    onChange={(event) => setSourceForm((current) => ({ ...current, whatsappInstance: event.target.value }))}
+                    placeholder="Opcional"
+                    className={fieldClassName}
+                  />
+                </Field>
+              </>
+            )}
+
+            {usesUrlAndCredentials && (
+              <>
+                <Field label="URL de acesso">
+                  <input
+                    type="text"
+                    value={sourceForm.accessUrl}
+                    onChange={(event) => setSourceForm((current) => ({ ...current, accessUrl: event.target.value }))}
+                    placeholder="https://..."
+                    className={fieldClassName}
+                  />
+                </Field>
+                <Field label="Credenciais">
+                  <select
+                    value={sourceForm.credentialsMode}
+                    onChange={(event) => setSourceForm((current) => ({ ...current, credentialsMode: event.target.value }))}
+                    className={fieldClassName}
+                  >
+                    <option value="none">Sem credenciais</option>
+                    <option value="user_password">Usuario e senha</option>
+                    <option value="api_key">API key / token</option>
+                  </select>
+                </Field>
+                {sourceForm.credentialsMode !== "none" && (
+                  <>
+                    <Field label={sourceForm.credentialsMode === "api_key" ? "Identificador" : "Usuario"}>
+                      <input
+                        type="text"
+                        value={sourceForm.credentialUser}
+                        onChange={(event) => setSourceForm((current) => ({ ...current, credentialUser: event.target.value }))}
+                        placeholder={sourceForm.credentialsMode === "api_key" ? "Opcional" : "Usuario"}
+                        className={fieldClassName}
+                      />
+                    </Field>
+                    <Field label={sourceForm.credentialsMode === "api_key" ? "API key / token" : "Senha"}>
+                      <input
+                        type="password"
+                        value={sourceForm.credentialSecret}
+                        onChange={(event) => setSourceForm((current) => ({ ...current, credentialSecret: event.target.value }))}
+                        placeholder={sourceForm.credentialsMode === "api_key" ? "Cole a chave" : "Digite a senha"}
+                        className={fieldClassName}
+                      />
+                    </Field>
+                  </>
+                )}
+              </>
+            )}
+
             <Field label="Observacoes">
               <textarea
                 value={sourceForm.notes}
@@ -363,7 +574,7 @@ export function ConnectModals() {
             <ModalActions
               onCancel={resetAndClose}
               onConfirm={handleCreateSource}
-              confirmLabel={isSubmitting ? "Salvando..." : "Salvar fonte"}
+              confirmLabel={isSubmitting ? "Salvando..." : "Criar fonte"}
               disabled={isSubmitting}
             />
           </div>

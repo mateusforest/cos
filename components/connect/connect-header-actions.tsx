@@ -177,12 +177,12 @@ export function ConnectHeaderActions() {
                     <button
                       onClick={() => {
                         setSearchOpen(false)
-                        openModal("system")
+                        openModal("source")
                       }}
                       className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-gray-50"
                     >
                       <Plug className="h-4 w-4 text-gray-400" />
-                      <span className="text-sm text-[#0a0a0a]">Conectar primeira fonte</span>
+                      <span className="text-sm text-[#0a0a0a]">Nova fonte</span>
                     </button>
                   )}
                 </div>

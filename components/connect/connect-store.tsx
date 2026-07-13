@@ -63,6 +63,7 @@ export type MainSystem = {
 }
 
 export type ConnectModal =
+  | "source"
   | "system"
   | "spreadsheet"
   | "email"
@@ -77,10 +78,13 @@ export type ConnectModal =
   | "configuredAction"
   | null
 
+type ConnectModalType = Exclude<ConnectModal, null>
+
 type ConnectModalState = {
   type: ConnectModal
   sourceId?: string
   actionId?: string
+  sourceTypePreset?: string
 }
 
 type ConnectContextValue = {
@@ -100,7 +104,7 @@ type ConnectContextValue = {
   mainSystem: MainSystem | null
   setMainSystem: (system: MainSystem) => Promise<{ error?: string }>
   modal: ConnectModalState | null
-  openModal: (modal: ConnectModal, payload?: { sourceId?: string; actionId?: string }) => void
+  openModal: (modal: ConnectModalType, payload?: { sourceId?: string; actionId?: string }) => void
   closeModal: () => void
   selectedSource: ConnectSource | null
   selectedAction: ConnectAction | null
@@ -201,11 +205,20 @@ export function ConnectProvider({ children }: { children: ReactNode }) {
     [],
   )
 
-  const openModal = useCallback((type: ConnectModal, payload?: { sourceId?: string; actionId?: string }) => {
+  const openModal = useCallback((type: ConnectModalType, payload?: { sourceId?: string; actionId?: string }) => {
+    const presetByLegacyType: Record<string, string> = {
+      system: "ERP",
+      spreadsheet: "Planilha",
+      email: "E-mail",
+      whatsapp: "WhatsApp",
+    }
+    const normalizedType: ConnectModalType = type === "system" || type === "spreadsheet" || type === "email" || type === "whatsapp" ? "source" : type
+
     setModal({
-      type,
+      type: normalizedType,
       sourceId: payload?.sourceId,
       actionId: payload?.actionId,
+      sourceTypePreset: presetByLegacyType[type],
     })
   }, [])
 

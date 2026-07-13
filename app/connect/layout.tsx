@@ -145,14 +145,14 @@ function ConnectActionSheet() {
 
                 <button
                   onClick={() => {
-                    openModal("system")
+                    openModal("source")
                     close()
                   }}
                   className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl border-t border-gray-100 py-3 transition-colors hover:bg-gray-50 active:bg-gray-100"
                 >
                   <Plug className="h-4 w-4 text-gray-500" />
                   <span className="text-sm font-medium text-gray-600">
-                    {sources.length > 0 ? "Adicionar fonte" : "Conectar fonte"}
+                    {sources.length > 0 ? "Nova fonte" : "Nova fonte"}
                   </span>
                 </button>
               </div>
@@ -274,11 +274,11 @@ function DesktopSidebar() {
           />
         </div>
         <button
-          onClick={() => openModal("system")}
+          onClick={() => openModal("source")}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#0a0a0a] py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]"
         >
           <Plug className="h-4 w-4" />
-          Conectar fonte
+          Nova fonte
         </button>
       </div>
 
