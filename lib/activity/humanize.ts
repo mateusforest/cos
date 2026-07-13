@@ -33,6 +33,9 @@ const activityLabels: Record<string, string> = {
   connect_action_created: "Acao criada",
   connect_action_updated: "Acao atualizada",
   connect_action_deleted: "Acao removida",
+  connect_action_executed: "Acao executada",
+  connect_action_execution_failed: "Falha na execucao da acao",
+  connect_action_execution_blocked: "Execucao da acao bloqueada",
 }
 
 function detectFinancialLabel(description: string | null | undefined, labels: { income: string; expense: string; fallback: string }) {

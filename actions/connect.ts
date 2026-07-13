@@ -105,6 +105,8 @@ type OpenAiMessageRecord = {
   content: string
 }
 
+type ConnectMappedAction = ReturnType<typeof mapSourceRow>["actions"][number]
+
 function normalizeSourceStatus(status?: string): ConnectSourceStatus {
   const normalized = (status || "").trim().toLowerCase()
   if (normalized === "connected") return "connected"
@@ -275,6 +277,66 @@ function tryReadConnectOutputText(payload: unknown) {
   }
 
   return null
+}
+
+function normalizeConnectText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+}
+
+function detectConnectActionRequest(message: string, actions: ConnectMappedAction[]) {
+  const normalizedMessage = normalizeConnectText(message)
+
+  const matchedAction =
+    actions.find((action) => {
+      const normalizedName = normalizeConnectText(action.name)
+
+      return Boolean(normalizedName) && (
+        normalizedMessage.includes(normalizedName) ||
+        normalizedName.includes(normalizedMessage)
+      )
+    }) ?? null
+
+  if (!matchedAction) {
+    return null
+  }
+
+  return matchedAction
+}
+
+function buildSupportedConnectReadActionResult({
+  source,
+  section,
+  action,
+}: {
+  source: ReturnType<typeof mapSourceRow>
+  section: {
+    id: string
+    sourceId: string
+    name: string
+    description: string
+    config: Record<string, unknown>
+    createdAt: string | null
+  }
+  action: ConnectMappedAction
+}) {
+  const sectionsLabel =
+    source.sections.length > 0
+      ? source.sections.map((item) => item.name).join(", ")
+      : "nenhuma sessao cadastrada"
+
+  const accessLabel = source.accessUrl ? `URL configurada: ${source.accessUrl}.` : "A fonte ainda nao possui URL configurada."
+
+  return [
+    `Acao executada: ${action.name}.`,
+    `Resultado da leitura interna da fonte ${source.name}: tipo ${source.sourceType}, status ${source.statusLabel}, ${source.sectionsCount} sessao(oes) e ${source.actionsCount} acao(oes) configurada(s).`,
+    `Sessao atual: ${section.name}${section.description ? ` - ${section.description}` : ""}.`,
+    `Sessoes da fonte: ${sectionsLabel}.`,
+    accessLabel,
+  ].join(" ")
 }
 
 async function getConnectActor() {
@@ -1574,6 +1636,7 @@ export async function sendConnectConversationMessageAction({
       config: resolved.section.config ?? {},
       createdAt: resolved.section.created_at,
     }
+  const requestedAction = detectConnectActionRequest(trimmedMessage, source.actions)
 
   const area = buildConnectConversationArea(sourceId, sectionId)
   const title = buildConnectConversationTitle(resolved.source.name, resolved.section.name)
@@ -1611,6 +1674,136 @@ export async function sendConnectConversationMessageAction({
 
   if ("error" in userPersist) {
     return { error: "Nao foi possivel salvar sua mensagem nesta sessao." }
+  }
+
+  if (requestedAction) {
+    if (requestedAction.actionType === "read") {
+      const actionResult = buildSupportedConnectReadActionResult({
+        source,
+        section,
+        action: requestedAction,
+      })
+
+      await logConnectActivity({
+        adminClient: actor.adminClient,
+        workspaceId: actor.workspaceId,
+        userId: actor.actorId,
+        action: "connect_action_executed",
+        description: `acao executada no chat: ${requestedAction.name}`,
+      })
+
+      const assistantPersist = await saveConnectConversationMessage({
+        actor,
+        conversationId: conversation.id,
+        role: "assistant",
+        content: actionResult,
+        metadata: {
+          area: "connect",
+          conversation_area: area,
+          sourceId,
+          sectionId,
+          sourceName: source.name,
+          sectionName: section.name,
+          sourceType: source.sourceType,
+          engine: "connect_chat_action",
+          executedActionId: requestedAction.id,
+          executedActionName: requestedAction.name,
+          executedActionType: requestedAction.actionType,
+          executionStatus: "success",
+        },
+      })
+
+      if ("error" in assistantPersist) {
+        await logConnectActivity({
+          adminClient: actor.adminClient,
+          workspaceId: actor.workspaceId,
+          userId: actor.actorId,
+          action: "connect_action_execution_failed",
+          description: `falha ao registrar execucao da acao: ${requestedAction.name}`,
+        })
+
+        return { error: "A acao foi identificada, mas nao consegui registrar a resposta no chat." }
+      }
+
+      const messagesResult = await getConnectConversationMessagesAction({
+        sourceId,
+        sectionId,
+      })
+
+      if ("error" in messagesResult) {
+        return {
+          success: true,
+          conversationId: conversation.id,
+          conversationArea: area,
+          messages: [] as ConnectChatMessage[],
+        }
+      }
+
+      return {
+        success: true,
+        conversationId: conversation.id,
+        conversationArea: area,
+        messages: messagesResult.messages,
+      }
+    }
+
+    await logConnectActivity({
+      adminClient: actor.adminClient,
+      workspaceId: actor.workspaceId,
+      userId: actor.actorId,
+      action: "connect_action_execution_blocked",
+      description: `acao ainda nao suportada no chat: ${requestedAction.name}`,
+    })
+
+    const blockedMessage =
+      `A acao ${requestedAction.name} foi identificada, mas o chat do Connect ainda executa apenas acoes internas do tipo leitura. ` +
+      `Esta acao esta configurada como ${requestedAction.actionType} e ainda nao pode ser executada daqui.`
+
+    const assistantPersist = await saveConnectConversationMessage({
+      actor,
+      conversationId: conversation.id,
+      role: "assistant",
+      content: blockedMessage,
+      metadata: {
+        area: "connect",
+        conversation_area: area,
+        sourceId,
+        sectionId,
+        sourceName: source.name,
+        sectionName: section.name,
+        sourceType: source.sourceType,
+        engine: "connect_chat_action",
+        executedActionId: requestedAction.id,
+        executedActionName: requestedAction.name,
+        executedActionType: requestedAction.actionType,
+        executionStatus: "blocked",
+      },
+    })
+
+    if ("error" in assistantPersist) {
+      return { error: "A acao foi identificada, mas nao consegui registrar o retorno no chat." }
+    }
+
+    const messagesResult = await getConnectConversationMessagesAction({
+      sourceId,
+      sectionId,
+    })
+
+    if ("error" in messagesResult) {
+      return {
+        success: true,
+        conversationId: conversation.id,
+        conversationArea: area,
+        messages: [] as ConnectChatMessage[],
+      }
+    }
+
+    return {
+      success: true,
+      conversationId: conversation.id,
+      conversationArea: area,
+      messages: messagesResult.messages,
+    }
   }
 
   const historyResult = await getConnectConversationHistoryRows({
