@@ -1,9 +1,8 @@
 "use client"
 
 import Image from "next/image"
-import Link from "next/link"
 import { motion } from "framer-motion"
-import { Mic, Send, Database, FileSpreadsheet, Mail, MessageCircle, Plug, LifeBuoy, Wrench, Layers } from "lucide-react"
+import { Clock3, Mic, Send, Database, FileSpreadsheet, Mail, MessageCircle, Plug, LifeBuoy } from "lucide-react"
 import { useState } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { useConnect } from "@/components/connect/connect-store"
@@ -23,6 +22,39 @@ const sourceTypeIcon: Record<string, typeof Database> = {
   "Portal interno": Database,
 }
 
+function readSourceArray(config: unknown, key: string) {
+  if (!config || typeof config !== "object") return []
+
+  const value = (config as Record<string, unknown>)[key]
+
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : []
+}
+
+function buildSourceSummary(config: unknown) {
+  const preparedSections = readSourceArray(config, "preparedSections")
+
+  if (preparedSections.length === 0) {
+    return "O COS esta organizando esta fonte para liberar a conversa."
+  }
+
+  const preview = preparedSections.slice(0, 2).join(" e ")
+  const suffix = preparedSections.length > 2 ? ` e mais ${preparedSections.length - 2}` : ""
+
+  return `Identificado: ${preview}${suffix}.`
+}
+
+function buildSuggestedQuestions(sourceName: string, config: unknown) {
+  const preparedSections = readSourceArray(config, "preparedSections")
+
+  if (preparedSections.length === 0) {
+    return [`O que ja foi identificado em ${sourceName}?`]
+  }
+
+  return preparedSections.slice(0, 2).map((section) => `O que voce encontrou em ${section}?`)
+}
+
 export default function ConnectHomePage() {
   const { user, profile } = useAuth()
   const { sources, summary, hasSources, openModal, toast, isLoading } = useConnect()
@@ -30,6 +62,8 @@ export default function ConnectHomePage() {
   const [message, setMessage] = useState("")
 
   const displayName = profile?.full_name || user?.email?.split("@")[0] || "sua equipe"
+  const readySources = sources.filter((source) => source.status === "configured").length
+  const preparingSources = Math.max(summary.totalSources - readySources, 0)
 
   const onboardingCtas = [
     { icon: Plug, label: "Nova fonte", modal: "source" as const },
@@ -38,7 +72,7 @@ export default function ConnectHomePage() {
 
   const handleSend = () => {
     if (!message.trim()) return
-    toast("Esta conversa ainda nao executa integracoes externas. Use as fontes, sessoes e acoes para preparar o Connect.")
+    toast("Abra uma fonte pronta para conversar com o COS sobre a sua operacao.")
     setMessage("")
   }
 
@@ -53,7 +87,7 @@ export default function ConnectHomePage() {
 
         <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05, duration: 0.3 }} className="mb-5 text-center">
           <h1 className="mb-1 text-2xl font-semibold text-[#0a0a0a]">{`Ola, ${displayName}`}</h1>
-          <p className="text-sm text-gray-500">Conecte fontes, organize sessoes e prepare a operacao do Connect.</p>
+          <p className="text-sm text-gray-500">Conecte suas fontes e deixe o COS organizar a operacao para voce.</p>
         </motion.div>
 
         <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1, duration: 0.3 }} className="mb-4 w-full max-w-sm">
@@ -63,12 +97,12 @@ export default function ConnectHomePage() {
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && handleSend()}
-              placeholder="Converse com seus sistemas..."
+              placeholder="Converse com sua operacao..."
               className="w-full rounded-full bg-transparent px-5 py-3 pr-20 text-sm focus:outline-none"
             />
             <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
               <button
-                onClick={() => toast("O ditado por voz sera habilitado quando a integracao desta fonte estiver ativa.")}
+                onClick={() => toast("Escolha uma fonte preparada para continuar por voz.")}
                 className="p-2 text-gray-400 transition-colors hover:text-gray-600"
                 aria-label="Falar"
               >
@@ -84,7 +118,7 @@ export default function ConnectHomePage() {
             </div>
           </div>
           <p className="mt-3 text-center text-xs leading-5 text-gray-500">
-            O Connect ja salva fontes, sessoes e acoes. A execucao em sistemas terceiros ainda nao acontece por este campo.
+            Escolha uma fonte preparada abaixo para continuar a conversa com contexto.
           </p>
         </motion.div>
 
@@ -92,8 +126,8 @@ export default function ConnectHomePage() {
           {hasSources
             ? [
                 { icon: Plug, label: `${summary.totalSources} fontes`, action: () => openModal("source") },
-                { icon: Layers, label: `${summary.totalSections} sessoes` },
-                { icon: Wrench, label: `${summary.totalActions} acoes` },
+                { icon: MessageCircle, label: `${readySources} prontas` },
+                { icon: Clock3, label: `${preparingSources} em preparo` },
                 { icon: LifeBuoy, label: "Suporte", action: () => openSupport() },
               ].map((item) => (
                 <button
@@ -145,6 +179,7 @@ export default function ConnectHomePage() {
             <div className="grid gap-2 sm:grid-cols-2">
               {sources.map((source) => {
                 const Icon = sourceTypeIcon[source.sourceType] ?? Plug
+
                 return (
                   <div key={source.id} className="rounded-xl border border-gray-100 p-3">
                     <div className="flex items-center gap-2.5">
@@ -153,31 +188,37 @@ export default function ConnectHomePage() {
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-[#0a0a0a]">{source.name}</span>
-                        <span className="block text-[11px] text-gray-400">
-                          {source.sourceType} · {source.statusLabel}
-                        </span>
+                        <span className="block text-[11px] text-gray-400">{source.statusLabel}</span>
                       </span>
                     </div>
-                     <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                       <span>{source.sectionsCount} sessoes</span>
-                       <span>{source.actionsCount} acoes</span>
-                     </div>
-                     <div className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                       {source.status === "configured"
-                         ? "Fonte pronta para conversar."
-                         : "O COS ainda esta preparando esta fonte."}
-                     </div>
-                     <div className="mt-2 flex justify-end">
-                       <button
-                         onClick={() => openModal("deleteSource", { sourceId: source.id })}
-                         className="text-xs font-medium text-gray-500 transition-colors hover:text-gray-700"
-                       >
-                         Remover fonte
-                       </button>
-                     </div>
-                   </div>
-                 )
-               })}
+                    <div className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                      {source.status === "configured"
+                        ? "Fonte pronta para conversar."
+                        : "O COS ainda esta preparando esta fonte."}
+                    </div>
+                    <div className="mt-3 rounded-lg border border-gray-100 bg-white px-3 py-3">
+                      <p className="text-xs font-medium text-[#0a0a0a]">{buildSourceSummary(source.config)}</p>
+                      {source.status === "configured" && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {buildSuggestedQuestions(source.name, source.config).map((question) => (
+                            <span key={question} className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] text-gray-600">
+                              {question}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        onClick={() => openModal("deleteSource", { sourceId: source.id })}
+                        className="text-xs font-medium text-gray-500 transition-colors hover:text-gray-700"
+                      >
+                        Remover fonte
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         ) : (
@@ -187,7 +228,7 @@ export default function ConnectHomePage() {
             </div>
             <h3 className="mb-1 text-sm font-semibold text-[#0a0a0a]">O COS Connect ainda nao possui fontes conectadas.</h3>
             <p className="mb-4 text-xs leading-relaxed text-gray-500">
-              Crie sua primeira fonte para organizar sessoes, acoes e conversas operacionais do Connect.
+              Crie sua primeira fonte para o COS entender sua operacao e preparar a conversa.
             </p>
             <div className="space-y-2">
               <button

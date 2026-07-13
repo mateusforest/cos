@@ -51,6 +51,29 @@ const sourceTypeIcon: Record<string, typeof Database> = {
   "Portal interno": Database,
 }
 
+function readPreparedEntries(config: unknown) {
+  if (!config || typeof config !== "object") return []
+
+  const value = (config as Record<string, unknown>).preparedSections
+
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : []
+}
+
+function buildSourceContext(config: unknown) {
+  const entries = readPreparedEntries(config)
+
+  if (entries.length === 0) {
+    return "O COS esta preparando esta fonte."
+  }
+
+  const preview = entries.slice(0, 2).join(" e ")
+  const suffix = entries.length > 2 ? ` e mais ${entries.length - 2}` : ""
+
+  return `Identificado: ${preview}${suffix}.`
+}
+
 const FABContext = createContext<{ isOpen: boolean; setIsOpen: (value: boolean) => void }>({
   isOpen: false,
   setIsOpen: () => {},
@@ -121,7 +144,7 @@ function ConnectActionSheet() {
                 {dynamicActions.length > 0 && (
                   <>
                     <div className="px-2 pb-1 pt-3">
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Acoes configuradas</span>
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Consultas prontas</span>
                     </div>
                     <div className="grid grid-cols-4 gap-1">
                       {dynamicActions.map((action) => (
@@ -307,8 +330,7 @@ function DesktopSidebar() {
             return (
               <button
                 key={source.id}
-                onClick={() => openModal("section", { sourceId: source.id })}
-                className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-gray-50"
+                className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left"
               >
                 <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100">
                   <Icon className="h-4 w-4 text-gray-600" />
@@ -316,11 +338,11 @@ function DesktopSidebar() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-[#0a0a0a]">{source.name}</span>
                   <span className="block text-xs text-gray-400">
-                    {source.sourceType} · {source.sectionsCount} sessoes
+                    {source.statusLabel}
                   </span>
                 </span>
                 <span className="flex-shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">
-                  {source.statusLabel}
+                  {source.sourceType}
                 </span>
               </button>
             )
@@ -396,12 +418,12 @@ function DesktopContextPanel() {
             <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
               <div className="grid grid-cols-2 gap-3">
                 <Metric label="Fontes" value={summary.totalSources} />
-                <Metric label="Sessoes" value={summary.totalSections} />
-                <Metric label="Acoes" value={summary.totalActions} />
-                <Metric label="Configuradas" value={summary.configuredSources} />
+                <Metric label="Prontas" value={summary.configuredSources} />
+                <Metric label="Em preparo" value={Math.max(summary.totalSources - summary.configuredSources, 0)} />
+                <Metric label="Em conversa" value={sources.filter((source) => source.status === "connected").length} />
               </div>
             </div>
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Fontes configuradas</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Fontes acompanhadas</span>
             {sources.map((source) => {
               const Icon = sourceTypeIcon[source.sourceType] ?? Plug
               return (
@@ -412,15 +434,11 @@ function DesktopContextPanel() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium text-[#0a0a0a]">{source.name}</span>
-                      <span className="block text-xs text-gray-400">
-                        {source.sourceType} · {source.statusLabel}
-                      </span>
+                      <span className="block text-xs text-gray-400">{source.statusLabel}</span>
                     </span>
                   </div>
                   <div className="mt-3 rounded-lg bg-white px-3 py-2 text-xs text-gray-600">
-                    {source.status === "configured"
-                      ? "Fonte pronta para conversar."
-                      : "O COS ainda esta preparando esta fonte."}
+                    {buildSourceContext(source.config)}
                   </div>
                 </div>
               )

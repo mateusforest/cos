@@ -130,11 +130,11 @@ function normalizeActionType(actionType?: string): ConnectActionType {
 }
 
 function toStatusLabel(status: ConnectSourceStatus) {
-  if (status === "configured") return "Configurado"
-  if (status === "connected") return "Conectado"
+  if (status === "configured") return "Pronta para conversar"
+  if (status === "connected") return "Em conversa"
   if (status === "error") return "Erro"
-  if (status === "paused") return "Pausado"
-  return "Nao configurado"
+  if (status === "paused") return "Em pausa"
+  return "Em preparacao"
 }
 
 function normalizePreparationTokens(value: string) {

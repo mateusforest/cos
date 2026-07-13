@@ -3,7 +3,7 @@
 import Image from "next/image"
 import { useEffect, useState, type ChangeEvent } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Database, FileSpreadsheet, Mail, MessageCircle, Users, Paperclip, Camera, Settings2, Wrench, X, ExternalLink, Plus } from "lucide-react"
+import { Check, Database, FileSpreadsheet, Mail, MessageCircle, Users, Paperclip, Camera, Settings2, Wrench, X, ExternalLink, Plus } from "lucide-react"
 import {
   createConnectActionAction,
   createConnectSectionAction,
@@ -43,6 +43,8 @@ const fieldClassName =
 
 const COS_LOGO =
   "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/COS%20LOGO%20%281%29-mBU7xqdIZoWP3indGVxJrDFLu8urZH.png"
+
+const preparationSteps = ["Identificar", "Analisar", "Organizar", "Finalizar"] as const
 
 type SourceFormState = {
   name: string
@@ -104,22 +106,22 @@ function getSourceTypeIcon(sourceType: string) {
 
 function getSourceInfoText(sourceType: string) {
   if (sourceType === "Planilha") {
-    return "A fonte sera criada agora e o arquivo selecionado ficara registrado apenas como referencia desta configuracao."
+    return "O COS vai identificar as areas principais da planilha e deixar a fonte pronta para conversar."
   }
 
   if (sourceType === "E-mail") {
-    return "Nesta etapa, o Connect salva o tipo de conexao e os dados do canal, sem ativar a integracao externa ainda."
+    return "O COS vai organizar a entrada deste canal para voce conversar com mais contexto."
   }
 
   if (sourceType === "WhatsApp") {
-    return "Nesta etapa, o Connect salva a configuracao do canal WhatsApp, sem ativar mensagens externas ainda."
+    return "O COS vai preparar este canal para leitura operacional e acompanhamento das conversas."
   }
 
   if (sourceType === "ERP" || sourceType === "API" || sourceType === "CRM" || sourceType === "Banco de dados" || sourceType === "Portal interno") {
-    return "Nesta etapa, a fonte sera salva de forma real no Connect com URL e credenciais quando informadas, mas a integracao operacional ainda sera ativada depois."
+    return "O COS vai ler os dados informados, organizar a operacao e preparar esta fonte para consulta."
   }
 
-  return "Nesta etapa, a fonte sera salva de forma real no Connect, mas a integracao operacional ainda sera ativada depois."
+  return "O COS vai organizar esta fonte e deixar um ponto de partida claro para sua operacao."
 }
 
 export function ConnectModals() {
@@ -142,10 +144,12 @@ export function ConnectModals() {
   const [mainSystemForm, setMainSystemForm] = useState({ name: "", type: "Sistema", url: "", notes: "" })
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [preparationStepIndex, setPreparationStepIndex] = useState(0)
 
   const resetAndClose = () => {
     setError("")
     setIsSubmitting(false)
+    setPreparationStepIndex(0)
     closeModal()
   }
 
@@ -157,6 +161,19 @@ export function ConnectModals() {
     setSourceForm(defaultSourceForm(presetType, defaultStatus))
     setError("")
   }, [modal?.type, modal?.sourceTypePreset])
+
+  useEffect(() => {
+    if (!isSubmitting || modal?.type !== "source") {
+      setPreparationStepIndex(0)
+      return
+    }
+
+    const interval = setInterval(() => {
+      setPreparationStepIndex((current) => (current < preparationSteps.length - 1 ? current + 1 : current))
+    }, 900)
+
+    return () => clearInterval(interval)
+  }, [isSubmitting, modal?.type])
 
   useEffect(() => {
     if (modal?.type !== "mainSystem") return
@@ -387,6 +404,29 @@ export function ConnectModals() {
                 <p className="mt-2 text-sm leading-relaxed text-gray-500">
                   Estamos analisando a fonte e organizando tudo para voce.
                 </p>
+                <div className="mt-6 overflow-hidden rounded-full bg-white">
+                  <motion.div
+                    className="h-2 rounded-full bg-[#0a0a0a]"
+                    animate={{ width: `${((preparationStepIndex + 1) / preparationSteps.length) * 100}%` }}
+                  />
+                </div>
+                <div className="mt-5 space-y-2 text-left">
+                  {preparationSteps.map((step, index) => {
+                    const isDone = index <= preparationStepIndex
+                    return (
+                      <div key={step} className="flex items-center gap-2 text-sm">
+                        <span
+                          className={`flex h-6 w-6 items-center justify-center rounded-full border ${
+                            isDone ? "border-[#0a0a0a] bg-[#0a0a0a] text-white" : "border-gray-200 bg-white text-gray-300"
+                          }`}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </span>
+                        <span className={isDone ? "text-[#0a0a0a]" : "text-gray-400"}>{step}</span>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             ) : (
               <>
