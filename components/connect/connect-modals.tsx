@@ -46,6 +46,12 @@ const COS_LOGO =
 
 const preparationSteps = ["Identificar", "Analisar", "Organizar", "Finalizar"] as const
 
+type SpreadsheetImportPayload = {
+  fileName: string
+  mimeType: string
+  base64: string
+}
+
 type SourceFormState = {
   name: string
   sourceType: string
@@ -124,6 +130,27 @@ function getSourceInfoText(sourceType: string) {
   return "O COS vai organizar esta fonte e deixar um ponto de partida claro para sua operacao."
 }
 
+function readFileAsBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : ""
+      const base64 = result.includes(",") ? result.split(",")[1] : ""
+
+      if (!base64) {
+        reject(new Error("Arquivo sem conteudo legivel."))
+        return
+      }
+
+      resolve(base64)
+    }
+
+    reader.onerror = () => reject(new Error("Nao foi possivel ler o arquivo selecionado."))
+    reader.readAsDataURL(file)
+  })
+}
+
 export function ConnectModals() {
   const {
     modal,
@@ -145,11 +172,13 @@ export function ConnectModals() {
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [preparationStepIndex, setPreparationStepIndex] = useState(0)
+  const [spreadsheetImportPayload, setSpreadsheetImportPayload] = useState<SpreadsheetImportPayload | null>(null)
 
   const resetAndClose = () => {
     setError("")
     setIsSubmitting(false)
     setPreparationStepIndex(0)
+    setSpreadsheetImportPayload(null)
     closeModal()
   }
 
@@ -159,6 +188,7 @@ export function ConnectModals() {
     const presetType = modal.sourceTypePreset ?? ""
     const defaultStatus = presetType === "E-mail" || presetType === "WhatsApp" ? "not_configured" : "configured"
     setSourceForm(defaultSourceForm(presetType, defaultStatus))
+    setSpreadsheetImportPayload(null)
     setError("")
   }, [modal?.type, modal?.sourceTypePreset])
 
@@ -195,15 +225,33 @@ export function ConnectModals() {
       name: current.name,
       notes: current.notes,
     }))
+    setSpreadsheetImportPayload(null)
   }
 
-  const handleSpreadsheetFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleSpreadsheetFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
 
     setSourceForm((current) => ({
       ...current,
       spreadsheetFileName: file?.name || "",
     }))
+
+    setSpreadsheetImportPayload(null)
+
+    if (!file) {
+      return
+    }
+
+    try {
+      const base64 = await readFileAsBase64(file)
+      setSpreadsheetImportPayload({
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        base64,
+      })
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Nao foi possivel ler a planilha selecionada.")
+    }
   }
 
   const handleCreateSource = async () => {
@@ -227,8 +275,15 @@ export function ConnectModals() {
     }
 
     if (isSpreadsheet) {
+      if (!spreadsheetImportPayload) {
+        setIsSubmitting(false)
+        setError("Selecione um arquivo CSV ou XLSX para preparar esta fonte.")
+        return
+      }
+
       nextConfig.uploadFileName = sourceForm.spreadsheetFileName.trim() || null
       nextConfig.sheetName = sourceForm.spreadsheetSheetName.trim() || null
+      nextConfig.spreadsheetImport = spreadsheetImportPayload
     }
 
     if (isEmail) {

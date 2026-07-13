@@ -3,6 +3,7 @@
 import { canManageWorkspace, getUserAccessForUser } from "@/lib/auth"
 import { humanizeActivityAction } from "@/lib/activity/humanize"
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server"
+import * as XLSX from "xlsx"
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 const connectOpenAiModel = "gpt-5-mini"
@@ -106,6 +107,18 @@ type OpenAiMessageRecord = {
 }
 
 type ConnectMappedAction = ReturnType<typeof mapSourceRow>["actions"][number]
+type SpreadsheetRowValue = string | number | boolean | null
+type SpreadsheetStoredRow = Record<string, SpreadsheetRowValue>
+type SpreadsheetStoredSheet = {
+  name: string
+  columns: string[]
+  rows: SpreadsheetStoredRow[]
+}
+type SpreadsheetStoredData = {
+  fileName: string
+  totalRows: number
+  sheets: SpreadsheetStoredSheet[]
+}
 
 function normalizeSourceStatus(status?: string): ConnectSourceStatus {
   const normalized = (status || "").trim().toLowerCase()
@@ -152,6 +165,315 @@ function stripFileExtension(fileName: string) {
   return fileName.replace(/\.[^/.]+$/, "").trim()
 }
 
+function normalizeSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function sanitizeSpreadsheetCell(value: unknown): SpreadsheetRowValue {
+  if (value === null || value === undefined || value === "") return null
+  if (typeof value === "number" || typeof value === "boolean") return value
+  if (value instanceof Date) return value.toISOString()
+  return String(value).trim()
+}
+
+function readSpreadsheetDataFromConfig(config: Record<string, unknown>) {
+  const value = config.spreadsheetData
+
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const fileName = typeof record.fileName === "string" ? record.fileName : ""
+  const sheetsValue = Array.isArray(record.sheets) ? record.sheets : []
+  const sheets = sheetsValue
+    .map((sheet) => {
+      if (!sheet || typeof sheet !== "object") return null
+      const sheetRecord = sheet as Record<string, unknown>
+      const name = typeof sheetRecord.name === "string" ? sheetRecord.name : ""
+      const columns = Array.isArray(sheetRecord.columns)
+        ? sheetRecord.columns.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        : []
+      const rows = Array.isArray(sheetRecord.rows)
+        ? sheetRecord.rows.filter((item): item is SpreadsheetStoredRow => Boolean(item) && typeof item === "object")
+        : []
+
+      if (!name || columns.length === 0) {
+        return null
+      }
+
+      return {
+        name,
+        columns,
+        rows,
+      } satisfies SpreadsheetStoredSheet
+    })
+    .filter((sheet): sheet is SpreadsheetStoredSheet => Boolean(sheet))
+
+  if (!fileName || sheets.length === 0) {
+    return null
+  }
+
+  return {
+    fileName,
+    totalRows: sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0),
+    sheets,
+  } satisfies SpreadsheetStoredData
+}
+
+function parseSpreadsheetImportConfig(config: Record<string, unknown>) {
+  const importValue = config.spreadsheetImport
+
+  if (!importValue || typeof importValue !== "object") {
+    return { error: "Selecione um arquivo CSV ou XLSX para importar a planilha." }
+  }
+
+  const importRecord = importValue as Record<string, unknown>
+  const fileName = typeof importRecord.fileName === "string" ? importRecord.fileName.trim() : ""
+  const base64 = typeof importRecord.base64 === "string" ? importRecord.base64.trim() : ""
+
+  if (!fileName || !base64) {
+    return { error: "Nao foi possivel ler o arquivo da planilha. Tente selecionar o arquivo novamente." }
+  }
+
+  try {
+    const persistedConfig = { ...config }
+    delete persistedConfig.spreadsheetImport
+    const workbook = XLSX.read(Buffer.from(base64, "base64"), { type: "buffer" })
+    const sheets = workbook.SheetNames.map((sheetName) => {
+      const worksheet = workbook.Sheets[sheetName]
+      const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
+        defval: null,
+        raw: false,
+      })
+      const columns = Array.from(
+        new Set(
+          rawRows.flatMap((row) =>
+            Object.keys(row).map((column) => column.trim()).filter(Boolean),
+          ),
+        ),
+      )
+      const rows = rawRows.map((row) =>
+        columns.reduce<SpreadsheetStoredRow>((accumulator, column) => {
+          accumulator[column] = sanitizeSpreadsheetCell(row[column])
+          return accumulator
+        }, {}),
+      )
+
+      return {
+        name: sheetName,
+        columns,
+        rows,
+      } satisfies SpreadsheetStoredSheet
+    }).filter((sheet) => sheet.columns.length > 0)
+
+    if (sheets.length === 0) {
+      return { error: "A planilha importada nao possui colunas legiveis para consulta." }
+    }
+
+    return {
+      config: {
+        ...persistedConfig,
+        uploadFileName: fileName,
+        sheetName: sheets.map((sheet) => sheet.name).join(", "),
+        spreadsheetData: {
+          fileName,
+          totalRows: sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0),
+          sheets,
+        } satisfies SpreadsheetStoredData,
+      },
+    }
+  } catch (error) {
+    return {
+      error: error instanceof Error
+        ? `Nao foi possivel interpretar a planilha importada. ${error.message}`
+        : "Nao foi possivel interpretar a planilha importada.",
+    }
+  }
+}
+
+function getPreparedSpreadsheetSectionNames(config: Record<string, unknown>) {
+  const spreadsheetData = readSpreadsheetDataFromConfig(config)
+  if (!spreadsheetData) return []
+  return spreadsheetData.sheets.map((sheet) => sheet.name).filter(Boolean)
+}
+
+function selectSpreadsheetSheet(data: SpreadsheetStoredData, sectionName: string) {
+  const normalizedSectionName = normalizeSearchText(sectionName)
+  return (
+    data.sheets.find((sheet) => normalizeSearchText(sheet.name) === normalizedSectionName) ??
+    data.sheets[0]
+  )
+}
+
+function findSpreadsheetColumn(columns: string[], message: string) {
+  const normalizedMessage = normalizeSearchText(message)
+  return (
+    [...columns]
+      .sort((left, right) => right.length - left.length)
+      .find((column) => normalizedMessage.includes(normalizeSearchText(column))) ?? null
+  )
+}
+
+function parseSpreadsheetFilter(message: string, columns: string[]) {
+  const normalizedMessage = normalizeSearchText(message)
+
+  for (const column of [...columns].sort((left, right) => right.length - left.length)) {
+    const escapedColumn = escapeRegExp(normalizeSearchText(column))
+    const patterns = [
+      new RegExp(`(?:onde|com)\\s+${escapedColumn}\\s*(?:=|igual a|igual|eh|e)?\\s*["']?([^"',.;\\n]+)`),
+      new RegExp(`${escapedColumn}\\s*(?:=|igual a|igual|eh|e)\\s*["']?([^"',.;\\n]+)`),
+      new RegExp(`${escapedColumn}\\s*(?:contem)\\s*["']?([^"',.;\\n]+)`),
+    ]
+
+    for (const pattern of patterns) {
+      const match = normalizedMessage.match(pattern)
+      if (!match?.[1]) {
+        continue
+      }
+
+      const operator = pattern.source.includes("contem") ? "contains" : "equals"
+      return {
+        column,
+        operator,
+        value: match[1].trim(),
+      } as const
+    }
+  }
+
+  return null
+}
+
+function applySpreadsheetFilter(rows: SpreadsheetStoredRow[], filter: ReturnType<typeof parseSpreadsheetFilter>) {
+  if (!filter) {
+    return rows
+  }
+
+  return rows.filter((row) => {
+    const cellValue = row[filter.column]
+    const normalizedCell = normalizeSearchText(cellValue === null ? "" : String(cellValue))
+
+    if (filter.operator === "contains") {
+      return normalizedCell.includes(filter.value)
+    }
+
+    return normalizedCell === filter.value
+  })
+}
+
+function buildSpreadsheetRowsPreview(rows: SpreadsheetStoredRow[], columns: string[]) {
+  return rows
+    .slice(0, 10)
+    .map((row, index) => {
+      const visibleColumns = columns
+        .filter((column) => row[column] !== null && row[column] !== "")
+        .slice(0, 4)
+        .map((column) => `${column}: ${row[column]}`)
+        .join(" | ")
+
+      return `${index + 1}. ${visibleColumns || "Registro sem valores visiveis."}`
+    })
+    .join("\n")
+}
+
+function buildSpreadsheetSummary(sheet: SpreadsheetStoredSheet) {
+  const columnSummary = sheet.columns
+    .slice(0, 6)
+    .map((column) => {
+      const nonEmptyCount = sheet.rows.filter((row) => row[column] !== null && row[column] !== "").length
+      return `${column} (${nonEmptyCount})`
+    })
+    .join(", ")
+
+  return `Aba ${sheet.name} com ${sheet.rows.length} registro(s). Colunas identificadas: ${columnSummary}.`
+}
+
+function buildSpreadsheetQueryReply({
+  source,
+  section,
+  message,
+}: {
+  source: ReturnType<typeof mapSourceRow>
+  section: {
+    id: string
+    sourceId: string
+    name: string
+    description: string
+    config: Record<string, unknown>
+    createdAt: string | null
+  }
+  message: string
+}) {
+  const spreadsheetData = readSpreadsheetDataFromConfig(source.config ?? {})
+
+  if (!spreadsheetData) {
+    return "Esta fonte de planilha ainda nao possui dados importados para consulta."
+  }
+
+  const sheet = selectSpreadsheetSheet(spreadsheetData, section.name)
+  const normalizedMessage = normalizeSearchText(message)
+  const filter = parseSpreadsheetFilter(message, sheet.columns)
+  const filteredRows = applySpreadsheetFilter(sheet.rows, filter)
+  const targetColumn = findSpreadsheetColumn(sheet.columns, message)
+  const isCountQuery = /\b(quantos|quantidade|total|contagem|numero|número)\b/.test(normalizedMessage)
+  const isSummaryQuery = /\b(resumo|resumir|visao geral|visao|colunas|estrutura)\b/.test(normalizedMessage)
+  const isValueQuery = /\b(valores|valor|coluna|listar|liste|mostrar|mostre|quais)\b/.test(normalizedMessage)
+
+  if (isCountQuery) {
+    if (filter) {
+      return `Na aba ${sheet.name}, encontrei ${filteredRows.length} registro(s) com ${filter.column} ${filter.operator === "contains" ? "contendo" : "igual a"} ${filter.value}.`
+    }
+
+    return `A aba ${sheet.name} possui ${sheet.rows.length} registro(s).`
+  }
+
+  if (targetColumn && (isValueQuery || normalizedMessage.includes(normalizeSearchText(targetColumn)))) {
+    const values = filteredRows
+      .map((row) => row[targetColumn])
+      .filter((value) => value !== null && value !== "")
+      .map((value) => String(value))
+    const uniqueValues = Array.from(new Set(values))
+
+    if (uniqueValues.length === 0) {
+      return `Nao encontrei valores preenchidos para a coluna ${targetColumn} na aba ${sheet.name}.`
+    }
+
+    const preview = uniqueValues.slice(0, 20).join(", ")
+    const suffix = uniqueValues.length > 20 ? ` ... e mais ${uniqueValues.length - 20}` : ""
+    const filterText = filter ? ` dentro do filtro ${filter.column} ${filter.operator === "contains" ? "contendo" : "igual a"} ${filter.value}` : ""
+
+    return `Valores encontrados na coluna ${targetColumn} da aba ${sheet.name}${filterText}: ${preview}${suffix}.`
+  }
+
+  if (filter) {
+    if (filteredRows.length === 0) {
+      return `Nao encontrei registros na aba ${sheet.name} com ${filter.column} ${filter.operator === "contains" ? "contendo" : "igual a"} ${filter.value}.`
+    }
+
+    return [
+      `Encontrei ${filteredRows.length} registro(s) na aba ${sheet.name} com ${filter.column} ${filter.operator === "contains" ? "contendo" : "igual a"} ${filter.value}.`,
+      buildSpreadsheetRowsPreview(filteredRows, sheet.columns),
+    ].join("\n")
+  }
+
+  if (isSummaryQuery) {
+    return buildSpreadsheetSummary(sheet)
+  }
+
+  return [
+    buildSpreadsheetSummary(sheet),
+    "Consultas suportadas: quantidade de registros, valores de uma coluna, filtros por coluna e resumo da aba.",
+  ].join("\n")
+}
+
 function buildPreparedSections({
   sourceType,
   sourceName,
@@ -176,9 +498,12 @@ function buildPreparedSections({
     typeof config.accessUrl === "string" ? config.accessUrl.trim() : ""
 
   if (normalizedType === "Planilha") {
+    const spreadsheetSheetNames = getPreparedSpreadsheetSectionNames(config)
     const sectionNames = dedupePreparationItems(
-      sheetNames.length > 0
-        ? sheetNames
+      spreadsheetSheetNames.length > 0
+        ? spreadsheetSheetNames
+        : sheetNames.length > 0
+          ? sheetNames
         : uploadFileName
           ? [stripFileExtension(uploadFileName)]
           : ["Dados importados"],
@@ -1038,10 +1363,20 @@ export async function createConnectSourceAction({
 
   const nextStatus = normalizeSourceStatus(status ?? "not_configured")
   const normalizedSourceType = sourceType.trim() || "Outro"
-  const sourceConfig = {
+  const baseSourceConfig = {
     ...(config ?? {}),
     preparationStatus: "processing",
   }
+  const sourceConfigResult =
+    normalizedSourceType === "Planilha"
+      ? parseSpreadsheetImportConfig(baseSourceConfig)
+      : { config: baseSourceConfig }
+
+  if ("error" in sourceConfigResult) {
+    return { error: sourceConfigResult.error }
+  }
+
+  const sourceConfig = sourceConfigResult.config
 
   const { data, error } = await actor.adminClient
     .from("connect_sources")
@@ -1958,6 +2293,56 @@ export async function sendConnectConversationMessageAction({
 
   if ("error" in userPersist) {
     return { error: "Nao foi possivel salvar sua mensagem nesta sessao." }
+  }
+
+  if (source.sourceType === "Planilha") {
+    const spreadsheetReply = buildSpreadsheetQueryReply({
+      source,
+      section,
+      message: trimmedMessage,
+    })
+
+    const assistantPersist = await saveConnectConversationMessage({
+      actor,
+      conversationId: conversation.id,
+      role: "assistant",
+      content: spreadsheetReply,
+      metadata: {
+        area: "connect",
+        conversation_area: area,
+        sourceId,
+        sectionId,
+        sourceName: source.name,
+        sectionName: section.name,
+        sourceType: source.sourceType,
+        engine: "connect_chat_spreadsheet",
+      },
+    })
+
+    if ("error" in assistantPersist) {
+      return { error: "Sua pergunta foi salva, mas nao consegui registrar a resposta da planilha." }
+    }
+
+    const messagesResult = await getConnectConversationMessagesAction({
+      sourceId,
+      sectionId,
+    })
+
+    if ("error" in messagesResult) {
+      return {
+        success: true,
+        conversationId: conversation.id,
+        conversationArea: area,
+        messages: [] as ConnectChatMessage[],
+      }
+    }
+
+    return {
+      success: true,
+      conversationId: conversation.id,
+      conversationArea: area,
+      messages: messagesResult.messages,
+    }
   }
 
   if (requestedAction) {
