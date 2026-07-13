@@ -4,6 +4,10 @@ import { canManageWorkspace, getUserAccessForUser } from "@/lib/auth"
 import { humanizeActivityAction } from "@/lib/activity/humanize"
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server"
 
+const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
+const connectOpenAiModel = "gpt-5-mini"
+const connectOpenAiTimeoutMs = 30000
+
 export type ConnectSourceStatus =
   | "not_configured"
   | "configured"
@@ -96,6 +100,11 @@ type ConnectChatMessage = {
   time: string
 }
 
+type OpenAiMessageRecord = {
+  role: "user" | "assistant"
+  content: string
+}
+
 function normalizeSourceStatus(status?: string): ConnectSourceStatus {
   const normalized = (status || "").trim().toLowerCase()
   if (normalized === "connected") return "connected"
@@ -151,6 +160,121 @@ function formatConnectConversationTime(value: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(parsed)
+}
+
+function isConnectOpenAiConfigured() {
+  return Boolean(process.env.OPENAI_API_KEY)
+}
+
+function buildConnectSystemPrompt() {
+  return [
+    "Voce e o COS Connect, um assistente operacional conversacional para fontes conectadas.",
+    "Sua funcao aqui e responder perguntas e orientar o usuario com base na fonte atual, na sessao atual e no historico desta conversa.",
+    "Considere o nome da fonte, o tipo da fonte, as sessoes cadastradas e o contexto da sessao atual.",
+    "Nao diga que executou integracoes externas, nao afirme sincronizacao real e nao invente acessos a sistemas terceiros.",
+    "Nao execute acoes, nao confirme criacao, edicao ou exclusao em sistemas externos.",
+    "Quando faltar dado real, seja honesto e diga que a fonte esta organizada no Connect, mas sem execucao externa nesta etapa.",
+    "Use o historico desta mesma sessao como contexto e nao misture informacoes de outras sessoes.",
+    "Responda em portugues do Brasil, de forma objetiva, util e natural.",
+  ].join(" ")
+}
+
+function buildConnectUserPrompt({
+  source,
+  section,
+  sections,
+  history,
+  message,
+}: {
+  source: ReturnType<typeof mapSourceRow>
+  section: {
+    id: string
+    sourceId: string
+    name: string
+    description: string
+    config: Record<string, unknown>
+    createdAt: string | null
+  }
+  sections: Array<{
+    id: string
+    sourceId: string
+    name: string
+    description: string
+    config: Record<string, unknown>
+    createdAt: string | null
+  }>
+  history: OpenAiMessageRecord[]
+  message: string
+}) {
+  return JSON.stringify(
+    {
+      task: "Responder a conversa do COS Connect usando apenas o contexto desta sessao.",
+      currentSource: {
+        id: source.id,
+        name: source.name,
+        type: source.sourceType,
+        status: source.status,
+        statusLabel: source.statusLabel,
+        accessUrl: source.accessUrl || null,
+        sectionsCount: source.sectionsCount,
+        actionsCount: source.actionsCount,
+        config: source.config ?? {},
+      },
+      currentSection: {
+        id: section.id,
+        name: section.name,
+        description: section.description || "",
+        config: section.config ?? {},
+      },
+      sourceSections: sections.map((item) => ({
+        id: item.id,
+        name: item.name,
+        description: item.description || "",
+      })),
+      conversationHistory: history,
+      latestUserMessage: message,
+      rules: {
+        externalExecutionAvailable: false,
+        supportIsSeparate: true,
+        shouldBeHonestAboutLimitations: true,
+      },
+    },
+    null,
+    2,
+  )
+}
+
+function tryReadConnectOutputText(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return null
+  }
+
+  const record = payload as Record<string, unknown>
+
+  if (typeof record.output_text === "string" && record.output_text.trim()) {
+    return record.output_text.trim()
+  }
+
+  const output = Array.isArray(record.output) ? record.output : []
+
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue
+
+    const content = Array.isArray((item as Record<string, unknown>).content)
+      ? ((item as Record<string, unknown>).content as unknown[])
+      : []
+
+    for (const contentItem of content) {
+      if (!contentItem || typeof contentItem !== "object") continue
+      const text = (contentItem as Record<string, unknown>).text
+
+      if (typeof text === "string" && text.trim()) {
+        return text.trim()
+      }
+    }
+  }
+
+  return null
 }
 
 async function getConnectActor() {
@@ -452,6 +576,134 @@ function mapConnectConversationMessage(row: ConnectMessageRow): ConnectChatMessa
     from,
     text: row.content,
     time: formatConnectConversationTime(row.created_at),
+  }
+}
+
+async function getConnectConversationHistoryRows({
+  actor,
+  conversationId,
+}: {
+  actor: ConnectActor
+  conversationId: string
+}) {
+  const messagesTable = actor.adminClient.from("ai_messages") as unknown as {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => {
+        order: (column: string, options: { ascending: boolean }) => Promise<unknown>
+      }
+    }
+  }
+
+  const query = (await messagesTable
+    .select("id, conversation_id, role, content, metadata, created_at")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true })) as {
+    data: ConnectMessageRow[] | null
+    error: ConnectQueryError
+  }
+
+  if (query.error) {
+    return { error: query.error.message }
+  }
+
+  return {
+    rows: query.data ?? [],
+  }
+}
+
+async function generateConnectOpenAiReply({
+  source,
+  section,
+  history,
+  message,
+}: {
+  source: ReturnType<typeof mapSourceRow>
+  section: {
+    id: string
+    sourceId: string
+    name: string
+    description: string
+    config: Record<string, unknown>
+    createdAt: string | null
+  }
+  history: OpenAiMessageRecord[]
+  message: string
+}) {
+  if (!isConnectOpenAiConfigured()) {
+    return {
+      error:
+        "OPENAI_API_KEY nao configurada. O Connect continua salvando o historico, mas nao consegue responder com IA agora.",
+    }
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), connectOpenAiTimeoutMs)
+
+  try {
+    const response = await fetch(OPENAI_RESPONSES_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: connectOpenAiModel,
+        temperature: 0.4,
+        input: [
+          {
+            role: "system",
+            content: [{ type: "input_text", text: buildConnectSystemPrompt() }],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: buildConnectUserPrompt({
+                  source,
+                  section,
+                  sections: source.sections,
+                  history,
+                  message,
+                }),
+              },
+            ],
+          },
+        ],
+      }),
+    })
+
+    const payload = (await response.json()) as Record<string, unknown>
+
+    if (!response.ok) {
+      const errorMessage =
+        typeof payload.error === "object" &&
+        payload.error &&
+        typeof (payload.error as Record<string, unknown>).message === "string"
+          ? ((payload.error as Record<string, unknown>).message as string)
+          : `OpenAI request failed with status ${response.status}.`
+
+      return { error: `Nao foi possivel obter a resposta da OpenAI agora. ${errorMessage}` }
+    }
+
+    const outputText = tryReadConnectOutputText(payload)
+
+    if (!outputText) {
+      return { error: "A OpenAI nao retornou uma resposta valida para esta sessao." }
+    }
+
+    return { content: outputText }
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return { error: "A resposta da OpenAI demorou demais para esta sessao. Tente novamente." }
+    }
+
+    return {
+      error: error instanceof Error ? error.message : "Falha desconhecida ao consultar a OpenAI.",
+    }
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -1288,6 +1540,41 @@ export async function sendConnectConversationMessageAction({
     return { error: "Escreva uma mensagem para continuar." }
   }
 
+  const [sectionsResult, actionsResult] = await Promise.all([
+    actor.adminClient
+      .from("connect_sections")
+      .select("id, workspace_id, source_id, name, description, config, created_at")
+      .eq("workspace_id", actor.workspaceId)
+      .eq("source_id", sourceId)
+      .order("created_at", { ascending: false })
+      .returns<ConnectSectionRow[]>(),
+    actor.adminClient
+      .from("connect_actions")
+      .select("id, workspace_id, source_id, name, action_type, config, created_at")
+      .eq("workspace_id", actor.workspaceId)
+      .eq("source_id", sourceId)
+      .order("created_at", { ascending: false })
+      .returns<ConnectActionRow[]>(),
+  ])
+
+  const contextError = sectionsResult.error || actionsResult.error
+
+  if (contextError) {
+    return { error: "Nao foi possivel preparar o contexto desta fonte agora." }
+  }
+
+  const source = mapSourceRow(resolved.source, sectionsResult.data ?? [], actionsResult.data ?? [])
+  const section =
+    source.sections.find((item) => item.id === sectionId) ??
+    {
+      id: resolved.section.id,
+      sourceId: resolved.section.source_id,
+      name: resolved.section.name,
+      description: resolved.section.description || "",
+      config: resolved.section.config ?? {},
+      createdAt: resolved.section.created_at,
+    }
+
   const area = buildConnectConversationArea(sourceId, sectionId)
   const title = buildConnectConversationTitle(resolved.source.name, resolved.section.name)
   const conversationResult = await findOrCreateConnectConversation({
@@ -1326,20 +1613,57 @@ export async function sendConnectConversationMessageAction({
     return { error: "Nao foi possivel salvar sua mensagem nesta sessao." }
   }
 
-  const cosMessage = `Mensagem registrada em ${resolved.section.name} de ${resolved.source.name}. O historico desta sessao permanece salvo no Connect para acompanhamento operacional.`
+  const historyResult = await getConnectConversationHistoryRows({
+    actor,
+    conversationId: conversation.id,
+  })
+
+  if ("error" in historyResult) {
+    return { error: "Sua mensagem foi salva, mas nao consegui carregar o historico desta sessao." }
+  }
+
+  const history = historyResult.rows
+    .map((row) => {
+      if (row.role !== "user" && row.role !== "assistant") {
+        return null
+      }
+
+      if (!row.content?.trim()) {
+        return null
+      }
+
+      return {
+        role: row.role,
+        content: row.content.trim(),
+      } satisfies OpenAiMessageRecord
+    })
+    .filter((item): item is OpenAiMessageRecord => Boolean(item))
+
+  const aiResult = await generateConnectOpenAiReply({
+    source,
+    section,
+    history,
+    message: trimmedMessage,
+  })
+
+  if ("error" in aiResult) {
+    return { error: aiResult.error }
+  }
+
   const assistantPersist = await saveConnectConversationMessage({
     actor,
     conversationId: conversation.id,
     role: "assistant",
-    content: cosMessage,
+    content: aiResult.content,
     metadata: {
       area: "connect",
       conversation_area: area,
       sourceId,
       sectionId,
-      sourceName: resolved.source.name,
-      sectionName: resolved.section.name,
-      engine: "connect_chat",
+      sourceName: source.name,
+      sectionName: section.name,
+      sourceType: source.sourceType,
+      engine: "connect_chat_openai",
     },
   })
 
