@@ -132,7 +132,9 @@ export default function ConnectConversasPage() {
                     <span className="block truncate text-xs text-gray-500">
                       {source.sectionsCount > 0
                         ? `${source.sectionsCount} sessoes · ${source.actionsCount} acoes`
-                        : "Nenhuma sessao criada ainda."}
+                        : source.status === "configured"
+                          ? "Fonte pronta para conversar."
+                          : "O COS esta preparando esta fonte."}
                     </span>
                   </div>
                   {source.sections.length > 0 ? (
@@ -153,13 +155,11 @@ export default function ConnectConversasPage() {
                     >
                       <div className="space-y-1 p-2 pl-4">
                         {source.sections.length === 0 ? (
-                          <button
-                            onClick={() => openModal("section", { sourceId: source.id })}
-                            className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-50 active:bg-gray-100"
-                          >
-                            <span className="text-sm text-gray-700">Criar primeira sessao</span>
-                            <ChevronRight className="h-4 w-4 text-gray-300" />
-                          </button>
+                          <div className="rounded-lg px-3 py-2.5 text-sm text-gray-600">
+                            {source.status === "configured"
+                              ? "Nenhuma sessao preparada ainda para esta fonte."
+                              : "O COS ainda esta preparando esta fonte."}
+                          </div>
                         ) : (
                           source.sections.map((section) => (
                             <Link

@@ -417,19 +417,10 @@ function DesktopContextPanel() {
                       </span>
                     </span>
                   </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <button
-                      onClick={() => openModal("section", { sourceId: source.id })}
-                      className="flex-1 rounded-lg bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
-                    >
-                      Criar sessao
-                    </button>
-                    <button
-                      onClick={() => openModal("action", { sourceId: source.id })}
-                      className="flex-1 rounded-lg bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
-                    >
-                      Criar acao
-                    </button>
+                  <div className="mt-3 rounded-lg bg-white px-3 py-2 text-xs text-gray-600">
+                    {source.status === "configured"
+                      ? "Fonte pronta para conversar."
+                      : "O COS ainda esta preparando esta fonte."}
                   </div>
                 </div>
               )

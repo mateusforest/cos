@@ -7,7 +7,7 @@ import {
 } from "@/actions/connect"
 import { AreaChat, type ChatMessage } from "@/components/app/area-chat"
 import { useConnect } from "@/components/connect/connect-store"
-import { Plug, Wrench, Layers, ExternalLink } from "lucide-react"
+import { Plug, ExternalLink } from "lucide-react"
 
 export default function ConnectSectionChatPage({
   params,
@@ -15,7 +15,7 @@ export default function ConnectSectionChatPage({
   params: Promise<{ sourceId: string; sectionId: string }>
 }) {
   const { sourceId, sectionId } = use(params)
-  const { sources, openModal, toast } = useConnect()
+  const { sources, toast } = useConnect()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLoadingMessages, setIsLoadingMessages] = useState(true)
 
@@ -79,16 +79,6 @@ export default function ConnectSectionChatPage({
       isLoadingHistory={isLoadingMessages}
       emptyLabel={`Ainda nao ha mensagens nesta sessao. Converse com o COS sobre ${section.name}.`}
       quickActions={[
-        {
-          label: "Criar acao",
-          icon: Wrench,
-          onClick: () => openModal("action", { sourceId: source.id }),
-        },
-        {
-          label: "Criar sessao",
-          icon: Layers,
-          onClick: () => openModal("section", { sourceId: source.id }),
-        },
         {
           label: "Ver fonte",
           icon: ExternalLink,

@@ -92,14 +92,17 @@ export default function ConnectHomePage() {
           {hasSources
             ? [
                 { icon: Plug, label: `${summary.totalSources} fontes`, action: () => openModal("source") },
-                { icon: Layers, label: `${summary.totalSections} sessoes`, action: () => openModal("section", { sourceId: sources[0]?.id }) },
-                { icon: Wrench, label: `${summary.totalActions} acoes`, action: () => openModal("action", { sourceId: sources[0]?.id }) },
+                { icon: Layers, label: `${summary.totalSections} sessoes` },
+                { icon: Wrench, label: `${summary.totalActions} acoes` },
                 { icon: LifeBuoy, label: "Suporte", action: () => openSupport() },
               ].map((item) => (
                 <button
                   key={item.label}
                   onClick={item.action}
-                  className="flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                  disabled={!item.action}
+                  className={`flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 ${
+                    item.action ? "transition-colors hover:bg-gray-50" : ""
+                  }`}
                 >
                   <item.icon className="h-3.5 w-3.5" />
                   {item.label}
@@ -159,19 +162,10 @@ export default function ConnectHomePage() {
                        <span>{source.sectionsCount} sessoes</span>
                        <span>{source.actionsCount} acoes</span>
                      </div>
-                     <div className="mt-3 flex gap-2">
-                      <button
-                        onClick={() => openModal("section", { sourceId: source.id })}
-                        className="flex-1 rounded-lg bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100"
-                      >
-                        Criar sessao
-                      </button>
-                      <button
-                        onClick={() => openModal("action", { sourceId: source.id })}
-                        className="flex-1 rounded-lg bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100"
-                       >
-                         Criar acao
-                       </button>
+                     <div className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                       {source.status === "configured"
+                         ? "Fonte pronta para conversar."
+                         : "O COS ainda esta preparando esta fonte."}
                      </div>
                      <div className="mt-2 flex justify-end">
                        <button

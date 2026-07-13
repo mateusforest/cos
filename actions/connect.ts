@@ -137,6 +137,248 @@ function toStatusLabel(status: ConnectSourceStatus) {
   return "Nao configurado"
 }
 
+function normalizePreparationTokens(value: string) {
+  return value
+    .split(/[,;\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function dedupePreparationItems(items: string[]) {
+  return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)))
+}
+
+function stripFileExtension(fileName: string) {
+  return fileName.replace(/\.[^/.]+$/, "").trim()
+}
+
+function buildPreparedSections({
+  sourceType,
+  sourceName,
+  config,
+}: {
+  sourceType: string
+  sourceName: string
+  config: Record<string, unknown>
+}) {
+  const normalizedType = sourceType.trim() || "Outro"
+  const sheetNames =
+    typeof config.sheetName === "string" ? normalizePreparationTokens(config.sheetName) : []
+  const uploadFileName =
+    typeof config.uploadFileName === "string" ? config.uploadFileName.trim() : ""
+  const emailAddress =
+    typeof config.emailAddress === "string" ? config.emailAddress.trim() : ""
+  const phoneNumber =
+    typeof config.phoneNumber === "string" ? config.phoneNumber.trim() : ""
+  const instanceName =
+    typeof config.instanceName === "string" ? config.instanceName.trim() : ""
+  const accessUrl =
+    typeof config.accessUrl === "string" ? config.accessUrl.trim() : ""
+
+  if (normalizedType === "Planilha") {
+    const sectionNames = dedupePreparationItems(
+      sheetNames.length > 0
+        ? sheetNames
+        : uploadFileName
+          ? [stripFileExtension(uploadFileName)]
+          : ["Dados importados"],
+    )
+
+    return sectionNames.map((name) => ({
+      name,
+      description: `Sessao preparada automaticamente a partir da planilha ${sourceName}.`,
+      config: {
+        preparedAutomatically: true,
+        sourceType: normalizedType,
+        origin: uploadFileName || null,
+      } as Record<string, unknown>,
+    }))
+  }
+
+  if (normalizedType === "E-mail") {
+    return [
+      {
+        name: emailAddress ? `Caixa de entrada ${emailAddress}` : "Caixa de entrada",
+        description: "Sessao preparada automaticamente com base na conta de e-mail informada.",
+        config: {
+          preparedAutomatically: true,
+          sourceType: normalizedType,
+          emailAddress: emailAddress || null,
+        } as Record<string, unknown>,
+      },
+    ]
+  }
+
+  if (normalizedType === "WhatsApp") {
+    return [
+      {
+        name: phoneNumber ? `Conversas ${phoneNumber}` : "Conversas",
+        description: "Sessao preparada automaticamente com base no canal WhatsApp informado.",
+        config: {
+          preparedAutomatically: true,
+          sourceType: normalizedType,
+          phoneNumber: phoneNumber || null,
+          instanceName: instanceName || null,
+        } as Record<string, unknown>,
+      },
+    ]
+  }
+
+  const defaultSectionNameByType: Record<string, string> = {
+    ERP: "Operacao",
+    API: "Endpoints",
+    CRM: "Relacionamento",
+    "Banco de dados": "Consultas",
+    "Portal interno": "Acessos",
+    Outro: "Operacao",
+  }
+
+  return [
+    {
+      name: defaultSectionNameByType[normalizedType] || "Operacao",
+      description: `Sessao preparada automaticamente para a fonte ${sourceName}.`,
+      config: {
+        preparedAutomatically: true,
+        sourceType: normalizedType,
+        accessUrl: accessUrl || null,
+      } as Record<string, unknown>,
+    },
+  ]
+}
+
+function buildPreparedActions({
+  sourceType,
+  sections,
+}: {
+  sourceType: string
+  sections: Array<{ name: string }>
+}) {
+  const actionNames = dedupePreparationItems(
+    sections.map((section) => `Consultar ${section.name}`),
+  )
+
+  return actionNames.map((name) => ({
+    name,
+    actionType: "read" as const,
+    config: {
+      preparedAutomatically: true,
+      sourceType: sourceType.trim() || "Outro",
+      supportedExecution: "internal_read",
+    } as Record<string, unknown>,
+  }))
+}
+
+async function cleanupPreparedSource(actor: ConnectActor, sourceId: string) {
+  const { error: actionsError } = await actor.adminClient
+    .from("connect_actions")
+    .delete()
+    .eq("source_id", sourceId)
+    .eq("workspace_id", actor.workspaceId)
+
+  if (actionsError) {
+    return actionsError
+  }
+
+  const { error: sectionsError } = await actor.adminClient
+    .from("connect_sections")
+    .delete()
+    .eq("source_id", sourceId)
+    .eq("workspace_id", actor.workspaceId)
+
+  if (sectionsError) {
+    return sectionsError
+  }
+
+  const { error: sourceError } = await actor.adminClient
+    .from("connect_sources")
+    .delete()
+    .eq("id", sourceId)
+    .eq("workspace_id", actor.workspaceId)
+
+  return sourceError
+}
+
+async function prepareConnectSource({
+  actor,
+  source,
+}: {
+  actor: ConnectActor
+  source: ConnectSourceRow
+}) {
+  const baseConfig =
+    source.config && typeof source.config === "object"
+      ? { ...source.config }
+      : {}
+  const preparedSections = buildPreparedSections({
+    sourceType: source.source_type || "Outro",
+    sourceName: source.name,
+    config: {
+      ...baseConfig,
+      accessUrl: source.access_url || null,
+    },
+  })
+  const preparedActions = buildPreparedActions({
+    sourceType: source.source_type || "Outro",
+    sections: preparedSections,
+  })
+
+  const { error: sectionError } = await actor.adminClient.from("connect_sections").insert(
+    preparedSections.map((section) => ({
+      workspace_id: actor.workspaceId,
+      source_id: source.id,
+      name: section.name,
+      description: section.description,
+      config: section.config,
+    })),
+  )
+
+  if (sectionError) {
+    return { error: sectionError.message }
+  }
+
+  const { error: actionError } = await actor.adminClient.from("connect_actions").insert(
+    preparedActions.map((connectAction) => ({
+      workspace_id: actor.workspaceId,
+      source_id: source.id,
+      name: connectAction.name,
+      action_type: connectAction.actionType,
+      config: connectAction.config,
+    })),
+  )
+
+  if (actionError) {
+    return { error: actionError.message }
+  }
+
+  const { error: sourceUpdateError } = await actor.adminClient
+    .from("connect_sources")
+    .update({
+      status: "configured",
+      config: {
+        ...baseConfig,
+        preparedAutomatically: true,
+        preparationStatus: "ready",
+        preparationCompletedAt: new Date().toISOString(),
+        preparedSections: preparedSections.map((section) => section.name),
+        preparedActions: preparedActions.map((connectAction) => connectAction.name),
+      },
+    })
+    .eq("id", source.id)
+    .eq("workspace_id", actor.workspaceId)
+
+  if (sourceUpdateError) {
+    return { error: sourceUpdateError.message }
+  }
+
+  return {
+    success: true,
+    criteria: {
+      sections: preparedSections.map((section) => section.name),
+      actions: preparedActions.map((connectAction) => connectAction.name),
+    },
+  }
+}
+
 function logConnectError(step: string, details: string) {
   console.error(`[connect] ${step}: ${details}`)
 }
@@ -794,17 +1036,22 @@ export async function createConnectSourceAction({
     return { error: "Informe o nome da fonte." }
   }
 
-  const nextStatus = normalizeSourceStatus(status ?? "configured")
+  const nextStatus = normalizeSourceStatus(status ?? "not_configured")
+  const normalizedSourceType = sourceType.trim() || "Outro"
+  const sourceConfig = {
+    ...(config ?? {}),
+    preparationStatus: "processing",
+  }
 
   const { data, error } = await actor.adminClient
     .from("connect_sources")
     .insert({
       workspace_id: actor.workspaceId,
       name: trimmedName,
-      source_type: sourceType.trim() || "Outro",
+      source_type: normalizedSourceType,
       status: nextStatus,
       access_url: accessUrl?.trim() || null,
-      config: config ?? {},
+      config: sourceConfig,
       created_by: actor.actorId,
     })
     .select("id, workspace_id, name, source_type, status, access_url, config, created_by, created_at")
@@ -822,7 +1069,44 @@ export async function createConnectSourceAction({
     description: `fonte criada: ${trimmedName}`,
   })
 
-  return { success: true, sourceId: data.id }
+  const preparationResult = await prepareConnectSource({
+    actor,
+    source: data,
+  })
+
+  if ("error" in preparationResult) {
+    const cleanupError = await cleanupPreparedSource(actor, data.id)
+
+    await logConnectActivity({
+      adminClient: actor.adminClient,
+      workspaceId: actor.workspaceId,
+      userId: actor.actorId,
+      action: "connect_source_preparation_failed",
+      description: `falha ao preparar a fonte: ${trimmedName}`,
+    })
+
+    if (cleanupError) {
+      logConnectError("cleanupPreparedSource", cleanupError.message)
+    }
+
+    return {
+      error: `Nao foi possivel preparar esta fonte automaticamente. ${preparationResult.error}`,
+    }
+  }
+
+  await logConnectActivity({
+    adminClient: actor.adminClient,
+    workspaceId: actor.workspaceId,
+    userId: actor.actorId,
+    action: "connect_source_prepared",
+    description: `fonte preparada: ${trimmedName}`,
+  })
+
+  return {
+    success: true,
+    sourceId: data.id,
+    criteria: preparationResult.criteria,
+  }
 }
 
 export async function getConnectSourcesAction() {

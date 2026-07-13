@@ -25,6 +25,8 @@ const activityLabels: Record<string, string> = {
   meeting_updated: "Reuniao atualizada",
   meeting_archived: "Reuniao arquivada",
   connect_source_created: "Fonte conectada",
+  connect_source_prepared: "Fonte preparada",
+  connect_source_preparation_failed: "Falha na preparacao da fonte",
   connect_source_updated: "Fonte atualizada",
   connect_source_deleted: "Fonte removida",
   connect_section_created: "Sessao criada",

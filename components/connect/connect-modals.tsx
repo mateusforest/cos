@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useEffect, useState, type ChangeEvent } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Database, FileSpreadsheet, Mail, MessageCircle, Users, Paperclip, Camera, Settings2, Wrench, X, ExternalLink, Plus } from "lucide-react"
@@ -25,12 +26,6 @@ const sourceTypeOptions = [
   { value: "Portal interno", label: "Portal", icon: Database },
   { value: "Outro", label: "Outro", icon: Database },
 ] as const
-const sourceStatuses: Array<{ value: ConnectSourceStatus; label: string }> = [
-  { value: "not_configured", label: "Nao configurado" },
-  { value: "configured", label: "Configurado" },
-  { value: "error", label: "Erro" },
-  { value: "paused", label: "Pausado" },
-]
 const actionTypes: Array<{ value: ConnectActionType; label: string }> = [
   { value: "read", label: "Consultar" },
   { value: "create", label: "Criar" },
@@ -45,6 +40,9 @@ const actionTypes: Array<{ value: ConnectActionType; label: string }> = [
 
 const fieldClassName =
   "w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-[#0a0a0a] focus:outline-none focus:border-gray-300"
+
+const COS_LOGO =
+  "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/COS%20LOGO%20%281%29-mBU7xqdIZoWP3indGVxJrDFLu8urZH.png"
 
 type SourceFormState = {
   name: string
@@ -236,7 +234,7 @@ export function ConnectModals() {
     const result = await createConnectSourceAction({
       name: sourceForm.name,
       sourceType: sourceForm.sourceType,
-      status: sourceForm.status,
+      status: "not_configured",
       accessUrl: usesUrlAndCredentials ? sourceForm.accessUrl : "",
       config: nextConfig,
     })
@@ -246,7 +244,7 @@ export function ConnectModals() {
       return
     }
     await refreshData({ silent: true })
-    toast("Fonte criada com sucesso.")
+    toast("Fonte pronta para conversar.")
     setSourceForm(defaultSourceForm())
     resetAndClose()
   }
@@ -376,6 +374,22 @@ export function ConnectModals() {
         <>
           <ModalHeader title="Nova fonte" onClose={resetAndClose} icon={SourceIcon} />
           <div className="space-y-4">
+            {isSubmitting ? (
+              <div className="rounded-3xl border border-gray-100 bg-gray-50 px-6 py-10 text-center">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Number.POSITIVE_INFINITY, duration: 2, ease: "linear" }}
+                  className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-white shadow-sm"
+                >
+                  <Image src={COS_LOGO} alt="COS" width={34} height={34} className="h-8 w-8" />
+                </motion.div>
+                <p className="text-base font-semibold text-[#0a0a0a]">O COS esta preparando sua operacao.</p>
+                <p className="mt-2 text-sm leading-relaxed text-gray-500">
+                  Estamos analisando a fonte e organizando tudo para voce.
+                </p>
+              </div>
+            ) : (
+              <>
             <InfoCard text={getSourceInfoText(sourceForm.sourceType)} />
             <Field label="Tipo de fonte">
               <div className="grid grid-cols-3 gap-2">
@@ -412,24 +426,6 @@ export function ConnectModals() {
                 }
                 className={fieldClassName}
               />
-            </Field>
-            <Field label="Status inicial">
-              <select
-                value={sourceForm.status}
-                onChange={(event) =>
-                  setSourceForm((current) => ({
-                    ...current,
-                    status: event.target.value as ConnectSourceStatus,
-                  }))
-                }
-                className={fieldClassName}
-              >
-                {sourceStatuses.map((status) => (
-                  <option key={status.value} value={status.value}>
-                    {status.label}
-                  </option>
-                ))}
-              </select>
             </Field>
 
             {isSpreadsheet && (
@@ -574,9 +570,11 @@ export function ConnectModals() {
             <ModalActions
               onCancel={resetAndClose}
               onConfirm={handleCreateSource}
-              confirmLabel={isSubmitting ? "Salvando..." : "Criar fonte"}
+              confirmLabel="Criar fonte"
               disabled={isSubmitting}
             />
+              </>
+            )}
           </div>
         </>
       )
