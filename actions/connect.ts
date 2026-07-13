@@ -62,12 +62,38 @@ type ActivityLogRow = {
   created_at: string | null
 }
 
+type ConnectConversationRow = {
+  id: string
+  workspace_id: string
+  user_id: string
+  area: string
+  title: string | null
+}
+
+type ConnectMessageRow = {
+  id: string
+  conversation_id: string
+  role: string | null
+  content: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string | null
+}
+
+type ConnectQueryError = { message: string } | null
+
 type ConnectActor = {
   actorId: string
   workspaceId: string
   canManage: boolean
   isMaster: boolean
   adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>
+}
+
+type ConnectChatMessage = {
+  id: string
+  from: "cos" | "user"
+  text: string
+  time: string
 }
 
 function normalizeSourceStatus(status?: string): ConnectSourceStatus {
@@ -102,6 +128,29 @@ function toStatusLabel(status: ConnectSourceStatus) {
 
 function logConnectError(step: string, details: string) {
   console.error(`[connect] ${step}: ${details}`)
+}
+
+function buildConnectConversationArea(sourceId: string, sectionId: string) {
+  return `connect/${sourceId}/${sectionId}`
+}
+
+function buildConnectConversationTitle(sourceName: string, sectionName: string) {
+  return `${sourceName} • ${sectionName}`
+}
+
+function formatConnectConversationTime(value: string | null) {
+  if (!value) return "Agora"
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "Agora"
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed)
 }
 
 async function getConnectActor() {
@@ -200,6 +249,29 @@ async function resolveSectionForActor(actor: ConnectActor, sectionId: string) {
   return { section: data }
 }
 
+async function resolveSectionConversationContextForActor(actor: ConnectActor, sourceId: string, sectionId: string) {
+  const sourceResolved = await resolveSourceForActor(actor, sourceId)
+
+  if ("error" in sourceResolved) {
+    return { error: sourceResolved.error }
+  }
+
+  const sectionResolved = await resolveSectionForActor(actor, sectionId)
+
+  if ("error" in sectionResolved) {
+    return { error: sectionResolved.error }
+  }
+
+  if (sectionResolved.section.source_id !== sourceResolved.source.id) {
+    return { error: "Sessao nao encontrada para esta fonte." }
+  }
+
+  return {
+    source: sourceResolved.source,
+    section: sectionResolved.section,
+  }
+}
+
 async function resolveActionForActor(actor: ConnectActor, connectActionId: string) {
   const { data, error } = await actor.adminClient
     .from("connect_actions")
@@ -254,6 +326,132 @@ function mapSourceRow(
       config: connectAction.config ?? {},
       createdAt: connectAction.created_at,
     })),
+  }
+}
+
+async function findConnectConversation({
+  actor,
+  area,
+}: {
+  actor: ConnectActor
+  area: string
+}) {
+  const conversationsTable = actor.adminClient.from("ai_conversations") as unknown as {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => {
+        eq: (column: string, value: string) => {
+          order: (column: string, options: { ascending: boolean }) => Promise<unknown>
+        }
+      }
+    }
+  }
+
+  const query = (await conversationsTable
+    .select("id, workspace_id, user_id, area, title")
+    .eq("workspace_id", actor.workspaceId)
+    .eq("area", area)
+    .order("created_at", { ascending: true })) as {
+    data: ConnectConversationRow[] | null
+    error: ConnectQueryError
+  }
+
+  if (query.error) {
+    return { error: query.error.message }
+  }
+
+  return { conversation: query.data?.[0] ?? null }
+}
+
+async function findOrCreateConnectConversation({
+  actor,
+  area,
+  title,
+}: {
+  actor: ConnectActor
+  area: string
+  title: string
+}) {
+  const existingConversation = await findConnectConversation({ actor, area })
+
+  if ("error" in existingConversation) {
+    return existingConversation
+  }
+
+  if (existingConversation.conversation) {
+    return existingConversation
+  }
+
+  const conversationsTable = actor.adminClient.from("ai_conversations") as unknown as {
+    insert: (value: Record<string, unknown>) => {
+      select: (columns: string) => {
+        single: () => Promise<unknown>
+      }
+    }
+  }
+
+  const insertResult = (await conversationsTable
+    .insert({
+      workspace_id: actor.workspaceId,
+      user_id: actor.actorId,
+      area,
+      title,
+    })
+    .select("id, workspace_id, user_id, area, title")
+    .single()) as {
+    data: ConnectConversationRow | null
+    error: ConnectQueryError
+  }
+
+  if (insertResult.error || !insertResult.data) {
+    return { error: insertResult.error?.message ?? "Nao foi possivel criar a conversa desta sessao." }
+  }
+
+  return { conversation: insertResult.data }
+}
+
+async function saveConnectConversationMessage({
+  actor,
+  conversationId,
+  role,
+  content,
+  metadata,
+}: {
+  actor: ConnectActor
+  conversationId: string
+  role: "assistant" | "user"
+  content: string
+  metadata: Record<string, unknown>
+}) {
+  const messagesTable = actor.adminClient.from("ai_messages") as unknown as {
+    insert: (value: Record<string, unknown>) => Promise<unknown>
+  }
+
+  const { error } = (await messagesTable.insert({
+    conversation_id: conversationId,
+    role,
+    content,
+    metadata,
+  })) as { error: ConnectQueryError }
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  return { success: true as const }
+}
+
+function mapConnectConversationMessage(row: ConnectMessageRow): ConnectChatMessage | null {
+  const from = row.role === "assistant" ? "cos" : row.role === "user" ? "user" : null
+
+  if (!from || !row.content) {
+    return null
+  }
+
+  return {
+    id: row.id,
+    from,
+    text: row.content,
+    time: formatConnectConversationTime(row.created_at),
   }
 }
 
@@ -994,5 +1192,179 @@ export async function getConnectHistoryAction() {
       id: source.id,
       name: source.name,
     })),
+  }
+}
+
+export async function getConnectConversationMessagesAction({
+  sourceId,
+  sectionId,
+}: {
+  sourceId: string
+  sectionId: string
+}) {
+  const actor = await getConnectActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  const resolved = await resolveSectionConversationContextForActor(actor, sourceId, sectionId)
+
+  if ("error" in resolved) {
+    return { error: resolved.error }
+  }
+
+  const area = buildConnectConversationArea(sourceId, sectionId)
+  const conversationResult = await findConnectConversation({ actor, area })
+
+  if ("error" in conversationResult) {
+    return { error: "Nao foi possivel carregar o historico desta sessao." }
+  }
+
+  if (!conversationResult.conversation) {
+    return {
+      success: true,
+      conversationArea: area,
+      messages: [] as ConnectChatMessage[],
+    }
+  }
+
+  const conversation = conversationResult.conversation
+
+  const messagesTable = actor.adminClient.from("ai_messages") as unknown as {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => {
+        order: (column: string, options: { ascending: boolean }) => Promise<unknown>
+      }
+    }
+  }
+
+  const query = (await messagesTable
+    .select("id, conversation_id, role, content, metadata, created_at")
+    .eq("conversation_id", conversation.id)
+    .order("created_at", { ascending: true })) as {
+    data: ConnectMessageRow[] | null
+    error: ConnectQueryError
+  }
+
+  if (query.error) {
+    return { error: "Nao foi possivel carregar as mensagens desta sessao." }
+  }
+
+  return {
+    success: true,
+    conversationId: conversation.id,
+    conversationArea: area,
+    messages: (query.data ?? [])
+      .map(mapConnectConversationMessage)
+      .filter((message: ConnectChatMessage | null): message is ConnectChatMessage => Boolean(message)),
+  }
+}
+
+export async function sendConnectConversationMessageAction({
+  sourceId,
+  sectionId,
+  message,
+}: {
+  sourceId: string
+  sectionId: string
+  message: string
+}) {
+  const actor = await getConnectActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  const resolved = await resolveSectionConversationContextForActor(actor, sourceId, sectionId)
+
+  if ("error" in resolved) {
+    return { error: resolved.error }
+  }
+
+  const trimmedMessage = message.trim()
+
+  if (!trimmedMessage) {
+    return { error: "Escreva uma mensagem para continuar." }
+  }
+
+  const area = buildConnectConversationArea(sourceId, sectionId)
+  const title = buildConnectConversationTitle(resolved.source.name, resolved.section.name)
+  const conversationResult = await findOrCreateConnectConversation({
+    actor,
+    area,
+    title,
+  })
+
+  if ("error" in conversationResult) {
+    return { error: conversationResult.error }
+  }
+
+  const conversation = conversationResult.conversation
+
+  if (!conversation) {
+    return { error: "Nao foi possivel preparar a conversa desta sessao." }
+  }
+
+  const userPersist = await saveConnectConversationMessage({
+    actor,
+    conversationId: conversation.id,
+    role: "user",
+    content: trimmedMessage,
+    metadata: {
+      area: "connect",
+      conversation_area: area,
+      sourceId,
+      sectionId,
+      sourceName: resolved.source.name,
+      sectionName: resolved.section.name,
+      engine: "connect_chat",
+    },
+  })
+
+  if ("error" in userPersist) {
+    return { error: "Nao foi possivel salvar sua mensagem nesta sessao." }
+  }
+
+  const cosMessage = `Mensagem registrada em ${resolved.section.name} de ${resolved.source.name}. O historico desta sessao permanece salvo no Connect para acompanhamento operacional.`
+  const assistantPersist = await saveConnectConversationMessage({
+    actor,
+    conversationId: conversation.id,
+    role: "assistant",
+    content: cosMessage,
+    metadata: {
+      area: "connect",
+      conversation_area: area,
+      sourceId,
+      sectionId,
+      sourceName: resolved.source.name,
+      sectionName: resolved.section.name,
+      engine: "connect_chat",
+    },
+  })
+
+  if ("error" in assistantPersist) {
+    return { error: "Sua mensagem foi salva, mas nao consegui concluir a resposta do COS nesta sessao." }
+  }
+
+  const messagesResult = await getConnectConversationMessagesAction({
+    sourceId,
+    sectionId,
+  })
+
+  if ("error" in messagesResult) {
+    return {
+      success: true,
+      conversationId: conversation.id,
+      conversationArea: area,
+      messages: [] as ConnectChatMessage[],
+    }
+  }
+
+  return {
+    success: true,
+    conversationId: conversation.id,
+    conversationArea: area,
+    messages: messagesResult.messages,
   }
 }
