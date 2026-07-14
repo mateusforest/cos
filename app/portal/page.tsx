@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import {
@@ -30,6 +30,8 @@ import { usePortalInteractions } from "@/components/portal/portal-interactions"
 import { toast } from "@/hooks/use-toast"
 import { getPortalHomeOverviewAction } from "@/actions/activity"
 import { getOperationsConversationsAction } from "@/actions/operations-engine"
+import { useAuth } from "@/components/auth/auth-provider"
+import { getOperationsAreaSources } from "@/lib/area-configs"
 
 type Insight = {
   id: string
@@ -154,6 +156,7 @@ const AUDIO_WAVEFORM = Array.from({ length: 50 }, (_, i) => Math.round((Math.sin
 export default function PortalHomePage() {
   const router = useRouter()
   const { openQuickActions, openDeleteConfirm } = usePortalInteractions()
+  const { workspace } = useAuth()
   const [chatInput, setChatInput] = useState("")
   const [insights, setInsights] = useState(initialInsights)
   const [audioTranscript, setAudioTranscript] = useState("")
@@ -168,6 +171,21 @@ export default function PortalHomePage() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
   const micActionRef = useRef<"finalize" | "cancel">("finalize")
+  const areaSources = useMemo(
+    () => getOperationsAreaSources(workspace?.metadata?.segment),
+    [workspace?.metadata?.segment],
+  )
+  const cadastrosArea = areaSources.find((area) => area.key === "cadastros")
+  const financeiroArea = areaSources.find((area) => area.key === "financeiro")
+  const documentosArea = areaSources.find((area) => area.key === "documentos")
+  const operacoesArea = areaSources.find((area) => area.key === "operacoes")
+  const reunioesArea = areaSources.find((area) => area.key === "reunioes")
+  const portalQuickActions = [
+    { icon: CheckSquare, label: operacoesArea?.quickActions[0] || "Criar tarefa" },
+    { icon: UserPlus, label: cadastrosArea?.quickActions[0] || "Criar cliente" },
+    { icon: FileText, label: documentosArea?.quickActions[0] || "Nova proposta" },
+    { icon: CreditCard, label: financeiroArea?.quickActions[0] || "Registrar pagamento" },
+  ]
 
   useEffect(() => {
     return () => {
@@ -359,22 +377,12 @@ export default function PortalHomePage() {
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="flex flex-wrap gap-3 mb-8">
-            <button onClick={openQuickActions} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-full text-sm hover:bg-gray-50 hover:border-gray-300 transition-all">
-              <CheckSquare className="w-4 h-4 text-muted-foreground" />
-              <span>Criar tarefa</span>
-            </button>
-            <button onClick={openQuickActions} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-full text-sm hover:bg-gray-50 hover:border-gray-300 transition-all">
-              <UserPlus className="w-4 h-4 text-muted-foreground" />
-              <span>Criar cliente</span>
-            </button>
-            <button onClick={openQuickActions} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-full text-sm hover:bg-gray-50 hover:border-gray-300 transition-all">
-              <FileText className="w-4 h-4 text-muted-foreground" />
-              <span>Nova proposta</span>
-            </button>
-            <button onClick={openQuickActions} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-full text-sm hover:bg-gray-50 hover:border-gray-300 transition-all">
-              <CreditCard className="w-4 h-4 text-muted-foreground" />
-              <span>Registrar pagamento</span>
-            </button>
+            {portalQuickActions.map((action) => (
+              <button key={action.label} onClick={openQuickActions} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-full text-sm hover:bg-gray-50 hover:border-gray-300 transition-all">
+                <action.icon className="w-4 h-4 text-muted-foreground" />
+                <span>{action.label}</span>
+              </button>
+            ))}
             <button onClick={openQuickActions} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-full text-sm hover:bg-gray-50 hover:border-gray-300 transition-all">
               <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
               <span>Mais ações</span>
@@ -445,7 +453,7 @@ export default function PortalHomePage() {
 
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.4 }} className="bg-white border border-gray-100 rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-semibold">Documentos recentes</h2>
+                  <h2 className="font-semibold">{documentosArea ? `${documentosArea.label} recentes` : "Documentos recentes"}</h2>
                   <Link href="/portal/documentos" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Ver todos</Link>
                 </div>
                 <div className="py-10 text-center text-sm text-muted-foreground">Nenhum documento disponível ainda.</div>
@@ -476,8 +484,12 @@ export default function PortalHomePage() {
 
             <div className="space-y-6">
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }} className="bg-white border border-gray-100 rounded-2xl p-5">
-                <h2 className="font-semibold mb-1">COS Meet</h2>
-                <p className="text-sm text-muted-foreground mb-4">Abra o COS Meet para preparar reunião por vídeo, registrar gravação ou configurar o acompanhamento do COS de forma honesta.</p>
+                <h2 className="font-semibold mb-1">{reunioesArea?.label || "COS Meet"}</h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {reunioesArea?.subsections?.length
+                    ? `Abra o COS Meet para acompanhar ${reunioesArea.subsections.map((item) => item.toLowerCase()).join(", ")} de forma honesta.`
+                    : "Abra o COS Meet para preparar reuniões, gravações e acompanhamento do COS de forma honesta."}
+                </p>
                 <div className="flex items-center gap-4">
                   <button onClick={() => router.push("/portal/reunioes")} className="flex items-center gap-2 px-4 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 transition-colors">
                     <Video className="w-4 h-4" />
@@ -552,7 +564,7 @@ export default function PortalHomePage() {
 
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.45 }} className="bg-white border border-gray-100 rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-semibold">Atividades recentes</h2>
+                  <h2 className="font-semibold">{operacoesArea ? `${operacoesArea.label} recentes` : "Atividades recentes"}</h2>
                   <Link href="/portal/operacoes" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Ver todas</Link>
                 </div>
                 {recentActivities.length === 0 ? (

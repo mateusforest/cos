@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -22,25 +22,11 @@ import {
 } from "lucide-react"
 import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
 import { useAuth } from "@/components/auth/auth-provider"
-import { portalAreaSources } from "@/lib/area-configs"
+import { getOperationsPortalAreaSources } from "@/lib/area-configs"
 import { PortalUIProvider, usePortalUI } from "@/components/portal/portal-ui-context"
 import { PortalInteractionsProvider, usePortalInteractions } from "@/components/portal/portal-interactions"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Toaster } from "@/components/ui/toaster"
-
-const mainNavItems = [
-  { icon: Home, label: "Inicio", href: "/portal" },
-  { icon: MessageSquare, label: "Conversas", href: "/portal/conversas" },
-  ...portalAreaSources.map((area) => ({ icon: area.icon, label: area.label, href: area.portalHref })),
-  { icon: Plug, label: "Integracoes", href: "/portal/integracoes" },
-  { icon: Settings, label: "Configuracoes", href: "/portal/configuracoes" },
-]
-
-const favoriteItems = [
-  { icon: FileSignature, label: "Propostas", href: "/portal/vendas/propostas" },
-  { icon: FileText, label: "Contratos", href: "/portal/documentos/contratos" },
-  { icon: Headphones, label: "Atendimentos", href: "/portal/suporte" },
-]
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -59,10 +45,46 @@ function PortalShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const { mobileMenuOpen, setMobileMenuOpen } = usePortalUI()
   const { openInstall } = usePortalInteractions()
-  const { user, profile } = useAuth()
+  const { user, profile, workspace } = useAuth()
   const pathname = usePathname()
   const displayName = profile?.full_name || user?.email || "Sua conta"
   const displayRole = profile?.global_role === "master" ? "Master" : "Administrador"
+  const areaSources = useMemo(
+    () => getOperationsPortalAreaSources(workspace?.metadata?.segment),
+    [workspace?.metadata?.segment],
+  )
+  const mainNavItems = useMemo(
+    () => [
+      { icon: Home, label: "Inicio", href: "/portal" },
+      { icon: MessageSquare, label: "Conversas", href: "/portal/conversas" },
+      ...areaSources.map((area) => ({ icon: area.icon, label: area.label, href: area.portalHref })),
+      { icon: Plug, label: "Integracoes", href: "/portal/integracoes" },
+      { icon: Settings, label: "Configuracoes", href: "/portal/configuracoes" },
+    ],
+    [areaSources],
+  )
+  const favoriteItems = useMemo(() => {
+    const documentsArea = areaSources.find((area) => area.key === "documentos")
+    const meetingsArea = areaSources.find((area) => area.key === "reunioes")
+
+    return [
+      {
+        icon: FileSignature,
+        label: "Propostas",
+        href: "/portal/vendas/propostas",
+      },
+      {
+        icon: FileText,
+        label: documentsArea?.subsections?.[0] || "Contratos",
+        href: "/portal/documentos/contratos",
+      },
+      {
+        icon: Headphones,
+        label: meetingsArea?.label || "Atendimentos",
+        href: "/portal/reunioes",
+      },
+    ]
+  }, [areaSources])
 
   return (
     <div className="flex h-screen bg-white">

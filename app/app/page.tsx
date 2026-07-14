@@ -31,6 +31,7 @@ import { useAuth } from "@/components/auth/auth-provider"
 import type { ChatMessage } from "@/components/app/area-chat"
 import { useSupport } from "@/components/support/support-context"
 import { toast } from "@/hooks/use-toast"
+import { getOperationsAreaSources } from "@/lib/area-configs"
 
 type ModalType = "sugerir" | "passo" | "meet" | "editar" | null
 type MicState = "idle" | "listening" | "processing" | "unsupported" | "error"
@@ -185,6 +186,22 @@ export default function AppHomePage() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
   const micActionRef = useRef<"finalize" | "cancel">("finalize")
+  const areaSources = useMemo(
+    () => getOperationsAreaSources(workspace?.metadata?.segment),
+    [workspace?.metadata?.segment],
+  )
+  const areaLabels = useMemo(() => {
+    const findLabel = (key: string, fallback: string) => areaSources.find((area) => area.key === key)?.label || fallback
+
+    return {
+      clientes: findLabel("cadastros", "Clientes"),
+      operacoes: findLabel("operacoes", "Operacoes"),
+      balanco: findLabel("financeiro", "Balanco"),
+      equipe: findLabel("equipe", "Equipe"),
+      vendas: findLabel("vendas", "Vendas"),
+      reunioes: findLabel("reunioes", "Reunioes"),
+    }
+  }, [areaSources])
 
   const shortcutsStorageKey = useMemo(
     () => (workspace?.id ? `cos:operations:shortcuts:${workspace.id}` : null),
@@ -363,6 +380,7 @@ export default function AppHomePage() {
       defaultShortcuts.map((shortcut) => ({
         ...shortcut,
         enabled: shortcutPreferences?.[shortcut.id] ?? shortcut.enabled,
+        label: areaLabels[shortcut.id as keyof typeof areaLabels] ?? shortcut.label,
         value:
           shortcut.id === "clientes"
             ? String(stats?.clientes ?? 0)
@@ -376,7 +394,7 @@ export default function AppHomePage() {
                     ? String(stats?.reunioes ?? 0)
                     : shortcut.value,
       })),
-    [shortcutPreferences, stats],
+    [areaLabels, shortcutPreferences, stats],
   )
   const saldoFinal = stats?.balanco ?? 0
   const enabledShortcuts = shortcuts.filter((shortcut) => shortcut.enabled)

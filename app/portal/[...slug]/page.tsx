@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useEffect } from "react"
+import { use, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { ArrowRight, BarChart3, Box, Briefcase, FileSignature, Receipt, ShoppingCart, TrendingUp, Users } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -14,6 +14,7 @@ import { OperationsManager } from "@/components/operations/operations-manager"
 import { SupportWorkspaceCenter } from "@/components/support/support-workspace-center"
 import { getCosAreaSourceByKey } from "@/lib/area-configs"
 import { SystemActivityManager } from "@/components/portal/system-activity-manager"
+import { useAuth } from "@/components/auth/auth-provider"
 
 const SECTION_META: Record<string, { title: string; description: string; ctaLabel: string; emptyLabel: string; listHref: string }> = {
   conversas: {
@@ -199,9 +200,26 @@ function metaForDocumentKey(key: string) {
 export default function PortalSectionPage({ params }: { params: Promise<{ slug: string[] }> }) {
   const { slug } = use(params)
   const router = useRouter()
+  const { workspace } = useAuth()
   const key = slug[slug.length - 1]
   const salesSubsection = slug[0] === "vendas" && slug.length > 1 ? slug[1] : null
-  const sharedArea = getCosAreaSourceByKey(key)
+  const sharedArea = getCosAreaSourceByKey(key, workspace?.metadata?.segment)
+  const cadastrosArea = getCosAreaSourceByKey("cadastros", workspace?.metadata?.segment)
+  const documentsArea = getCosAreaSourceByKey("documentos", workspace?.metadata?.segment)
+  const meetingsArea = getCosAreaSourceByKey("reunioes", workspace?.metadata?.segment)
+  const operationsArea = getCosAreaSourceByKey("operacoes", workspace?.metadata?.segment)
+  const cadastrosSections = useMemo(() => {
+    const titles = cadastrosArea?.subsections?.length ? cadastrosArea.subsections : CADASTROS_SECTIONS.map((section) => section.title)
+
+    return CADASTROS_SECTIONS.map((section, index) => ({
+      ...section,
+      title: titles[index] || section.title,
+      description:
+        index === 0
+          ? `Gerencie ${String((titles[index] || section.title)).toLowerCase()} e relacionamentos reais do seu workspace.`
+          : `Acompanhe ${String((titles[index] || section.title)).toLowerCase()} por aqui assim que a persistencia real deste modulo estiver conectada.`,
+    }))
+  }, [cadastrosArea?.subsections])
 
   useEffect(() => {
     if (sharedArea?.portalStatus === "redirect") {
@@ -220,12 +238,16 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-7xl mx-auto px-6 py-8">
             <div className="mb-8">
-              <h1 className="text-2xl font-semibold text-[#0a0a0a]">Cadastros</h1>
-              <p className="text-sm text-gray-500">Acesse clientes, leads, produtos e servicos do seu workspace.</p>
+              <h1 className="text-2xl font-semibold text-[#0a0a0a]">{cadastrosArea?.label || "Cadastros"}</h1>
+              <p className="text-sm text-gray-500">
+                {cadastrosArea
+                  ? `Acesse ${cadastrosArea.subsections.map((item) => item.toLowerCase()).join(", ")} do seu workspace.`
+                  : "Acesse clientes, leads, produtos e servicos do seu workspace."}
+              </p>
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {CADASTROS_SECTIONS.map((section) => (
+              {cadastrosSections.map((section) => (
                 <Link
                   key={section.key}
                   href={section.href}
@@ -254,8 +276,8 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
       <div className="flex-1 flex flex-col h-full">
         <PortalHeader />
         <ClientsManager
-          title="Clientes"
-          description="Gerencie clientes e relacionamentos reais do seu workspace."
+          title={cadastrosSections[0]?.title || "Clientes"}
+          description={`Gerencie ${String(cadastrosSections[0]?.title || "clientes").toLowerCase()} e relacionamentos reais do seu workspace.`}
           variant="portal"
         />
       </div>
@@ -265,8 +287,8 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   if (key === "leads") {
     return (
       <PortalModulePage
-        title="Leads"
-        description="Consulte os leads do portal por aqui quando a persistencia real deste modulo estiver conectada."
+        title={cadastrosSections[1]?.title || "Leads"}
+        description={`Consulte ${String(cadastrosSections[1]?.title || "leads").toLowerCase()} do portal por aqui quando a persistencia real deste modulo estiver conectada.`}
         emptyLabel="Nenhum lead disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace."
         listHref="/portal/cadastros"
       />
@@ -276,8 +298,8 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   if (key === "produtos") {
     return (
       <PortalModulePage
-        title="Produtos"
-        description="Consulte os produtos do portal por aqui quando a persistencia real deste modulo estiver conectada."
+        title={cadastrosSections[2]?.title || "Produtos"}
+        description={`Consulte ${String(cadastrosSections[2]?.title || "produtos").toLowerCase()} do portal por aqui quando a persistencia real deste modulo estiver conectada.`}
         emptyLabel="Nenhum produto disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace."
         listHref="/portal/cadastros"
       />
@@ -287,8 +309,8 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   if (key === "servicos") {
     return (
       <PortalModulePage
-        title="Servicos"
-        description="Consulte os servicos do portal por aqui quando a persistencia real deste modulo estiver conectada."
+        title={cadastrosSections[3]?.title || "Servicos"}
+        description={`Consulte ${String(cadastrosSections[3]?.title || "servicos").toLowerCase()} do portal por aqui quando a persistencia real deste modulo estiver conectada.`}
         emptyLabel="Nenhum servico disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace."
         listHref="/portal/cadastros"
       />
@@ -301,7 +323,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
         <PortalHeader />
         <FinancialManager
           title="Balanco"
-          description="Visualize o balanco consolidado do seu workspace com dados reais."
+          description={`Visualize ${String(sharedArea?.label || "o balanco").toLowerCase()} consolidado do seu workspace com dados reais.`}
           variant="portal"
         />
       </div>
@@ -313,8 +335,8 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
       <div className="flex-1 flex flex-col h-full">
         <PortalHeader />
         <OperationsManager
-          title="Operacoes"
-          description="Organize processos, atendimentos e fluxos operacionais com dados reais."
+          title={operationsArea?.label || "Operacoes"}
+          description={`Organize ${operationsArea?.subsections.map((item) => item.toLowerCase()).join(", ") || "processos, atendimentos e fluxos operacionais"} com dados reais.`}
           variant="portal"
         />
       </div>
@@ -426,7 +448,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
         <PortalHeader />
         <DocumentsManager
           title={meta.title}
-          description={meta.description}
+          description={key === "documentos" ? `Centralize ${documentsArea?.subsections.map((item) => item.toLowerCase()).join(", ") || "documentos reais do seu workspace"}.` : meta.description}
           variant="portal"
           filterType={key}
         />
@@ -439,8 +461,8 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
       <div className="flex-1 flex flex-col h-full">
         <PortalHeader />
         <MeetingsManager
-          title="Reunioes"
-          description="Gerencie gravacoes, resumos e proximos passos reais do COS Meet."
+          title={meetingsArea?.label || "Reunioes"}
+          description={`Gerencie ${meetingsArea?.subsections.map((item) => item.toLowerCase()).join(", ") || "gravacoes, resumos e proximos passos reais"} do COS Meet.`}
           variant="portal"
         />
       </div>
