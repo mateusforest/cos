@@ -47,7 +47,7 @@ const portalDestinations: Record<string, string> = {
   relatorios: "/portal/relatorios",
 }
 
-function resolveChatCopy(area: string, subLabel: string, segment?: string) {
+function resolveChatCopy(area: string, subLabel: string, segment?: string, areaQuickActions?: string[]) {
   if (area === "cadastros") {
     const normalizedSub = slug(subLabel)
     const portalLabelBySub: Record<string, string> = {
@@ -81,7 +81,9 @@ function resolveChatCopy(area: string, subLabel: string, segment?: string) {
               ? ["Criar interessado", "Buscar interessado", portalLabelBySub[normalizedSub]]
               : segment === "imobiliarias" && normalizedSub === "imoveis"
                 ? ["Registrar imovel", "Buscar imovel", portalLabelBySub[normalizedSub]]
-          : [`Buscar ${subLabel.toLowerCase()}`, portalLabelBySub[normalizedSub] ?? "Ver cadastros no Portal"],
+          : areaQuickActions?.length
+            ? areaQuickActions
+            : [`Buscar ${subLabel.toLowerCase()}`, portalLabelBySub[normalizedSub] ?? "Ver cadastros no Portal"],
     }
   }
 
@@ -117,7 +119,7 @@ function resolveChatCopy(area: string, subLabel: string, segment?: string) {
     return {
       subtitle: `Conversa operacional sobre ${subLabel.toLowerCase()}.`,
       emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
-      quickActions: ["Registrar atendimento", "Buscar atendimento", "Ver atendimentos no Portal"],
+      quickActions: areaQuickActions?.length ? areaQuickActions : ["Registrar atendimento", "Buscar atendimento", "Ver atendimentos no Portal"],
     }
   }
 
@@ -156,8 +158,9 @@ function resolveChatCopy(area: string, subLabel: string, segment?: string) {
     return {
       subtitle: `Conversa documental sobre ${subLabel.toLowerCase()}.`,
       emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
-      quickActions:
-        segment === "imobiliarias"
+      quickActions: areaQuickActions?.length
+        ? areaQuickActions
+        : segment === "imobiliarias"
           ? ["Criar documento imobiliario", "Buscar arquivo", "Ver documentos no Portal"]
           : ["Criar documento clínico", "Buscar arquivo", "Ver documentos no Portal"],
     }
@@ -183,7 +186,7 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
     config?.subsections.find((section) => slug(section) === sub) ??
     sub.charAt(0).toUpperCase() + sub.slice(1).replace(/-/g, " ")
 
-  const chatCopy = resolveChatCopy(area, subLabel, workspace?.metadata?.segment)
+  const chatCopy = resolveChatCopy(area, subLabel, workspace?.metadata?.segment, config?.quickActions)
 
   useEffect(() => {
     let isMounted = true
@@ -237,6 +240,16 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
             if (area === "operacoes") {
               router.push("/portal/operacoes")
               return
+            }
+
+            if (area === "cadastros" && config?.subsections?.length) {
+              const cadastrosRoutes = ["/portal/cadastros/clientes", "/portal/cadastros/leads", "/portal/cadastros/produtos", "/portal/cadastros/servicos"]
+              const cadastrosIndex = config.subsections.findIndex((section) => slug(section) === sub)
+
+              if (cadastrosIndex >= 0 && cadastrosIndex < cadastrosRoutes.length) {
+                router.push(cadastrosRoutes[cadastrosIndex])
+                return
+              }
             }
 
             if (workspace?.metadata?.segment === "servicos" && sub === "servicos") {
@@ -308,6 +321,11 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
             return
           }
 
+          if (label.startsWith("Criar ") && !label.includes("documento")) {
+            router.push("/app/novo/cliente")
+            return
+          }
+
           if (label === "Abrir propostas") {
             router.push("/portal/vendas/propostas")
             return
@@ -315,6 +333,11 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
 
           if (label === "Registrar ganho" || label === "Registrar gasto") {
             router.push("/app/novo/financeiro")
+            return
+          }
+
+          if (label.startsWith("Registrar ")) {
+            router.push("/app/novo/operacao")
             return
           }
 
