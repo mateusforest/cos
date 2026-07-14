@@ -201,6 +201,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   const { slug } = use(params)
   const router = useRouter()
   const { workspace } = useAuth()
+  const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
   const key = slug[slug.length - 1]
   const salesSubsection = slug[0] === "vendas" && slug.length > 1 ? slug[1] : null
   const sharedArea = getCosAreaSourceByKey(key, workspace?.metadata?.segment)
@@ -279,6 +280,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
           title={cadastrosSections[0]?.title || "Clientes"}
           description={`Gerencie ${String(cadastrosSections[0]?.title || "clientes").toLowerCase()} e relacionamentos reais do seu workspace.`}
           variant="portal"
+          mode={isClinicWorkspace ? "clinic" : "default"}
         />
       </div>
     )
@@ -338,6 +340,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
           title={operationsArea?.label || "Operacoes"}
           description={`Organize ${operationsArea?.subsections.map((item) => item.toLowerCase()).join(", ") || "processos, atendimentos e fluxos operacionais"} com dados reais.`}
           variant="portal"
+          mode={isClinicWorkspace ? "clinic" : "default"}
         />
       </div>
     )

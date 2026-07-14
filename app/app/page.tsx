@@ -202,6 +202,7 @@ export default function AppHomePage() {
       reunioes: findLabel("reunioes", "Reunioes"),
     }
   }, [areaSources])
+  const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
 
   const shortcutsStorageKey = useMemo(
     () => (workspace?.id ? `cos:operations:shortcuts:${workspace.id}` : null),
@@ -271,11 +272,15 @@ export default function AppHomePage() {
     () => [
       {
         ...suggestionTemplates[0],
-        title: stats.clientes > 0 ? "Cadastrar novo cliente" : "Cadastrar primeiro cliente",
+        title: stats.clientes > 0 ? (isClinicWorkspace ? "Cadastrar novo paciente" : "Cadastrar novo cliente") : isClinicWorkspace ? "Cadastrar primeiro paciente" : "Cadastrar primeiro cliente",
         desc:
           stats.clientes > 0
-            ? "Adicione outro cliente ao workspace com dados reais."
-            : "Comece organizando sua base de clientes.",
+            ? isClinicWorkspace
+              ? "Adicione outro paciente ao workspace com dados reais."
+              : "Adicione outro cliente ao workspace com dados reais."
+            : isClinicWorkspace
+              ? "Comece organizando sua base de pacientes."
+              : "Comece organizando sua base de clientes.",
       },
       {
         ...suggestionTemplates[1],
@@ -302,7 +307,7 @@ export default function AppHomePage() {
             : "Os resumos gerados ficarão disponíveis nesta área.",
       },
     ],
-    [stats.clientes, summary?.documentsCount, summary?.financial.entriesCount, summary?.meetingsCount],
+    [isClinicWorkspace, stats.clientes, summary?.documentsCount, summary?.financial.entriesCount, summary?.meetingsCount],
   )
 
   const nextSteps = useMemo(
@@ -311,21 +316,29 @@ export default function AppHomePage() {
         ...nextStepTemplates[0],
         priority: stats.clientes > 0 ? "Média" : "Alta",
         color: stats.clientes > 0 ? "#f97316" : nextStepTemplates[0].color,
-        title: stats.clientes > 0 ? "Cadastrar novo cliente" : "Cadastrar primeiro cliente",
+        title: stats.clientes > 0 ? (isClinicWorkspace ? "Cadastrar novo paciente" : "Cadastrar novo cliente") : isClinicWorkspace ? "Cadastrar primeiro paciente" : "Cadastrar primeiro cliente",
         desc:
           stats.clientes > 0
-            ? "Amplie sua base com mais um cliente real no workspace."
-            : "Sua operação começa quando os primeiros dados reais entrarem no COS.",
+            ? isClinicWorkspace
+              ? "Amplie sua base com mais um paciente real no workspace."
+              : "Amplie sua base com mais um cliente real no workspace."
+            : isClinicWorkspace
+              ? "Sua operacao clinica comeca quando os primeiros pacientes entram no COS."
+              : "Sua operação começa quando os primeiros dados reais entrarem no COS.",
       },
       {
         ...nextStepTemplates[1],
         priority: stats.operacoes > 0 ? "Média" : "Alta",
         color: stats.operacoes > 0 ? "#f97316" : nextStepTemplates[1].color,
-        title: stats.operacoes > 0 ? "Criar nova operação" : "Criar primeira operação",
+        title: stats.operacoes > 0 ? (isClinicWorkspace ? "Registrar novo atendimento" : "Criar nova operação") : isClinicWorkspace ? "Registrar primeiro atendimento" : "Criar primeira operação",
         desc:
           stats.operacoes > 0
-            ? "Registre uma nova operação, pedido ou atendimento real."
-            : "Estruture pedidos, projetos ou atendimentos no seu workspace.",
+            ? isClinicWorkspace
+              ? "Registre um novo atendimento real no workspace."
+              : "Registre uma nova operação, pedido ou atendimento real."
+            : isClinicWorkspace
+              ? "Organize consultas, agenda e exames com a estrutura ja existente."
+              : "Estruture pedidos, projetos ou atendimentos no seu workspace.",
       },
       {
         ...nextStepTemplates[2],
@@ -346,7 +359,7 @@ export default function AppHomePage() {
             : "Adicione membros quando quiser começar a colaboração.",
       },
     ],
-    [stats.clientes, stats.equipe, stats.operacoes, summary?.financial.entriesCount],
+    [isClinicWorkspace, stats.clientes, stats.equipe, stats.operacoes, summary?.financial.entriesCount],
   )
 
   useEffect(() => {

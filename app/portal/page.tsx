@@ -155,8 +155,9 @@ const AUDIO_WAVEFORM = Array.from({ length: 50 }, (_, i) => Math.round((Math.sin
 
 export default function PortalHomePage() {
   const router = useRouter()
-  const { openQuickActions, openDeleteConfirm } = usePortalInteractions()
+  const { openQuickActionForm, openQuickActions, openDeleteConfirm } = usePortalInteractions()
   const { workspace } = useAuth()
+  const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
   const [chatInput, setChatInput] = useState("")
   const [insights, setInsights] = useState(initialInsights)
   const [audioTranscript, setAudioTranscript] = useState("")
@@ -181,10 +182,10 @@ export default function PortalHomePage() {
   const operacoesArea = areaSources.find((area) => area.key === "operacoes")
   const reunioesArea = areaSources.find((area) => area.key === "reunioes")
   const portalQuickActions = [
-    { icon: CheckSquare, label: operacoesArea?.quickActions[0] || "Criar tarefa" },
-    { icon: UserPlus, label: cadastrosArea?.quickActions[0] || "Criar cliente" },
-    { icon: FileText, label: documentosArea?.quickActions[0] || "Nova proposta" },
-    { icon: CreditCard, label: financeiroArea?.quickActions[0] || "Registrar pagamento" },
+    { icon: CheckSquare, label: operacoesArea?.quickActions[0] || "Criar tarefa", type: "operacao" as const },
+    { icon: UserPlus, label: cadastrosArea?.quickActions[0] || "Criar cliente", type: "cliente" as const },
+    { icon: FileText, label: documentosArea?.quickActions[0] || "Novo documento", type: "documento" as const },
+    { icon: CreditCard, label: financeiroArea?.quickActions[0] || "Registrar pagamento", type: "cliente" as const },
   ]
 
   useEffect(() => {
@@ -378,7 +379,7 @@ export default function PortalHomePage() {
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="flex flex-wrap gap-3 mb-8">
             {portalQuickActions.map((action) => (
-              <button key={action.label} onClick={openQuickActions} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-full text-sm hover:bg-gray-50 hover:border-gray-300 transition-all">
+              <button key={action.label} onClick={() => action.label === (financeiroArea?.quickActions[0] || "Registrar pagamento") ? openQuickActions() : openQuickActionForm(action.type)} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-full text-sm hover:bg-gray-50 hover:border-gray-300 transition-all">
                 <action.icon className="w-4 h-4 text-muted-foreground" />
                 <span>{action.label}</span>
               </button>

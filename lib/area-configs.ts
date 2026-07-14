@@ -247,19 +247,21 @@ export const operationsSectorTemplates: Record<string, SectorTemplate> = {
       cadastros: {
         label: "Cadastros clínicos",
         subsections: ["Pacientes", "Convênios", "Procedimentos", "Profissionais"],
-        quickActions: ["Criar paciente", "Buscar cadastro", "Ver cadastros no Portal"],
+        quickActions: ["Criar paciente", "Buscar paciente", "Ver pacientes no Portal"],
         conversationSuggestion: "Base clínica pronta para organizar atendimentos.",
       },
       operacoes: {
         label: "Atendimentos",
-        subsections: ["Consultas", "Exames", "Agendamentos"],
-        quickActions: ["Criar operação", "Buscar operação", "Ver operações no Portal"],
+        subsections: ["Consultas", "Agenda", "Exames"],
+        quickActions: ["Registrar atendimento", "Buscar atendimento", "Ver atendimentos no Portal"],
       },
       financeiro: {
         subsections: ["Recebimentos", "Despesas", "Fluxo de caixa"],
       },
       documentos: {
-        subsections: ["Prontuários", "Arquivos", "Relatórios"],
+        label: "Documentos clínicos",
+        subsections: ["Guias", "Exames", "Relatórios"],
+        quickActions: ["Criar documento clínico", "Buscar arquivo", "Ver documentos no Portal"],
       },
     },
   },

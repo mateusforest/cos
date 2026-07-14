@@ -19,6 +19,7 @@ import { createClientAction } from "@/actions/clients"
 import { createDocumentAction } from "@/actions/documents"
 import { createMeetingAction } from "@/actions/meetings"
 import { createOperationAction } from "@/actions/operations"
+import { useAuth } from "@/components/auth/auth-provider"
 import { toast } from "@/hooks/use-toast"
 
 type QuickActionType = "cliente" | "documento" | "operacao" | "reuniao" | "tarefa" | "relatorio"
@@ -145,6 +146,8 @@ export function usePortalInteractions() {
 }
 
 export function PortalInteractionsProvider({ children }: { children: ReactNode }) {
+  const { workspace } = useAuth()
+  const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
   const [modal, setModal] = useState<PortalModal>(null)
   const [selectedAction, setSelectedAction] = useState<QuickActionType>("cliente")
   const [formValues, setFormValues] = useState<Record<string, string>>({})
@@ -161,6 +164,63 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
   })
   const [filters, setFilters] = useState<Record<FilterKey, string>>(defaultFilters)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const resolvedQuickActionItems = useMemo(
+    () =>
+      quickActionItems.map((item) => {
+        if (!isClinicWorkspace) return item
+        if (item.type === "cliente") return { ...item, label: "Paciente" }
+        if (item.type === "documento") return { ...item, label: "Documento clinico" }
+        if (item.type === "operacao") return { ...item, label: "Atendimento" }
+        return item
+      }),
+    [isClinicWorkspace],
+  )
+  const resolvedQuickActionConfigs = useMemo<Record<QuickActionType, QuickActionConfig>>(
+    () => ({
+      ...quickActionConfigs,
+      cliente: isClinicWorkspace
+        ? {
+            title: "Novo paciente",
+            description: "Prepare o cadastro do proximo paciente do portal.",
+            submit: "Salvar paciente",
+            fields: [
+              { name: "nome", label: "Paciente", placeholder: "Nome do paciente" },
+              { name: "email", label: "E-mail", placeholder: "E-mail de contato" },
+              { name: "telefone", label: "Telefone", placeholder: "Telefone" },
+              { name: "convenio", label: "Convenio", placeholder: "Nome do convenio" },
+              { name: "procedimento", label: "Procedimento", placeholder: "Procedimento principal" },
+              { name: "profissional", label: "Profissional", placeholder: "Profissional responsavel" },
+            ],
+          }
+        : quickActionConfigs.cliente,
+      documento: isClinicWorkspace
+        ? {
+            title: "Novo documento clinico",
+            description: "Organize um novo documento clinico sem criar nova estrutura.",
+            submit: "Salvar documento",
+            fields: [
+              { name: "titulo", label: "Titulo", placeholder: "Titulo do documento clinico" },
+              { name: "tipo", label: "Tipo", placeholder: "Guia, exame ou relatorio" },
+              { name: "descricao", label: "Conteudo", placeholder: "Resumo ou conteudo do documento clinico" },
+            ],
+          }
+        : quickActionConfigs.documento,
+      operacao: isClinicWorkspace
+        ? {
+            title: "Novo atendimento",
+            description: "Registre um atendimento usando a estrutura existente de operacoes.",
+            submit: "Salvar atendimento",
+            fields: [
+              { name: "titulo", label: "Atendimento", placeholder: "Nome do atendimento" },
+              { name: "paciente", label: "Paciente", placeholder: "Nome do paciente" },
+              { name: "procedimento", label: "Procedimento", placeholder: "Procedimento realizado" },
+              { name: "profissional", label: "Profissional", placeholder: "Profissional responsavel" },
+            ],
+          }
+        : quickActionConfigs.operacao,
+    }),
+    [isClinicWorkspace],
+  )
 
   const resetMeetingValues = () =>
     setMeetingValues({
@@ -228,8 +288,15 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
         name: formValues.nome ?? "",
         email: formValues.email ?? "",
         phone: formValues.telefone ?? "",
-        company: "",
-        notes: "",
+        company: isClinicWorkspace ? formValues.convenio ?? "" : "",
+        notes: isClinicWorkspace
+          ? [
+              formValues.procedimento ? `Procedimento: ${formValues.procedimento}` : "",
+              formValues.profissional ? `Profissional: ${formValues.profissional}` : "",
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : "",
         status: "active",
       })
 
@@ -239,7 +306,7 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
         return
       }
 
-      toast({ title: "Cliente criado", description: "O cliente foi salvo com sucesso." })
+      toast({ title: isClinicWorkspace ? "Paciente criado" : "Cliente criado", description: isClinicWorkspace ? "O paciente foi salvo com sucesso." : "O cliente foi salvo com sucesso." })
       setIsSubmitting(false)
       setFormValues({})
       closeModal()
@@ -250,8 +317,11 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
       const result = await createOperationAction({
         title: formValues.titulo ?? "",
         description: [
-          formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
-          formValues.status ? `Status desejado: ${formValues.status}` : "",
+          isClinicWorkspace && formValues.paciente ? `Paciente: ${formValues.paciente}` : "",
+          isClinicWorkspace && formValues.procedimento ? `Procedimento: ${formValues.procedimento}` : "",
+          isClinicWorkspace && formValues.profissional ? `Profissional: ${formValues.profissional}` : "",
+          !isClinicWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+          !isClinicWorkspace && formValues.status ? `Status desejado: ${formValues.status}` : "",
         ]
           .filter(Boolean)
           .join("\n"),
@@ -265,7 +335,7 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
         return
       }
 
-      toast({ title: "Operacao criada", description: "A operacao foi salva com sucesso." })
+      toast({ title: isClinicWorkspace ? "Atendimento criado" : "Operacao criada", description: isClinicWorkspace ? "O atendimento foi salvo com sucesso." : "A operacao foi salva com sucesso." })
       setIsSubmitting(false)
       setFormValues({})
       closeModal()
@@ -424,7 +494,7 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
               {modal === "quickActions" && (
                 <ModalShell title="Acoes rapidas" onClose={closeModal}>
                   <div className="grid grid-cols-2 gap-3">
-                    {quickActionItems.map((item) => (
+                    {resolvedQuickActionItems.map((item) => (
                       <button key={item.type} onClick={() => value.openQuickActionForm(item.type)} className="rounded-2xl border border-gray-100 p-4 text-left transition-colors hover:bg-gray-50">
                         <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl" style={{ backgroundColor: item.bg }}>
                           <item.icon className="h-5 w-5" style={{ color: item.color }} />
@@ -437,10 +507,10 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
               )}
 
               {modal === "quickActionForm" && (
-                <ModalShell title={quickActionConfigs[selectedAction].title} onClose={closeModal}>
+                <ModalShell title={resolvedQuickActionConfigs[selectedAction].title} onClose={closeModal}>
                   <div className="space-y-4">
-                    <p className="text-sm text-gray-500">{quickActionConfigs[selectedAction].description}</p>
-                    {quickActionConfigs[selectedAction].fields.map((field) => (
+                    <p className="text-sm text-gray-500">{resolvedQuickActionConfigs[selectedAction].description}</p>
+                    {resolvedQuickActionConfigs[selectedAction].fields.map((field) => (
                       <Field key={field.name} label={field.label}>
                         <input
                           type="text"
@@ -452,7 +522,7 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
                       </Field>
                     ))}
                     <button type="button" onClick={submitQuickAction} disabled={isSubmitting} className="w-full rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50">
-                      {isSubmitting ? "Salvando..." : quickActionConfigs[selectedAction].submit}
+                      {isSubmitting ? "Salvando..." : resolvedQuickActionConfigs[selectedAction].submit}
                     </button>
                   </div>
                 </ModalShell>

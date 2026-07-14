@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
@@ -10,16 +10,70 @@ import { createDocumentAction } from "@/actions/documents"
 import { createFinancialEntryAction } from "@/actions/financial"
 import { createMeetingAction } from "@/actions/meetings"
 import { createOperationAction } from "@/actions/operations"
+import { useAuth } from "@/components/auth/auth-provider"
 import { fotoConfig, novoConfigs, type NovoConfig } from "@/lib/novo-configs"
 
 export default function NovoPage({ params }: { params: Promise<{ tipo: string }> }) {
   const { tipo } = use(params)
+  const { workspace } = useAuth()
+  const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
   const [submitted, setSubmitted] = useState(false)
   const [formValues, setFormValues] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
 
-  const config: NovoConfig | undefined = tipo === "foto" ? fotoConfig : novoConfigs[tipo]
+  const baseConfig: NovoConfig | undefined = tipo === "foto" ? fotoConfig : novoConfigs[tipo]
+  const config: NovoConfig | undefined = useMemo(() => {
+    if (!baseConfig || !isClinicWorkspace) {
+      return baseConfig
+    }
+
+    if (tipo === "cliente") {
+      return {
+        ...baseConfig,
+        title: "Novo paciente",
+        subtitle: "Cadastre um novo paciente usando a estrutura existente do COS.",
+        cta: "Cadastrar paciente",
+        fields: [
+          { name: "nome", label: "Paciente", type: "text", placeholder: "Nome do paciente", required: true },
+          { name: "email", label: "E-mail", type: "email", placeholder: "email@contato.com" },
+          { name: "telefone", label: "Telefone", type: "tel", placeholder: "(11) 99999-9999" },
+          { name: "convenio", label: "Convenio", type: "text", placeholder: "Nome do convenio" },
+          { name: "procedimento", label: "Procedimento", type: "text", placeholder: "Procedimento principal" },
+          { name: "profissional", label: "Profissional", type: "text", placeholder: "Profissional responsavel" },
+          { name: "observacoes", label: "Observacoes", type: "textarea", placeholder: "Observacoes iniciais do paciente..." },
+        ],
+      }
+    }
+
+    if (tipo === "operacao") {
+      return {
+        ...baseConfig,
+        title: "Novo atendimento",
+        subtitle: "Registre um atendimento com os dados clinicos essenciais.",
+        cta: "Registrar atendimento",
+        fields: [
+          { name: "nome", label: "Atendimento", type: "text", placeholder: "Nome do atendimento", required: true },
+          { name: "paciente", label: "Paciente", type: "text", placeholder: "Nome do paciente" },
+          { name: "procedimento", label: "Procedimento", type: "text", placeholder: "Procedimento realizado" },
+          { name: "profissional", label: "Profissional", type: "text", placeholder: "Profissional responsavel" },
+          { name: "prazo", label: "Data", type: "date" },
+          { name: "descricao", label: "Observacoes", type: "textarea", placeholder: "Detalhes do atendimento..." },
+        ],
+      }
+    }
+
+    if (tipo === "documento") {
+      return {
+        ...baseConfig,
+        title: "Novo documento clinico",
+        subtitle: "Crie um documento clinico usando o modulo ja existente.",
+        cta: "Criar documento clinico",
+      }
+    }
+
+    return baseConfig
+  }, [baseConfig, isClinicWorkspace, tipo])
   const hasRealPersistence = ["cliente", "financeiro", "operacao", "documento", "reuniao"].includes(tipo)
 
   if (!config) {
@@ -50,8 +104,16 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
         name: formValues.nome ?? "",
         email: formValues.email ?? "",
         phone: formValues.telefone ?? "",
-        company: formValues.empresa ?? "",
-        notes: formValues.observacoes ?? "",
+        company: isClinicWorkspace ? formValues.convenio ?? "" : formValues.empresa ?? "",
+        notes: isClinicWorkspace
+          ? [
+              formValues.procedimento ? `Procedimento: ${formValues.procedimento}` : "",
+              formValues.profissional ? `Profissional: ${formValues.profissional}` : "",
+              formValues.observacoes ? `Observacoes: ${formValues.observacoes}` : "",
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : formValues.observacoes ?? "",
         status: (formValues.status ?? "Ativo").toLowerCase() === "arquivado" ? "archived" : "active",
       })
     }
@@ -71,8 +133,11 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
       return createOperationAction({
         title: formValues.nome ?? "",
         description: [
-          formValues.tipo ? `Tipo: ${formValues.tipo}` : "",
-          formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+          isClinicWorkspace && formValues.paciente ? `Paciente: ${formValues.paciente}` : "",
+          isClinicWorkspace && formValues.procedimento ? `Procedimento: ${formValues.procedimento}` : "",
+          isClinicWorkspace && formValues.profissional ? `Profissional: ${formValues.profissional}` : "",
+          !isClinicWorkspace && formValues.tipo ? `Tipo: ${formValues.tipo}` : "",
+          !isClinicWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
           formValues.descricao ?? "",
         ]
           .filter(Boolean)

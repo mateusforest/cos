@@ -12,12 +12,19 @@ import { getOperationsAreaConfigs, slug } from "@/lib/area-configs"
 
 const portalDestinations: Record<string, string> = {
   clientes: "/portal/cadastros/clientes",
+  pacientes: "/portal/cadastros/clientes",
   leads: "/portal/cadastros/leads",
+  convenios: "/portal/cadastros/leads",
   produtos: "/portal/cadastros/produtos",
+  procedimentos: "/portal/cadastros/produtos",
   servicos: "/portal/cadastros/servicos",
+  profissionais: "/portal/cadastros/servicos",
   projetos: "/portal/operacoes",
   ordens: "/portal/operacoes",
   processos: "/portal/operacoes",
+  consultas: "/portal/operacoes",
+  agenda: "/portal/operacoes",
+  exames: "/portal/operacoes",
   propostas: "/portal/vendas/propostas",
   negociacoes: "/portal/vendas/negociacoes",
   pedidos: "/portal/vendas/pedidos",
@@ -40,17 +47,21 @@ function resolveChatCopy(area: string, subLabel: string) {
     const normalizedSub = slug(subLabel)
     const portalLabelBySub: Record<string, string> = {
       clientes: "Ver clientes no Portal",
+      pacientes: "Ver pacientes no Portal",
       leads: "Ver leads no Portal",
+      convenios: "Ver convenios no Portal",
       produtos: "Ver produtos no Portal",
+      procedimentos: "Ver procedimentos no Portal",
       servicos: "Ver servicos no Portal",
+      profissionais: "Ver profissionais no Portal",
     }
 
     return {
       subtitle: `Conversa contextual de ${subLabel.toLowerCase()} do seu workspace.`,
       emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
       quickActions:
-        normalizedSub === "clientes"
-          ? ["Criar cliente", "Buscar cliente", portalLabelBySub[normalizedSub]]
+        normalizedSub === "clientes" || normalizedSub === "pacientes"
+          ? [normalizedSub === "pacientes" ? "Criar paciente" : "Criar cliente", normalizedSub === "pacientes" ? "Buscar paciente" : "Buscar cliente", portalLabelBySub[normalizedSub]]
           : [`Buscar ${subLabel.toLowerCase()}`, portalLabelBySub[normalizedSub] ?? "Ver cadastros no Portal"],
     }
   }
@@ -59,7 +70,7 @@ function resolveChatCopy(area: string, subLabel: string) {
     return {
       subtitle: `Conversa operacional sobre ${subLabel.toLowerCase()}.`,
       emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
-      quickActions: ["Criar operacao", "Buscar operacao", "Ver operacoes no Portal"],
+      quickActions: ["Registrar atendimento", "Buscar atendimento", "Ver atendimentos no Portal"],
     }
   }
 
@@ -98,7 +109,7 @@ function resolveChatCopy(area: string, subLabel: string) {
     return {
       subtitle: `Conversa documental sobre ${subLabel.toLowerCase()}.`,
       emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
-      quickActions: ["Criar documento", "Buscar arquivo", "Ver documentos no Portal"],
+      quickActions: ["Criar documento clínico", "Buscar arquivo", "Ver documentos no Portal"],
     }
   }
 
@@ -168,16 +179,26 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
         label,
         onClick: () => {
           if (label.includes("Portal")) {
+            if (area === "documentos") {
+              router.push("/portal/documentos")
+              return
+            }
+
+            if (area === "operacoes") {
+              router.push("/portal/operacoes")
+              return
+            }
+
             router.push(portalDestinations[sub] || "/portal")
             return
           }
 
-          if (label === "Criar cliente") {
+          if (label === "Criar cliente" || label === "Criar paciente") {
             router.push("/app/novo/cliente")
             return
           }
 
-          if (label === "Criar operacao") {
+          if (label === "Criar operacao" || label === "Registrar atendimento") {
             router.push("/app/novo/operacao")
             return
           }
@@ -197,7 +218,7 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
             return
           }
 
-          if (label === "Criar documento") {
+          if (label === "Criar documento" || label === "Criar documento clínico") {
             router.push("/app/novo/documento")
             return
           }
