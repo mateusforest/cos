@@ -14,6 +14,14 @@ import { PublicAuthRouteGuard } from "@/components/auth/auth-route-guard"
 type ProductType = WorkspaceType
 type Step = "produto" | "conta"
 
+const operationsSectors = [
+  { value: "clinicas", label: "Clínicas" },
+  { value: "advocacia", label: "Advocacia" },
+  { value: "imobiliarias", label: "Imobiliárias" },
+  { value: "servicos", label: "Serviços" },
+  { value: "outro", label: "Outro" },
+] as const
+
 const products: {
   id: ProductType
   icon: typeof Layers
@@ -53,6 +61,7 @@ export default function CadastroPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [operationsSegment, setOperationsSegment] = useState("")
   const [acceptTerms, setAcceptTerms] = useState(false)
   const [error, setError] = useState("")
   const [isPending, startTransition] = useTransition()
@@ -73,6 +82,11 @@ export default function CadastroPage() {
       return
     }
 
+    if (productType === "operations" && !operationsSegment) {
+      setError("Escolha o setor do COS Operacoes antes de continuar.")
+      return
+    }
+
     if (password !== confirmPassword) {
       setError("As senhas não coincidem.")
       return
@@ -89,6 +103,7 @@ export default function CadastroPage() {
         email,
         password,
         productType,
+        segment: productType === "operations" ? operationsSegment : null,
       })
 
       if (result.error) {
@@ -264,6 +279,28 @@ export default function CadastroPage() {
                   className="w-full px-4 py-3 rounded-xl border border-[#e5e5e5] bg-[#fafafa] text-[#0a0a0a] placeholder:text-[#a3a3a3] focus:outline-none focus:ring-2 focus:ring-[#0a0a0a]/10 focus:border-[#0a0a0a]/20 transition-all"
                 />
               </div>
+
+              {productType === "operations" && (
+                <div className="space-y-2">
+                  <label htmlFor="segment" className="block text-sm font-medium text-[#0a0a0a]">
+                    Setor
+                  </label>
+                  <select
+                    id="segment"
+                    value={operationsSegment}
+                    onChange={(e) => setOperationsSegment(e.target.value)}
+                    required
+                    className="w-full px-4 py-3 rounded-xl border border-[#e5e5e5] bg-[#fafafa] text-[#0a0a0a] focus:outline-none focus:ring-2 focus:ring-[#0a0a0a]/10 focus:border-[#0a0a0a]/20 transition-all"
+                  >
+                    <option value="">Selecione o setor</option>
+                    {operationsSectors.map((sector) => (
+                      <option key={sector.value} value={sector.value}>
+                        {sector.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <label htmlFor="password" className="block text-sm font-medium text-[#0a0a0a]">

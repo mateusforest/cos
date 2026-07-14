@@ -52,11 +52,13 @@ export async function signupAction({
   email,
   password,
   productType,
+  segment,
 }: {
   name: string
   email: string
   password: string
   productType: WorkspaceType
+  segment?: string | null
 }) {
   const supabase = await createSupabaseServerClient()
   const { data, error } = await supabase.auth.signUp({
@@ -82,6 +84,7 @@ export async function signupAction({
     email,
     displayName: name,
     productType,
+    segment,
   })
 
   if (bootstrap.error) {

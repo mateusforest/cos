@@ -22,6 +22,15 @@ export type WorkspaceMetadata = {
   [key: string]: unknown
 }
 
+function normalizeWorkspaceSegment(value?: string | null) {
+  return (value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "-")
+}
+
 export type ProfileRecord = {
   id: string
   full_name: string | null
@@ -112,11 +121,13 @@ async function ensureWorkspaceForIdentity({
   email,
   displayName,
   productType,
+  segment,
 }: {
   userId: string
   email: string
   displayName: string
   productType: WorkspaceType
+  segment?: string | null
 }) {
   const client = createSupabaseAdminClient()
 
@@ -128,6 +139,8 @@ async function ensureWorkspaceForIdentity({
 
   const normalizedEmail = email.trim().toLowerCase()
   const normalizedName = displayName.trim() || normalizedEmail.split("@")[0] || "Workspace"
+  const normalizedSegment =
+    productType === "operations" ? normalizeWorkspaceSegment(segment) : ""
 
   const { error: profileError } = await client.from("profiles").upsert(
     {
@@ -211,7 +224,7 @@ async function ensureWorkspaceForIdentity({
       name: normalizedName,
       type: productType,
       owner_id: userId,
-      metadata: {},
+      metadata: normalizedSegment ? { segment: normalizedSegment } : {},
     })
     .select("id, name, type, owner_id, primary_system_name, primary_system_url, metadata")
     .single<WorkspaceRecord>()
@@ -245,17 +258,20 @@ export async function bootstrapWorkspaceForUser({
   email,
   displayName,
   productType,
+  segment,
 }: {
   userId: string
   email: string
   displayName: string
   productType: WorkspaceType
+  segment?: string | null
 }) {
   return ensureWorkspaceForIdentity({
     userId,
     email,
     displayName,
     productType,
+    segment,
   })
 }
 

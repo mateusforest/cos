@@ -263,6 +263,75 @@ export const operationsSectorTemplates: Record<string, SectorTemplate> = {
       },
     },
   },
+  advocacia: {
+    segment: "advocacia",
+    label: "Advocacia",
+    areas: {
+      cadastros: {
+        label: "Cadastros juridicos",
+        subsections: ["Clientes", "Casos", "Contrapartes", "Prazos"],
+        quickActions: ["Criar cliente", "Buscar cadastro", "Ver cadastros no Portal"],
+        conversationSuggestion: "Base juridica pronta para acompanhar clientes e processos.",
+      },
+      operacoes: {
+        label: "Processos",
+        subsections: ["Andamentos", "Audiencias", "Peticoes"],
+        quickActions: ["Criar operacao", "Buscar operacao", "Ver operacoes no Portal"],
+      },
+      financeiro: {
+        subsections: ["Honorarios", "Recebimentos", "Despesas"],
+      },
+      documentos: {
+        subsections: ["Contratos", "Peticoes", "Relatorios"],
+      },
+    },
+  },
+  imobiliarias: {
+    segment: "imobiliarias",
+    label: "Imobiliarias",
+    areas: {
+      cadastros: {
+        label: "Cadastros imobiliarios",
+        subsections: ["Clientes", "Imoveis", "Proprietarios", "Locatarios"],
+        quickActions: ["Criar cliente", "Buscar cadastro", "Ver cadastros no Portal"],
+        conversationSuggestion: "Base imobiliaria pronta para organizar captacoes e negociacoes.",
+      },
+      operacoes: {
+        label: "Negociacoes",
+        subsections: ["Captacoes", "Visitas", "Propostas"],
+        quickActions: ["Criar operacao", "Buscar operacao", "Ver operacoes no Portal"],
+      },
+      financeiro: {
+        subsections: ["Recebimentos", "Comissoes", "Fluxo de caixa"],
+      },
+      documentos: {
+        subsections: ["Contratos", "Vistorias", "Relatorios"],
+      },
+    },
+  },
+  servicos: {
+    segment: "servicos",
+    label: "Servicos",
+    areas: {
+      cadastros: {
+        label: "Cadastros de servicos",
+        subsections: ["Clientes", "Leads", "Servicos", "Contratos"],
+        quickActions: ["Criar cliente", "Buscar cadastro", "Ver cadastros no Portal"],
+        conversationSuggestion: "Base de servicos pronta para organizar atendimentos e entregas.",
+      },
+      operacoes: {
+        label: "Atendimentos",
+        subsections: ["Ordens", "Execucoes", "Entregas"],
+        quickActions: ["Criar operacao", "Buscar operacao", "Ver operacoes no Portal"],
+      },
+      financeiro: {
+        subsections: ["Recebimentos", "Despesas", "Fluxo de caixa"],
+      },
+      documentos: {
+        subsections: ["Propostas", "Contratos", "Relatorios"],
+      },
+    },
+  },
 }
 
 function applySectorTemplate(area: CosAreaSource, override?: SectorAreaOverride): CosAreaSource {
