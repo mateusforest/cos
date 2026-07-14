@@ -15,11 +15,19 @@ type ProductType = WorkspaceType
 type Step = "produto" | "conta"
 
 const operationsSectors = [
-  { value: "clinicas", label: "Clínicas" },
-  { value: "advocacia", label: "Advocacia" },
-  { value: "imobiliarias", label: "Imobiliárias" },
+  { value: "default", label: "Padrão (Recomendado)" },
+  { value: "comercio", label: "Comércio" },
   { value: "servicos", label: "Serviços" },
-  { value: "outro", label: "Outro" },
+  { value: "industria", label: "Indústria" },
+  { value: "saude", label: "Saúde" },
+  { value: "educacao", label: "Educação" },
+  { value: "imobiliarias", label: "Imobiliárias" },
+  { value: "logistica", label: "Logística" },
+  { value: "advocacia", label: "Advocacia" },
+  { value: "contabilidade", label: "Contabilidade" },
+  { value: "construcao", label: "Construção" },
+  { value: "recursos-humanos", label: "Recursos Humanos" },
+  { value: "outro", label: "Outro segmento" },
 ] as const
 
 const products: {
