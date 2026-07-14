@@ -29,6 +29,8 @@ type ClientFormState = {
   company: string
   procedure: string
   professional: string
+  interest: string
+  ownerRole: string
   notes: string
   status: ClientStatus
 }
@@ -40,6 +42,8 @@ const defaultForm: ClientFormState = {
   company: "",
   procedure: "",
   professional: "",
+  interest: "",
+  ownerRole: "",
   notes: "",
   status: "active",
 }
@@ -103,18 +107,81 @@ function buildClinicNotes(form: ClientFormState) {
     .join("\n")
 }
 
+function parseRealEstateNotes(value: string) {
+  const lines = value.split("\n")
+  let role = ""
+  let interest = ""
+  let responsible = ""
+  const notes: string[] = []
+
+  for (const line of lines) {
+    if (line.startsWith("Perfil: ")) {
+      role = line.replace("Perfil: ", "").trim()
+      continue
+    }
+
+    if (line.startsWith("Interesse: ")) {
+      interest = line.replace("Interesse: ", "").trim()
+      continue
+    }
+
+    if (line.startsWith("Responsavel: ")) {
+      responsible = line.replace("Responsavel: ", "").trim()
+      continue
+    }
+
+    if (line.startsWith("Observacoes: ")) {
+      notes.push(line.replace("Observacoes: ", "").trim())
+      continue
+    }
+
+    if (line.trim()) {
+      notes.push(line.trim())
+    }
+  }
+
+  return {
+    role,
+    interest,
+    responsible,
+    notes: notes.join("\n").trim(),
+  }
+}
+
+function buildRealEstateNotes(form: ClientFormState, role: string) {
+  return [
+    role ? `Perfil: ${role}` : "",
+    form.interest ? `Interesse: ${form.interest.trim()}` : "",
+    form.ownerRole ? `Responsavel: ${form.ownerRole.trim()}` : "",
+    form.notes ? `Observacoes: ${form.notes.trim()}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
 export function ClientsManager({
   title,
   description,
   variant,
   mode = "default",
+  realEstateRole = "client",
 }: {
   title: string
   description: string
   variant: "app" | "portal"
-  mode?: "default" | "clinic"
+  mode?: "default" | "clinic" | "real-estate"
+  realEstateRole?: "client" | "owner" | "interested"
 }) {
   const isClinicMode = mode === "clinic"
+  const isRealEstateMode = mode === "real-estate"
+  const realEstateCopy =
+    realEstateRole === "owner"
+      ? { singular: "proprietario", plural: "proprietarios", capitalized: "Proprietario" }
+      : realEstateRole === "interested"
+        ? { singular: "interessado", plural: "interessados", capitalized: "Interessado" }
+        : { singular: "cliente", plural: "clientes", capitalized: "Cliente" }
+  const realEstateRoleLabel =
+    realEstateRole === "owner" ? "Proprietario" : realEstateRole === "interested" ? "Interessado" : "Cliente"
   const { canManageWorkspace } = useAuth()
   const [clients, setClients] = useState<ClientRecord[]>([])
   const [search, setSearch] = useState("")
@@ -153,20 +220,36 @@ export function ClientsManager({
       const matchesFilter = filter === "all" ? true : client.status === filter
       const term = search.trim().toLowerCase()
       const clinicNotes = isClinicMode ? parseClinicNotes(client.notes) : null
+      const realEstateNotes = isRealEstateMode ? parseRealEstateNotes(client.notes) : null
+      const matchesRole = isRealEstateMode ? (realEstateNotes?.role || "Cliente") === realEstateRoleLabel : true
       const matchesSearch =
         !term ||
-        [client.name, client.email, client.company, client.phone, clinicNotes?.procedure ?? "", clinicNotes?.professional ?? "", clinicNotes?.notes ?? ""]
+        [
+          client.name,
+          client.email,
+          client.company,
+          client.phone,
+          clinicNotes?.procedure ?? "",
+          clinicNotes?.professional ?? "",
+          clinicNotes?.notes ?? "",
+          realEstateNotes?.interest ?? "",
+          realEstateNotes?.responsible ?? "",
+          realEstateNotes?.notes ?? "",
+        ]
           .join(" ")
           .toLowerCase()
           .includes(term)
 
-      return matchesFilter && matchesSearch
+      return matchesFilter && matchesRole && matchesSearch
     })
-  }, [clients, filter, isClinicMode, search])
+  }, [clients, filter, isClinicMode, isRealEstateMode, realEstateRoleLabel, search])
 
   const startCreate = () => {
     setEditingClientId(null)
     setForm(defaultForm)
+    if (isRealEstateMode) {
+      setForm((prev) => ({ ...prev, ownerRole: "", interest: "" }))
+    }
     setError(null)
     setFeedback(null)
     setModalOpen(true)
@@ -174,6 +257,7 @@ export function ClientsManager({
 
   const startEdit = (client: ClientRecord) => {
     const clinicNotes = parseClinicNotes(client.notes)
+    const realEstateNotes = parseRealEstateNotes(client.notes)
 
     setEditingClientId(client.id)
     setForm({
@@ -183,7 +267,9 @@ export function ClientsManager({
       company: client.company,
       procedure: isClinicMode ? clinicNotes.procedure : "",
       professional: isClinicMode ? clinicNotes.professional : "",
-      notes: isClinicMode ? clinicNotes.notes : client.notes,
+      interest: isRealEstateMode ? realEstateNotes.interest : "",
+      ownerRole: isRealEstateMode ? realEstateNotes.responsible : "",
+      notes: isClinicMode ? clinicNotes.notes : isRealEstateMode ? realEstateNotes.notes : client.notes,
       status: client.status,
     })
     setError(null)
@@ -198,7 +284,7 @@ export function ClientsManager({
 
     const payload = {
       ...form,
-      notes: isClinicMode ? buildClinicNotes(form) : form.notes,
+      notes: isClinicMode ? buildClinicNotes(form) : isRealEstateMode ? buildRealEstateNotes(form, realEstateRoleLabel) : form.notes,
     }
 
     const result = editingClientId
@@ -219,9 +305,13 @@ export function ClientsManager({
       editingClientId
         ? isClinicMode
           ? "Paciente atualizado com sucesso."
+          : isRealEstateMode
+            ? `${realEstateCopy.capitalized} atualizado com sucesso.`
           : "Cliente atualizado com sucesso."
         : isClinicMode
           ? "Paciente criado com sucesso."
+          : isRealEstateMode
+            ? `${realEstateCopy.capitalized} criado com sucesso.`
           : "Cliente criado com sucesso.",
     )
     setModalOpen(false)
@@ -239,7 +329,13 @@ export function ClientsManager({
       return
     }
 
-    setFeedback(isClinicMode ? "Paciente arquivado com sucesso." : "Cliente arquivado com sucesso.")
+    setFeedback(
+      isClinicMode
+        ? "Paciente arquivado com sucesso."
+        : isRealEstateMode
+          ? `${realEstateCopy.capitalized} arquivado com sucesso.`
+          : "Cliente arquivado com sucesso.",
+    )
     await loadClients()
   }
 
@@ -256,7 +352,7 @@ export function ClientsManager({
             className="inline-flex items-center gap-2 rounded-xl bg-[#0a0a0a] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]"
           >
             <Plus className="h-4 w-4" />
-            {isClinicMode ? "Novo paciente" : "Novo cliente"}
+            {isClinicMode ? "Novo paciente" : isRealEstateMode ? `Novo ${realEstateCopy.singular}` : "Novo cliente"}
           </button>
         </div>
 
@@ -271,7 +367,13 @@ export function ClientsManager({
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder={isClinicMode ? "Buscar por paciente, convenio, procedimento ou profissional..." : "Buscar por nome, e-mail, empresa ou telefone..."}
+                placeholder={
+                  isClinicMode
+                    ? "Buscar por paciente, convenio, procedimento ou profissional..."
+                    : isRealEstateMode
+                      ? `Buscar por ${realEstateCopy.singular}, interesse ou responsavel...`
+                      : "Buscar por nome, e-mail, empresa ou telefone..."
+                }
                 className="w-full rounded-xl bg-gray-50 px-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
               />
             </div>
@@ -297,21 +399,31 @@ export function ClientsManager({
           {isLoading ? (
             <div className="flex items-center justify-center py-16 text-sm text-gray-500">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {isClinicMode ? "Carregando pacientes..." : "Carregando clientes..."}
+              {isClinicMode
+                ? "Carregando pacientes..."
+                : isRealEstateMode
+                  ? `Carregando ${realEstateCopy.plural}...`
+                  : "Carregando clientes..."}
             </div>
           ) : filteredClients.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-16 text-center">
-              <p className="text-sm text-gray-500">{isClinicMode ? "Nenhum paciente cadastrado ainda." : "Nenhum cliente cadastrado ainda."}</p>
+              <p className="text-sm text-gray-500">
+                {isClinicMode
+                  ? "Nenhum paciente cadastrado ainda."
+                  : isRealEstateMode
+                    ? `Nenhum ${realEstateCopy.singular} cadastrado ainda.`
+                    : "Nenhum cliente cadastrado ainda."}
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px]">
                 <thead>
                   <tr className="border-b border-gray-100 text-left text-xs font-medium text-gray-500">
-                    <th className="px-4 py-3">{isClinicMode ? "Paciente" : "Nome"}</th>
-                    <th className="px-4 py-3">{isClinicMode ? "Convenio" : "E-mail"}</th>
-                    <th className="px-4 py-3">{isClinicMode ? "Procedimento" : "Telefone"}</th>
-                    <th className="px-4 py-3">{isClinicMode ? "Profissional" : "Empresa"}</th>
+                    <th className="px-4 py-3">{isClinicMode ? "Paciente" : isRealEstateMode ? realEstateCopy.capitalized : "Nome"}</th>
+                    <th className="px-4 py-3">{isClinicMode ? "Convenio" : isRealEstateMode ? "Interesse" : "E-mail"}</th>
+                    <th className="px-4 py-3">{isClinicMode ? "Procedimento" : isRealEstateMode ? "Responsavel" : "Telefone"}</th>
+                    <th className="px-4 py-3">{isClinicMode ? "Profissional" : isRealEstateMode ? "Contato" : "Empresa"}</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Criado em</th>
                     <th className="px-4 py-3 text-right">Acoes</th>
@@ -320,13 +432,20 @@ export function ClientsManager({
                 <tbody>
                   {filteredClients.map((client) => {
                     const clinicNotes = isClinicMode ? parseClinicNotes(client.notes) : null
+                    const realEstateNotes = isRealEstateMode ? parseRealEstateNotes(client.notes) : null
 
                     return (
                       <tr key={client.id} className="border-b border-gray-50 last:border-0">
                         <td className="px-4 py-3.5 text-sm font-medium text-[#0a0a0a]">{client.name}</td>
-                        <td className="px-4 py-3.5 text-sm text-gray-500">{isClinicMode ? client.company || "-" : client.email || "-"}</td>
-                        <td className="px-4 py-3.5 text-sm text-gray-500">{isClinicMode ? clinicNotes?.procedure || "-" : client.phone || "-"}</td>
-                        <td className="px-4 py-3.5 text-sm text-gray-500">{isClinicMode ? clinicNotes?.professional || "-" : client.company || "-"}</td>
+                        <td className="px-4 py-3.5 text-sm text-gray-500">
+                          {isClinicMode ? client.company || "-" : isRealEstateMode ? realEstateNotes?.interest || "-" : client.email || "-"}
+                        </td>
+                        <td className="px-4 py-3.5 text-sm text-gray-500">
+                          {isClinicMode ? clinicNotes?.procedure || "-" : isRealEstateMode ? realEstateNotes?.responsible || "-" : client.phone || "-"}
+                        </td>
+                        <td className="px-4 py-3.5 text-sm text-gray-500">
+                          {isClinicMode ? clinicNotes?.professional || "-" : isRealEstateMode ? client.phone || client.email || "-" : client.company || "-"}
+                        </td>
                         <td className="px-4 py-3.5">
                           <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${client.status === "archived" ? "bg-gray-100 text-gray-600" : "bg-emerald-50 text-emerald-600"}`}>
                             {statusLabel(client.status)}
@@ -373,28 +492,46 @@ export function ClientsManager({
               </span>
               <div>
                 <h2 className="text-lg font-semibold text-[#0a0a0a]">
-                  {editingClientId ? (isClinicMode ? "Editar paciente" : "Editar cliente") : isClinicMode ? "Novo paciente" : "Novo cliente"}
+                  {editingClientId
+                    ? isClinicMode
+                      ? "Editar paciente"
+                      : isRealEstateMode
+                        ? `Editar ${realEstateCopy.singular}`
+                        : "Editar cliente"
+                    : isClinicMode
+                      ? "Novo paciente"
+                      : isRealEstateMode
+                        ? `Novo ${realEstateCopy.singular}`
+                        : "Novo cliente"}
                 </h2>
                 <p className="text-sm text-gray-500">
-                  {isClinicMode ? "Cadastre pacientes com convenio, procedimento e profissional usando a estrutura existente." : "Cadastre clientes reais do seu workspace."}
+                  {isClinicMode
+                    ? "Cadastre pacientes com convenio, procedimento e profissional usando a estrutura existente."
+                    : isRealEstateMode
+                      ? `Cadastre ${realEstateCopy.plural} com interesse e responsavel usando a estrutura existente.`
+                      : "Cadastre clientes reais do seu workspace."}
                 </p>
               </div>
             </div>
 
             {!canManageWorkspace && editingClientId && (
               <div className="mb-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-700">
-                {isClinicMode ? "Apenas owner, admin ou master podem editar e arquivar pacientes." : "Apenas owner, admin ou master podem editar e arquivar clientes."}
+                {isClinicMode
+                  ? "Apenas owner, admin ou master podem editar e arquivar pacientes."
+                  : isRealEstateMode
+                    ? `Apenas owner, admin ou master podem editar e arquivar ${realEstateCopy.plural}.`
+                    : "Apenas owner, admin ou master podem editar e arquivar clientes."}
               </div>
             )}
 
             {error && <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 
             <div className="space-y-3">
-              <FormField label={isClinicMode ? "Paciente" : "Nome"}>
+              <FormField label={isClinicMode ? "Paciente" : isRealEstateMode ? realEstateCopy.capitalized : "Nome"}>
                 <input
                   value={form.name}
                   onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                  placeholder={isClinicMode ? "Nome do paciente" : "Nome do cliente"}
+                  placeholder={isClinicMode ? "Nome do paciente" : isRealEstateMode ? `Nome do ${realEstateCopy.singular}` : "Nome do cliente"}
                   className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
                 />
               </FormField>
@@ -414,11 +551,13 @@ export function ClientsManager({
                   className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
                 />
               </FormField>
-              <FormField label={isClinicMode ? "Convenio" : "Empresa"}>
+              <FormField label={isClinicMode ? "Convenio" : isRealEstateMode ? "Interesse" : "Empresa"}>
                 <input
-                  value={form.company}
-                  onChange={(event) => setForm((prev) => ({ ...prev, company: event.target.value }))}
-                  placeholder={isClinicMode ? "Nome do convenio" : "Empresa"}
+                  value={isRealEstateMode ? form.interest : form.company}
+                  onChange={(event) =>
+                    setForm((prev) => (isRealEstateMode ? { ...prev, interest: event.target.value } : { ...prev, company: event.target.value }))
+                  }
+                  placeholder={isClinicMode ? "Nome do convenio" : isRealEstateMode ? "Interesse principal" : "Empresa"}
                   className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
                 />
               </FormField>
@@ -442,11 +581,27 @@ export function ClientsManager({
                   </FormField>
                 </>
               )}
-              <FormField label={isClinicMode ? "Observacoes clinicas iniciais" : "Observacoes"}>
+              {isRealEstateMode && (
+                <FormField label="Responsavel">
+                  <input
+                    value={form.ownerRole}
+                    onChange={(event) => setForm((prev) => ({ ...prev, ownerRole: event.target.value }))}
+                    placeholder="Corretor responsavel"
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
+                  />
+                </FormField>
+              )}
+              <FormField label={isClinicMode ? "Observacoes clinicas iniciais" : isRealEstateMode ? "Observacoes" : "Observacoes"}>
                 <textarea
                   value={form.notes}
                   onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
-                  placeholder={isClinicMode ? "Observacoes iniciais do paciente" : "Observacoes sobre o cliente"}
+                  placeholder={
+                    isClinicMode
+                      ? "Observacoes iniciais do paciente"
+                      : isRealEstateMode
+                        ? `Observacoes sobre o ${realEstateCopy.singular}`
+                        : "Observacoes sobre o cliente"
+                  }
                   rows={3}
                   className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
                 />
@@ -472,7 +627,15 @@ export function ClientsManager({
                 disabled={isSaving || (Boolean(editingClientId) && !canManageWorkspace)}
                 className="flex-1 rounded-2xl bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isSaving ? "Salvando..." : editingClientId ? "Salvar alteracoes" : isClinicMode ? "Salvar paciente" : "Salvar cliente"}
+                {isSaving
+                  ? "Salvando..."
+                  : editingClientId
+                    ? "Salvar alteracoes"
+                    : isClinicMode
+                      ? "Salvar paciente"
+                      : isRealEstateMode
+                        ? `Salvar ${realEstateCopy.singular}`
+                        : "Salvar cliente"}
               </button>
             </div>
           </div>

@@ -294,20 +294,22 @@ export const operationsSectorTemplates: Record<string, SectorTemplate> = {
     areas: {
       cadastros: {
         label: "Cadastros imobiliarios",
-        subsections: ["Clientes", "Imoveis", "Proprietarios", "Locatarios"],
-        quickActions: ["Criar cliente", "Buscar cadastro", "Ver cadastros no Portal"],
+        subsections: ["Clientes", "Proprietarios", "Interessados", "Imoveis"],
+        quickActions: ["Criar cliente", "Buscar proprietario", "Ver cadastros no Portal"],
         conversationSuggestion: "Base imobiliaria pronta para organizar captacoes e negociacoes.",
       },
       operacoes: {
         label: "Negociacoes",
-        subsections: ["Captacoes", "Visitas", "Propostas"],
-        quickActions: ["Criar operacao", "Buscar operacao", "Ver operacoes no Portal"],
+        subsections: ["Imoveis", "Visitas", "Negociacoes"],
+        quickActions: ["Registrar negociacao", "Buscar imovel", "Ver negociacoes no Portal"],
       },
       financeiro: {
         subsections: ["Recebimentos", "Comissoes", "Fluxo de caixa"],
       },
       documentos: {
-        subsections: ["Contratos", "Vistorias", "Relatorios"],
+        label: "Documentos imobiliarios",
+        subsections: ["Contratos", "Vistorias", "Propostas"],
+        quickActions: ["Criar documento imobiliario", "Buscar arquivo", "Ver documentos no Portal"],
       },
     },
   },

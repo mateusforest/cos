@@ -148,6 +148,7 @@ export function usePortalInteractions() {
 export function PortalInteractionsProvider({ children }: { children: ReactNode }) {
   const { workspace } = useAuth()
   const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
+  const isRealEstateWorkspace = workspace?.metadata?.segment === "imobiliarias"
   const [modal, setModal] = useState<PortalModal>(null)
   const [selectedAction, setSelectedAction] = useState<QuickActionType>("cliente")
   const [formValues, setFormValues] = useState<Record<string, string>>({})
@@ -167,13 +168,20 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
   const resolvedQuickActionItems = useMemo(
     () =>
       quickActionItems.map((item) => {
-        if (!isClinicWorkspace) return item
-        if (item.type === "cliente") return { ...item, label: "Paciente" }
-        if (item.type === "documento") return { ...item, label: "Documento clinico" }
-        if (item.type === "operacao") return { ...item, label: "Atendimento" }
+        if (isClinicWorkspace) {
+          if (item.type === "cliente") return { ...item, label: "Paciente" }
+          if (item.type === "documento") return { ...item, label: "Documento clinico" }
+          if (item.type === "operacao") return { ...item, label: "Atendimento" }
+        }
+
+        if (isRealEstateWorkspace) {
+          if (item.type === "documento") return { ...item, label: "Documento imobiliario" }
+          if (item.type === "operacao") return { ...item, label: "Negociacao" }
+        }
+
         return item
       }),
-    [isClinicWorkspace],
+    [isClinicWorkspace, isRealEstateWorkspace],
   )
   const resolvedQuickActionConfigs = useMemo<Record<QuickActionType, QuickActionConfig>>(
     () => ({
@@ -192,6 +200,19 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
               { name: "profissional", label: "Profissional", placeholder: "Profissional responsavel" },
             ],
           }
+        : isRealEstateWorkspace
+          ? {
+              title: "Novo cliente",
+              description: "Prepare um novo contato imobiliario usando a estrutura existente do portal.",
+              submit: "Salvar cliente",
+              fields: [
+                { name: "nome", label: "Cliente", placeholder: "Nome do cliente" },
+                { name: "email", label: "E-mail", placeholder: "E-mail de contato" },
+                { name: "telefone", label: "Telefone", placeholder: "Telefone" },
+                { name: "interesse", label: "Interesse", placeholder: "Imovel ou necessidade" },
+                { name: "responsavel", label: "Responsavel", placeholder: "Corretor responsavel" },
+              ],
+            }
         : quickActionConfigs.cliente,
       documento: isClinicWorkspace
         ? {
@@ -204,6 +225,17 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
               { name: "descricao", label: "Conteudo", placeholder: "Resumo ou conteudo do documento clinico" },
             ],
           }
+        : isRealEstateWorkspace
+          ? {
+              title: "Novo documento imobiliario",
+              description: "Organize um novo documento imobiliario sem criar nova estrutura.",
+              submit: "Salvar documento",
+              fields: [
+                { name: "titulo", label: "Titulo", placeholder: "Titulo do documento imobiliario" },
+                { name: "tipo", label: "Tipo", placeholder: "Contrato, vistoria ou proposta" },
+                { name: "descricao", label: "Conteudo", placeholder: "Resumo ou conteudo do documento imobiliario" },
+              ],
+            }
         : quickActionConfigs.documento,
       operacao: isClinicWorkspace
         ? {
@@ -217,9 +249,22 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
               { name: "profissional", label: "Profissional", placeholder: "Profissional responsavel" },
             ],
           }
+        : isRealEstateWorkspace
+          ? {
+              title: "Nova negociacao",
+              description: "Registre uma negociacao usando a estrutura existente de operacoes.",
+              submit: "Salvar negociacao",
+              fields: [
+                { name: "titulo", label: "Negociacao", placeholder: "Nome da negociacao" },
+                { name: "imovel", label: "Imovel", placeholder: "Nome ou referencia do imovel" },
+                { name: "finalidade", label: "Finalidade", placeholder: "Venda ou locacao" },
+                { name: "valor", label: "Valor", placeholder: "R$ 0,00" },
+                { name: "responsavel", label: "Responsavel", placeholder: "Corretor responsavel" },
+              ],
+            }
         : quickActionConfigs.operacao,
     }),
-    [isClinicWorkspace],
+    [isClinicWorkspace, isRealEstateWorkspace],
   )
 
   const resetMeetingValues = () =>
@@ -296,7 +341,15 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
             ]
               .filter(Boolean)
               .join("\n")
-          : "",
+          : isRealEstateWorkspace
+            ? [
+                "Perfil: Cliente",
+                formValues.interesse ? `Interesse: ${formValues.interesse}` : "",
+                formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+              ]
+                .filter(Boolean)
+                .join("\n")
+            : "",
         status: "active",
       })
 
@@ -306,7 +359,10 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
         return
       }
 
-      toast({ title: isClinicWorkspace ? "Paciente criado" : "Cliente criado", description: isClinicWorkspace ? "O paciente foi salvo com sucesso." : "O cliente foi salvo com sucesso." })
+      toast({
+        title: isClinicWorkspace ? "Paciente criado" : "Cliente criado",
+        description: isClinicWorkspace ? "O paciente foi salvo com sucesso." : "O cliente foi salvo com sucesso.",
+      })
       setIsSubmitting(false)
       setFormValues({})
       closeModal()
@@ -320,8 +376,12 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
           isClinicWorkspace && formValues.paciente ? `Paciente: ${formValues.paciente}` : "",
           isClinicWorkspace && formValues.procedimento ? `Procedimento: ${formValues.procedimento}` : "",
           isClinicWorkspace && formValues.profissional ? `Profissional: ${formValues.profissional}` : "",
-          !isClinicWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
-          !isClinicWorkspace && formValues.status ? `Status desejado: ${formValues.status}` : "",
+          isRealEstateWorkspace ? "Tipo: Negociacao" : "",
+          isRealEstateWorkspace && formValues.imovel ? `Imovel: ${formValues.imovel}` : "",
+          isRealEstateWorkspace && formValues.finalidade ? `Finalidade: ${formValues.finalidade}` : "",
+          isRealEstateWorkspace && formValues.valor ? `Valor: ${formValues.valor}` : "",
+          !isClinicWorkspace && !isRealEstateWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+          !isClinicWorkspace && !isRealEstateWorkspace && formValues.status ? `Status desejado: ${formValues.status}` : "",
         ]
           .filter(Boolean)
           .join("\n"),
@@ -335,7 +395,14 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
         return
       }
 
-      toast({ title: isClinicWorkspace ? "Atendimento criado" : "Operacao criada", description: isClinicWorkspace ? "O atendimento foi salvo com sucesso." : "A operacao foi salva com sucesso." })
+      toast({
+        title: isClinicWorkspace ? "Atendimento criado" : isRealEstateWorkspace ? "Negociacao criada" : "Operacao criada",
+        description: isClinicWorkspace
+          ? "O atendimento foi salvo com sucesso."
+          : isRealEstateWorkspace
+            ? "A negociacao foi salva com sucesso."
+            : "A operacao foi salva com sucesso.",
+      })
       setIsSubmitting(false)
       setFormValues({})
       closeModal()

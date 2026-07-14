@@ -2,7 +2,7 @@
 
 import { use, useMemo, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { Camera, Check, ChevronLeft, FileQuestion, Upload } from "lucide-react"
 import { createClientAction } from "@/actions/clients"
@@ -17,6 +17,10 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
   const { tipo } = use(params)
   const { workspace } = useAuth()
   const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
+  const isRealEstateWorkspace = workspace?.metadata?.segment === "imobiliarias"
+  const searchParams = useSearchParams()
+  const realEstateClientRole = searchParams.get("role") === "proprietario" ? "proprietario" : searchParams.get("role") === "interessado" ? "interessado" : "cliente"
+  const realEstateOperationKind = searchParams.get("kind") === "imovel" ? "imovel" : searchParams.get("kind") === "visita" ? "visita" : "negociacao"
   const [submitted, setSubmitted] = useState(false)
   const [formValues, setFormValues] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -24,11 +28,31 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
 
   const baseConfig: NovoConfig | undefined = tipo === "foto" ? fotoConfig : novoConfigs[tipo]
   const config: NovoConfig | undefined = useMemo(() => {
-    if (!baseConfig || !isClinicWorkspace) {
+    if (!baseConfig || (!isClinicWorkspace && !isRealEstateWorkspace)) {
       return baseConfig
     }
 
     if (tipo === "cliente") {
+      if (isRealEstateWorkspace) {
+        const roleLabel = realEstateClientRole === "proprietario" ? "proprietario" : realEstateClientRole === "interessado" ? "interessado" : "cliente"
+        const roleLabelCapitalized = realEstateClientRole === "proprietario" ? "Proprietario" : realEstateClientRole === "interessado" ? "Interessado" : "Cliente"
+
+        return {
+          ...baseConfig,
+          title: `Novo ${roleLabel}`,
+          subtitle: `Cadastre um novo ${roleLabel} usando a estrutura existente do COS.`,
+          cta: `Cadastrar ${roleLabel}`,
+          fields: [
+            { name: "nome", label: roleLabelCapitalized, type: "text", placeholder: `Nome do ${roleLabel}`, required: true },
+            { name: "email", label: "E-mail", type: "email", placeholder: "email@contato.com" },
+            { name: "telefone", label: "Telefone", type: "tel", placeholder: "(11) 99999-9999" },
+            { name: "interesse", label: "Interesse", type: "text", placeholder: "Imovel, bairro ou necessidade" },
+            { name: "responsavel", label: "Responsavel", type: "text", placeholder: "Corretor responsavel" },
+            { name: "observacoes", label: "Observacoes", type: "textarea", placeholder: `Observacoes sobre o ${roleLabel}...` },
+          ],
+        }
+      }
+
       return {
         ...baseConfig,
         title: "Novo paciente",
@@ -47,6 +71,27 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
     }
 
     if (tipo === "operacao") {
+      if (isRealEstateWorkspace) {
+        const kindLabel = realEstateOperationKind === "imovel" ? "imovel" : realEstateOperationKind === "visita" ? "visita" : "negociacao"
+        const kindLabelCapitalized = realEstateOperationKind === "imovel" ? "Imovel" : realEstateOperationKind === "visita" ? "Visita" : "Negociacao"
+
+        return {
+          ...baseConfig,
+          title: `Novo ${kindLabel}`,
+          subtitle: `Registre um ${kindLabel} com os dados essenciais da operacao imobiliaria.`,
+          cta: `Registrar ${kindLabel}`,
+          fields: [
+            { name: "nome", label: kindLabelCapitalized, type: "text", placeholder: `Nome do ${kindLabel}`, required: true },
+            { name: "imovel", label: "Imovel", type: "text", placeholder: "Nome ou referencia do imovel" },
+            { name: "finalidade", label: "Finalidade", type: "text", placeholder: "Venda ou locacao" },
+            { name: "valor", label: "Valor", type: "text", placeholder: "R$ 0,00" },
+            { name: "responsavel", label: "Responsavel", type: "text", placeholder: "Corretor responsavel" },
+            { name: "prazo", label: "Data", type: "date" },
+            { name: "descricao", label: "Descricao", type: "textarea", placeholder: `Detalhes do ${kindLabel}...` },
+          ],
+        }
+      }
+
       return {
         ...baseConfig,
         title: "Novo atendimento",
@@ -64,6 +109,15 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
     }
 
     if (tipo === "documento") {
+      if (isRealEstateWorkspace) {
+        return {
+          ...baseConfig,
+          title: "Novo documento imobiliario",
+          subtitle: "Crie um documento imobiliario usando o modulo ja existente.",
+          cta: "Criar documento imobiliario",
+        }
+      }
+
       return {
         ...baseConfig,
         title: "Novo documento clinico",
@@ -73,7 +127,7 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
     }
 
     return baseConfig
-  }, [baseConfig, isClinicWorkspace, tipo])
+  }, [baseConfig, isClinicWorkspace, isRealEstateWorkspace, realEstateClientRole, realEstateOperationKind, tipo])
   const hasRealPersistence = ["cliente", "financeiro", "operacao", "documento", "reuniao"].includes(tipo)
 
   if (!config) {
@@ -113,7 +167,16 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
             ]
               .filter(Boolean)
               .join("\n")
-          : formValues.observacoes ?? "",
+          : isRealEstateWorkspace
+            ? [
+                `Perfil: ${realEstateClientRole === "proprietario" ? "Proprietario" : realEstateClientRole === "interessado" ? "Interessado" : "Cliente"}`,
+                formValues.interesse ? `Interesse: ${formValues.interesse}` : "",
+                formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+                formValues.observacoes ? `Observacoes: ${formValues.observacoes}` : "",
+              ]
+                .filter(Boolean)
+                .join("\n")
+            : formValues.observacoes ?? "",
         status: (formValues.status ?? "Ativo").toLowerCase() === "arquivado" ? "archived" : "active",
       })
     }
@@ -136,8 +199,13 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
           isClinicWorkspace && formValues.paciente ? `Paciente: ${formValues.paciente}` : "",
           isClinicWorkspace && formValues.procedimento ? `Procedimento: ${formValues.procedimento}` : "",
           isClinicWorkspace && formValues.profissional ? `Profissional: ${formValues.profissional}` : "",
+          isRealEstateWorkspace ? `Tipo: ${realEstateOperationKind === "imovel" ? "Imovel" : realEstateOperationKind === "visita" ? "Visita" : "Negociacao"}` : "",
+          isRealEstateWorkspace && formValues.imovel ? `Imovel: ${formValues.imovel}` : "",
+          isRealEstateWorkspace && formValues.finalidade ? `Finalidade: ${formValues.finalidade}` : "",
+          isRealEstateWorkspace && formValues.valor ? `Valor: ${formValues.valor}` : "",
+          isRealEstateWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
           !isClinicWorkspace && formValues.tipo ? `Tipo: ${formValues.tipo}` : "",
-          !isClinicWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+          !isClinicWorkspace && !isRealEstateWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
           formValues.descricao ?? "",
         ]
           .filter(Boolean)

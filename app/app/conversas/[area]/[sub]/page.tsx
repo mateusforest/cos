@@ -13,6 +13,9 @@ import { getOperationsAreaConfigs, slug } from "@/lib/area-configs"
 const portalDestinations: Record<string, string> = {
   clientes: "/portal/cadastros/clientes",
   pacientes: "/portal/cadastros/clientes",
+  proprietarios: "/portal/cadastros/leads",
+  interessados: "/portal/cadastros/produtos",
+  imoveis: "/portal/cadastros/servicos",
   leads: "/portal/cadastros/leads",
   convenios: "/portal/cadastros/leads",
   produtos: "/portal/cadastros/produtos",
@@ -25,6 +28,7 @@ const portalDestinations: Record<string, string> = {
   consultas: "/portal/operacoes",
   agenda: "/portal/operacoes",
   exames: "/portal/operacoes",
+  visitas: "/portal/operacoes",
   propostas: "/portal/vendas/propostas",
   negociacoes: "/portal/vendas/negociacoes",
   pedidos: "/portal/vendas/pedidos",
@@ -42,12 +46,15 @@ const portalDestinations: Record<string, string> = {
   relatorios: "/portal/relatorios",
 }
 
-function resolveChatCopy(area: string, subLabel: string) {
+function resolveChatCopy(area: string, subLabel: string, segment?: string) {
   if (area === "cadastros") {
     const normalizedSub = slug(subLabel)
     const portalLabelBySub: Record<string, string> = {
       clientes: "Ver clientes no Portal",
       pacientes: "Ver pacientes no Portal",
+      proprietarios: "Ver proprietarios no Portal",
+      interessados: "Ver interessados no Portal",
+      imoveis: "Ver imoveis no Portal",
       leads: "Ver leads no Portal",
       convenios: "Ver convenios no Portal",
       produtos: "Ver produtos no Portal",
@@ -62,11 +69,32 @@ function resolveChatCopy(area: string, subLabel: string) {
       quickActions:
         normalizedSub === "clientes" || normalizedSub === "pacientes"
           ? [normalizedSub === "pacientes" ? "Criar paciente" : "Criar cliente", normalizedSub === "pacientes" ? "Buscar paciente" : "Buscar cliente", portalLabelBySub[normalizedSub]]
+          : segment === "imobiliarias" && normalizedSub === "proprietarios"
+            ? ["Criar proprietario", "Buscar proprietario", portalLabelBySub[normalizedSub]]
+            : segment === "imobiliarias" && normalizedSub === "interessados"
+              ? ["Criar interessado", "Buscar interessado", portalLabelBySub[normalizedSub]]
+              : segment === "imobiliarias" && normalizedSub === "imoveis"
+                ? ["Registrar imovel", "Buscar imovel", portalLabelBySub[normalizedSub]]
           : [`Buscar ${subLabel.toLowerCase()}`, portalLabelBySub[normalizedSub] ?? "Ver cadastros no Portal"],
     }
   }
 
   if (area === "operacoes") {
+    if (segment === "imobiliarias") {
+      const normalizedSub = slug(subLabel)
+
+      return {
+        subtitle: `Conversa operacional sobre ${subLabel.toLowerCase()}.`,
+        emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
+        quickActions:
+          normalizedSub === "imoveis"
+            ? ["Registrar imovel", "Buscar imovel", "Ver imoveis no Portal"]
+            : normalizedSub === "visitas"
+              ? ["Registrar visita", "Buscar visita", "Ver negociacoes no Portal"]
+              : ["Registrar negociacao", "Buscar negociacao", "Ver negociacoes no Portal"],
+      }
+    }
+
     return {
       subtitle: `Conversa operacional sobre ${subLabel.toLowerCase()}.`,
       emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
@@ -109,7 +137,10 @@ function resolveChatCopy(area: string, subLabel: string) {
     return {
       subtitle: `Conversa documental sobre ${subLabel.toLowerCase()}.`,
       emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
-      quickActions: ["Criar documento clínico", "Buscar arquivo", "Ver documentos no Portal"],
+      quickActions:
+        segment === "imobiliarias"
+          ? ["Criar documento imobiliario", "Buscar arquivo", "Ver documentos no Portal"]
+          : ["Criar documento clínico", "Buscar arquivo", "Ver documentos no Portal"],
     }
   }
 
@@ -133,7 +164,7 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
     config?.subsections.find((section) => slug(section) === sub) ??
     sub.charAt(0).toUpperCase() + sub.slice(1).replace(/-/g, " ")
 
-  const chatCopy = resolveChatCopy(area, subLabel)
+  const chatCopy = resolveChatCopy(area, subLabel, workspace?.metadata?.segment)
 
   useEffect(() => {
     let isMounted = true
@@ -198,8 +229,33 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
             return
           }
 
+          if (label === "Criar proprietario") {
+            router.push("/app/novo/cliente?role=proprietario")
+            return
+          }
+
+          if (label === "Criar interessado") {
+            router.push("/app/novo/cliente?role=interessado")
+            return
+          }
+
           if (label === "Criar operacao" || label === "Registrar atendimento") {
             router.push("/app/novo/operacao")
+            return
+          }
+
+          if (label === "Registrar imovel") {
+            router.push("/app/novo/operacao?kind=imovel")
+            return
+          }
+
+          if (label === "Registrar visita") {
+            router.push("/app/novo/operacao?kind=visita")
+            return
+          }
+
+          if (label === "Registrar negociacao") {
+            router.push("/app/novo/operacao?kind=negociacao")
             return
           }
 
@@ -218,7 +274,7 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
             return
           }
 
-          if (label === "Criar documento" || label === "Criar documento clínico") {
+          if (label === "Criar documento" || label === "Criar documento clínico" || label === "Criar documento imobiliario") {
             router.push("/app/novo/documento")
             return
           }

@@ -202,6 +202,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   const router = useRouter()
   const { workspace } = useAuth()
   const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
+  const isRealEstateWorkspace = workspace?.metadata?.segment === "imobiliarias"
   const key = slug[slug.length - 1]
   const salesSubsection = slug[0] === "vendas" && slug.length > 1 ? slug[1] : null
   const sharedArea = getCosAreaSourceByKey(key, workspace?.metadata?.segment)
@@ -218,9 +219,11 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
       description:
         index === 0
           ? `Gerencie ${String((titles[index] || section.title)).toLowerCase()} e relacionamentos reais do seu workspace.`
+          : isRealEstateWorkspace
+            ? `Gerencie ${String((titles[index] || section.title)).toLowerCase()} com a estrutura ja existente do seu workspace.`
           : `Acompanhe ${String((titles[index] || section.title)).toLowerCase()} por aqui assim que a persistencia real deste modulo estiver conectada.`,
     }))
-  }, [cadastrosArea?.subsections])
+  }, [cadastrosArea?.subsections, isRealEstateWorkspace])
 
   useEffect(() => {
     if (sharedArea?.portalStatus === "redirect") {
@@ -280,13 +283,29 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
           title={cadastrosSections[0]?.title || "Clientes"}
           description={`Gerencie ${String(cadastrosSections[0]?.title || "clientes").toLowerCase()} e relacionamentos reais do seu workspace.`}
           variant="portal"
-          mode={isClinicWorkspace ? "clinic" : "default"}
+          mode={isClinicWorkspace ? "clinic" : isRealEstateWorkspace ? "real-estate" : "default"}
+          realEstateRole="client"
         />
       </div>
     )
   }
 
   if (key === "leads") {
+    if (isRealEstateWorkspace) {
+      return (
+        <div className="flex-1 flex flex-col h-full">
+          <PortalHeader />
+          <ClientsManager
+            title={cadastrosSections[1]?.title || "Proprietarios"}
+            description={`Gerencie ${String(cadastrosSections[1]?.title || "proprietarios").toLowerCase()} e contatos reais do seu workspace.`}
+            variant="portal"
+            mode="real-estate"
+            realEstateRole="owner"
+          />
+        </div>
+      )
+    }
+
     return (
       <PortalModulePage
         title={cadastrosSections[1]?.title || "Leads"}
@@ -298,6 +317,21 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   }
 
   if (key === "produtos") {
+    if (isRealEstateWorkspace) {
+      return (
+        <div className="flex-1 flex flex-col h-full">
+          <PortalHeader />
+          <ClientsManager
+            title={cadastrosSections[2]?.title || "Interessados"}
+            description={`Gerencie ${String(cadastrosSections[2]?.title || "interessados").toLowerCase()} e relacionamentos reais do seu workspace.`}
+            variant="portal"
+            mode="real-estate"
+            realEstateRole="interested"
+          />
+        </div>
+      )
+    }
+
     return (
       <PortalModulePage
         title={cadastrosSections[2]?.title || "Produtos"}
@@ -309,6 +343,21 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   }
 
   if (key === "servicos") {
+    if (isRealEstateWorkspace) {
+      return (
+        <div className="flex-1 flex flex-col h-full">
+          <PortalHeader />
+          <OperationsManager
+            title={cadastrosSections[3]?.title || "Imoveis"}
+            description={`Gerencie ${String(cadastrosSections[3]?.title || "imoveis").toLowerCase()} usando a estrutura existente de operacoes.`}
+            variant="portal"
+            mode="real-estate"
+            realEstateKind="property"
+          />
+        </div>
+      )
+    }
+
     return (
       <PortalModulePage
         title={cadastrosSections[3]?.title || "Servicos"}
@@ -340,7 +389,8 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
           title={operationsArea?.label || "Operacoes"}
           description={`Organize ${operationsArea?.subsections.map((item) => item.toLowerCase()).join(", ") || "processos, atendimentos e fluxos operacionais"} com dados reais.`}
           variant="portal"
-          mode={isClinicWorkspace ? "clinic" : "default"}
+          mode={isClinicWorkspace ? "clinic" : isRealEstateWorkspace ? "real-estate" : "default"}
+          realEstateKind="all"
         />
       </div>
     )

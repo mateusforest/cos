@@ -203,6 +203,7 @@ export default function AppHomePage() {
     }
   }, [areaSources])
   const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
+  const isRealEstateWorkspace = workspace?.metadata?.segment === "imobiliarias"
 
   const shortcutsStorageKey = useMemo(
     () => (workspace?.id ? `cos:operations:shortcuts:${workspace.id}` : null),
@@ -277,10 +278,14 @@ export default function AppHomePage() {
           stats.clientes > 0
             ? isClinicWorkspace
               ? "Adicione outro paciente ao workspace com dados reais."
-              : "Adicione outro cliente ao workspace com dados reais."
+              : isRealEstateWorkspace
+                ? "Adicione outro cliente ou proprietario ao workspace com dados reais."
+                : "Adicione outro cliente ao workspace com dados reais."
             : isClinicWorkspace
               ? "Comece organizando sua base de pacientes."
-              : "Comece organizando sua base de clientes.",
+              : isRealEstateWorkspace
+                ? "Comece organizando clientes, proprietarios e interessados."
+                : "Comece organizando sua base de clientes.",
       },
       {
         ...suggestionTemplates[1],
@@ -307,7 +312,7 @@ export default function AppHomePage() {
             : "Os resumos gerados ficarão disponíveis nesta área.",
       },
     ],
-    [isClinicWorkspace, stats.clientes, summary?.documentsCount, summary?.financial.entriesCount, summary?.meetingsCount],
+    [isClinicWorkspace, isRealEstateWorkspace, stats.clientes, summary?.documentsCount, summary?.financial.entriesCount, summary?.meetingsCount],
   )
 
   const nextSteps = useMemo(
