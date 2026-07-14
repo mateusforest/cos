@@ -18,9 +18,12 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
   const { workspace } = useAuth()
   const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
   const isRealEstateWorkspace = workspace?.metadata?.segment === "imobiliarias"
+  const isServicesWorkspace = workspace?.metadata?.segment === "servicos"
   const searchParams = useSearchParams()
   const realEstateClientRole = searchParams.get("role") === "proprietario" ? "proprietario" : searchParams.get("role") === "interessado" ? "interessado" : "cliente"
   const realEstateOperationKind = searchParams.get("kind") === "imovel" ? "imovel" : searchParams.get("kind") === "visita" ? "visita" : "negociacao"
+  const servicesClientRole = searchParams.get("role") === "servico" ? "servico" : searchParams.get("role") === "responsavel" ? "responsavel" : "cliente"
+  const servicesOperationKind = searchParams.get("kind") === "atendimento" ? "atendimento" : "ordem"
   const [submitted, setSubmitted] = useState(false)
   const [formValues, setFormValues] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -28,11 +31,32 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
 
   const baseConfig: NovoConfig | undefined = tipo === "foto" ? fotoConfig : novoConfigs[tipo]
   const config: NovoConfig | undefined = useMemo(() => {
-    if (!baseConfig || (!isClinicWorkspace && !isRealEstateWorkspace)) {
+    if (!baseConfig || (!isClinicWorkspace && !isRealEstateWorkspace && !isServicesWorkspace)) {
       return baseConfig
     }
 
     if (tipo === "cliente") {
+      if (isServicesWorkspace) {
+        const roleLabel = servicesClientRole === "servico" ? "servico" : servicesClientRole === "responsavel" ? "responsavel" : "cliente"
+        const roleLabelCapitalized = servicesClientRole === "servico" ? "Servico" : servicesClientRole === "responsavel" ? "Responsavel" : "Cliente"
+
+        return {
+          ...baseConfig,
+          title: `Novo ${roleLabel}`,
+          subtitle: `Cadastre um novo ${roleLabel} usando a estrutura existente do COS.`,
+          cta: `Cadastrar ${roleLabel}`,
+          fields: [
+            { name: "nome", label: roleLabelCapitalized, type: "text", placeholder: `Nome do ${roleLabel}`, required: true },
+            { name: "email", label: "E-mail", type: "email", placeholder: "email@contato.com" },
+            { name: "telefone", label: "Telefone", type: "tel", placeholder: "(11) 99999-9999" },
+            { name: "servico", label: "Servico", type: "text", placeholder: "Servico principal" },
+            { name: "valor", label: "Valor", type: "text", placeholder: "R$ 0,00" },
+            { name: "responsavel", label: "Responsavel", type: "text", placeholder: "Responsavel principal" },
+            { name: "observacoes", label: "Observacoes", type: "textarea", placeholder: `Observacoes sobre o ${roleLabel}...` },
+          ],
+        }
+      }
+
       if (isRealEstateWorkspace) {
         const roleLabel = realEstateClientRole === "proprietario" ? "proprietario" : realEstateClientRole === "interessado" ? "interessado" : "cliente"
         const roleLabelCapitalized = realEstateClientRole === "proprietario" ? "Proprietario" : realEstateClientRole === "interessado" ? "Interessado" : "Cliente"
@@ -71,6 +95,26 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
     }
 
     if (tipo === "operacao") {
+      if (isServicesWorkspace) {
+        const kindLabel = servicesOperationKind === "atendimento" ? "atendimento" : "ordem de servico"
+        const kindLabelCapitalized = servicesOperationKind === "atendimento" ? "Atendimento" : "Ordem de servico"
+
+        return {
+          ...baseConfig,
+          title: `Nova ${kindLabel}`,
+          subtitle: `Registre uma ${kindLabel} com os dados essenciais da operacao de servicos.`,
+          cta: `Registrar ${kindLabel}`,
+          fields: [
+            { name: "nome", label: kindLabelCapitalized, type: "text", placeholder: `Nome da ${kindLabel}`, required: true },
+            { name: "servico", label: "Servico", type: "text", placeholder: "Servico principal" },
+            { name: "valor", label: "Valor", type: "text", placeholder: "R$ 0,00" },
+            { name: "responsavel", label: "Responsavel", type: "text", placeholder: "Responsavel principal" },
+            { name: "prazo", label: "Prazo", type: "date" },
+            { name: "descricao", label: "Descricao", type: "textarea", placeholder: `Detalhes da ${kindLabel}...` },
+          ],
+        }
+      }
+
       if (isRealEstateWorkspace) {
         const kindLabel = realEstateOperationKind === "imovel" ? "imovel" : realEstateOperationKind === "visita" ? "visita" : "negociacao"
         const kindLabelCapitalized = realEstateOperationKind === "imovel" ? "Imovel" : realEstateOperationKind === "visita" ? "Visita" : "Negociacao"
@@ -127,7 +171,7 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
     }
 
     return baseConfig
-  }, [baseConfig, isClinicWorkspace, isRealEstateWorkspace, realEstateClientRole, realEstateOperationKind, tipo])
+  }, [baseConfig, isClinicWorkspace, isRealEstateWorkspace, isServicesWorkspace, realEstateClientRole, realEstateOperationKind, servicesClientRole, servicesOperationKind, tipo])
   const hasRealPersistence = ["cliente", "financeiro", "operacao", "documento", "reuniao"].includes(tipo)
 
   if (!config) {
@@ -176,6 +220,16 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
               ]
                 .filter(Boolean)
                 .join("\n")
+            : isServicesWorkspace
+              ? [
+                  `Perfil: ${servicesClientRole === "servico" ? "Servico" : servicesClientRole === "responsavel" ? "Responsavel" : "Cliente"}`,
+                  formValues.servico ? `Servico: ${formValues.servico}` : "",
+                  formValues.valor ? `Valor: ${formValues.valor}` : "",
+                  formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+                  formValues.observacoes ? `Observacoes: ${formValues.observacoes}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n")
             : formValues.observacoes ?? "",
         status: (formValues.status ?? "Ativo").toLowerCase() === "arquivado" ? "archived" : "active",
       })
@@ -204,8 +258,12 @@ export default function NovoPage({ params }: { params: Promise<{ tipo: string }>
           isRealEstateWorkspace && formValues.finalidade ? `Finalidade: ${formValues.finalidade}` : "",
           isRealEstateWorkspace && formValues.valor ? `Valor: ${formValues.valor}` : "",
           isRealEstateWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+          isServicesWorkspace ? `Tipo: ${servicesOperationKind === "atendimento" ? "Atendimento" : "Ordem de servico"}` : "",
+          isServicesWorkspace && formValues.servico ? `Servico: ${formValues.servico}` : "",
+          isServicesWorkspace && formValues.valor ? `Valor: ${formValues.valor}` : "",
+          isServicesWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
           !isClinicWorkspace && formValues.tipo ? `Tipo: ${formValues.tipo}` : "",
-          !isClinicWorkspace && !isRealEstateWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+          !isClinicWorkspace && !isRealEstateWorkspace && !isServicesWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
           formValues.descricao ?? "",
         ]
           .filter(Boolean)

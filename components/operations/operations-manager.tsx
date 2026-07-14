@@ -188,21 +188,79 @@ function buildRealEstateDescription(form: OperationFormState, kind: string) {
     .join("\n")
 }
 
+function parseServicesDescription(value: string) {
+  const lines = value.split("\n")
+  let kind = ""
+  let service = ""
+  let amount = ""
+  let responsible = ""
+  const notes: string[] = []
+
+  for (const line of lines) {
+    if (line.startsWith("Tipo: ")) {
+      kind = line.replace("Tipo: ", "").trim()
+      continue
+    }
+
+    if (line.startsWith("Servico: ")) {
+      service = line.replace("Servico: ", "").trim()
+      continue
+    }
+
+    if (line.startsWith("Valor: ")) {
+      amount = line.replace("Valor: ", "").trim()
+      continue
+    }
+
+    if (line.startsWith("Responsavel: ")) {
+      responsible = line.replace("Responsavel: ", "").trim()
+      continue
+    }
+
+    if (line.trim()) {
+      notes.push(line.trim())
+    }
+  }
+
+  return {
+    kind,
+    service,
+    value: amount,
+    responsible,
+    description: notes.join("\n").trim(),
+  }
+}
+
+function buildServicesDescription(form: OperationFormState, kind: string) {
+  return [
+    `Tipo: ${kind}`,
+    form.property ? `Servico: ${form.property.trim()}` : "",
+    form.value ? `Valor: ${form.value.trim()}` : "",
+    form.responsible ? `Responsavel: ${form.responsible.trim()}` : "",
+    form.description ? form.description.trim() : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
 export function OperationsManager({
   title,
   description,
   variant,
   mode = "default",
   realEstateKind = "deal",
+  servicesKind = "order",
 }: {
   title: string
   description: string
   variant: "app" | "portal"
-  mode?: "default" | "clinic" | "real-estate"
+  mode?: "default" | "clinic" | "real-estate" | "services"
   realEstateKind?: "all" | "property" | "visit" | "deal"
+  servicesKind?: "all" | "order" | "attendance"
 }) {
   const isClinicMode = mode === "clinic"
   const isRealEstateMode = mode === "real-estate"
+  const isServicesMode = mode === "services"
   const realEstateCopy =
     realEstateKind === "property"
       ? { singular: "imovel", plural: "imoveis", capitalized: "Imovel", typeLabel: "Imovel" }
@@ -211,6 +269,12 @@ export function OperationsManager({
         : realEstateKind === "all"
           ? { singular: "negociacao", plural: "registros", capitalized: "Negociacao", typeLabel: "" }
           : { singular: "negociacao", plural: "negociacoes", capitalized: "Negociacao", typeLabel: "Negociacao" }
+  const servicesCopy =
+    servicesKind === "attendance"
+      ? { singular: "atendimento", plural: "atendimentos", capitalized: "Atendimento", typeLabel: "Atendimento" }
+      : servicesKind === "all"
+        ? { singular: "ordem de servico", plural: "registros", capitalized: "Ordem de servico", typeLabel: "" }
+        : { singular: "ordem de servico", plural: "ordens de servico", capitalized: "Ordem de servico", typeLabel: "Ordem de servico" }
   const { canManageWorkspace } = useAuth()
   const [operations, setOperations] = useState<OperationRecord[]>([])
   const [search, setSearch] = useState("")
@@ -250,10 +314,15 @@ export function OperationsManager({
       const term = search.trim().toLowerCase()
       const clinicDescription = isClinicMode ? parseClinicDescription(operation.description) : null
       const realEstateDescription = isRealEstateMode ? parseRealEstateDescription(operation.description) : null
+      const servicesDescription = isServicesMode ? parseServicesDescription(operation.description) : null
       const matchesKind =
         !isRealEstateMode || realEstateKind === "all"
           ? true
           : (realEstateDescription?.kind || "") === realEstateCopy.typeLabel
+      const matchesServicesKind =
+        !isServicesMode || servicesKind === "all"
+          ? true
+          : (servicesDescription?.kind || "") === servicesCopy.typeLabel
       const matchesSearch =
         !term ||
         [
@@ -266,13 +335,16 @@ export function OperationsManager({
           realEstateDescription?.purpose ?? "",
           realEstateDescription?.value ?? "",
           realEstateDescription?.responsible ?? "",
+          servicesDescription?.service ?? "",
+          servicesDescription?.value ?? "",
+          servicesDescription?.responsible ?? "",
         ]
           .join(" ")
           .toLowerCase()
           .includes(term)
-      return matchesFilter && matchesKind && matchesSearch
+      return matchesFilter && matchesKind && matchesServicesKind && matchesSearch
     })
-  }, [filter, isClinicMode, isRealEstateMode, operations, realEstateCopy.typeLabel, realEstateKind, search])
+  }, [filter, isClinicMode, isRealEstateMode, isServicesMode, operations, realEstateCopy.typeLabel, realEstateKind, search, servicesCopy.typeLabel, servicesKind])
 
   const startCreate = () => {
     setEditingOperationId(null)
@@ -285,18 +357,19 @@ export function OperationsManager({
   const startEdit = (operation: OperationRecord) => {
     const clinicDescription = parseClinicDescription(operation.description)
     const realEstateDescription = parseRealEstateDescription(operation.description)
+    const servicesDescription = parseServicesDescription(operation.description)
 
     setEditingOperationId(operation.id)
     setForm({
       title: operation.title,
-      description: isClinicMode ? clinicDescription.description : isRealEstateMode ? realEstateDescription.description : operation.description,
+      description: isClinicMode ? clinicDescription.description : isRealEstateMode ? realEstateDescription.description : isServicesMode ? servicesDescription.description : operation.description,
       patient: isClinicMode ? clinicDescription.patient : "",
       procedure: isClinicMode ? clinicDescription.procedure : "",
       professional: isClinicMode ? clinicDescription.professional : "",
-      property: isRealEstateMode ? realEstateDescription.property : "",
+      property: isRealEstateMode ? realEstateDescription.property : isServicesMode ? servicesDescription.service : "",
       purpose: isRealEstateMode ? realEstateDescription.purpose : "",
-      value: isRealEstateMode ? realEstateDescription.value : "",
-      responsible: isRealEstateMode ? realEstateDescription.responsible : "",
+      value: isRealEstateMode ? realEstateDescription.value : isServicesMode ? servicesDescription.value : "",
+      responsible: isRealEstateMode ? realEstateDescription.responsible : isServicesMode ? servicesDescription.responsible : "",
       status: operation.status,
       priority: operation.priority,
       dueDate: operation.dueDate ? operation.dueDate.slice(0, 10) : "",
@@ -313,7 +386,13 @@ export function OperationsManager({
 
     const payload = {
       title: form.title,
-      description: isClinicMode ? buildClinicDescription(form) : isRealEstateMode ? buildRealEstateDescription(form, realEstateCopy.typeLabel || "Negociacao") : form.description,
+      description: isClinicMode
+        ? buildClinicDescription(form)
+        : isRealEstateMode
+          ? buildRealEstateDescription(form, realEstateCopy.typeLabel || "Negociacao")
+          : isServicesMode
+            ? buildServicesDescription(form, servicesCopy.typeLabel || "Ordem de servico")
+            : form.description,
       status: form.status,
       priority: form.priority,
       dueDate: form.dueDate,
@@ -336,11 +415,15 @@ export function OperationsManager({
           ? "Atendimento atualizado com sucesso."
           : isRealEstateMode
             ? `${realEstateCopy.capitalized} atualizado com sucesso.`
+            : isServicesMode
+              ? `${servicesCopy.capitalized} atualizada com sucesso.`
           : "Operacao atualizada com sucesso."
         : isClinicMode
           ? "Atendimento registrado com sucesso."
           : isRealEstateMode
             ? `${realEstateCopy.capitalized} registrado com sucesso.`
+            : isServicesMode
+              ? `${servicesCopy.capitalized} registrada com sucesso.`
           : "Operacao criada com sucesso.",
     )
     setModalOpen(false)
@@ -363,6 +446,8 @@ export function OperationsManager({
         ? "Atendimento arquivado com sucesso."
         : isRealEstateMode
           ? `${realEstateCopy.capitalized} arquivado com sucesso.`
+          : isServicesMode
+            ? `${servicesCopy.capitalized} arquivada com sucesso.`
           : "Operacao arquivada com sucesso.",
     )
     await loadOperations()
@@ -381,7 +466,7 @@ export function OperationsManager({
             className="inline-flex items-center gap-2 rounded-xl bg-[#0a0a0a] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a1a1a]"
           >
             <Plus className="h-4 w-4" />
-            {isClinicMode ? "Novo atendimento" : isRealEstateMode ? `Novo ${realEstateCopy.singular}` : "Nova operacao"}
+            {isClinicMode ? "Novo atendimento" : isRealEstateMode ? `Novo ${realEstateCopy.singular}` : isServicesMode ? `Nova ${servicesCopy.singular}` : "Nova operacao"}
           </button>
         </div>
 
@@ -401,6 +486,8 @@ export function OperationsManager({
                     ? "Buscar por atendimento, paciente, procedimento ou profissional..."
                     : isRealEstateMode
                       ? `Buscar por ${realEstateCopy.singular}, imovel, finalidade ou responsavel...`
+                      : isServicesMode
+                        ? `Buscar por ${servicesCopy.singular}, servico, valor ou responsavel...`
                       : "Buscar por titulo ou descricao..."
                 }
                 className="w-full rounded-xl bg-gray-50 px-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200"
@@ -434,6 +521,8 @@ export function OperationsManager({
                 ? "Carregando atendimentos..."
                 : isRealEstateMode
                   ? `Carregando ${realEstateCopy.plural}...`
+                  : isServicesMode
+                    ? `Carregando ${servicesCopy.plural}...`
                   : "Carregando operacoes..."}
             </div>
           ) : filteredOperations.length === 0 ? (
@@ -443,6 +532,8 @@ export function OperationsManager({
                   ? "Nenhum atendimento registrado ainda."
                   : isRealEstateMode
                     ? `Nenhum ${realEstateCopy.singular} registrado ainda.`
+                    : isServicesMode
+                      ? `Nenhuma ${servicesCopy.singular} registrada ainda.`
                     : "Nenhuma operacao cadastrada ainda."}
               </p>
             </div>
@@ -451,11 +542,11 @@ export function OperationsManager({
               <table className="w-full min-w-[760px]">
                 <thead>
                   <tr className="border-b border-gray-100 text-left text-xs font-medium text-gray-500">
-                    <th className="px-4 py-3">{isClinicMode ? "Atendimento" : isRealEstateMode ? realEstateCopy.capitalized : "Titulo"}</th>
-                    <th className="px-4 py-3">{isClinicMode ? "Paciente" : isRealEstateMode ? "Imovel" : "Descricao"}</th>
-                    <th className="px-4 py-3">{isClinicMode ? "Profissional" : isRealEstateMode ? "Responsavel" : "Status"}</th>
-                    <th className="px-4 py-3">{isClinicMode ? "Procedimento" : isRealEstateMode ? "Valor" : "Prioridade"}</th>
-                    <th className="px-4 py-3">{isClinicMode ? "Data" : isRealEstateMode ? "Status" : "Prazo"}</th>
+                    <th className="px-4 py-3">{isClinicMode ? "Atendimento" : isRealEstateMode ? realEstateCopy.capitalized : isServicesMode ? servicesCopy.capitalized : "Titulo"}</th>
+                    <th className="px-4 py-3">{isClinicMode ? "Paciente" : isRealEstateMode ? "Imovel" : isServicesMode ? "Servico" : "Descricao"}</th>
+                    <th className="px-4 py-3">{isClinicMode ? "Profissional" : isRealEstateMode ? "Responsavel" : isServicesMode ? "Responsavel" : "Status"}</th>
+                    <th className="px-4 py-3">{isClinicMode ? "Procedimento" : isRealEstateMode ? "Valor" : isServicesMode ? "Valor" : "Prioridade"}</th>
+                    <th className="px-4 py-3">{isClinicMode ? "Data" : isRealEstateMode ? "Status" : isServicesMode ? "Prazo / Status" : "Prazo"}</th>
                     <th className="px-4 py-3 text-right">Acoes</th>
                   </tr>
                 </thead>
@@ -463,20 +554,27 @@ export function OperationsManager({
                   {filteredOperations.map((operation) => {
                     const clinicDescription = isClinicMode ? parseClinicDescription(operation.description) : null
                     const realEstateDescription = isRealEstateMode ? parseRealEstateDescription(operation.description) : null
+                    const servicesDescription = isServicesMode ? parseServicesDescription(operation.description) : null
 
                     return (
                       <tr key={operation.id} className="border-b border-gray-50 last:border-0">
                         <td className="px-4 py-3.5 text-sm font-medium text-[#0a0a0a]">{operation.title}</td>
                         <td className="px-4 py-3.5 text-sm text-gray-500">
-                          {isClinicMode ? clinicDescription?.patient || "-" : isRealEstateMode ? realEstateDescription?.property || "-" : operation.description || "-"}
+                          {isClinicMode ? clinicDescription?.patient || "-" : isRealEstateMode ? realEstateDescription?.property || "-" : isServicesMode ? servicesDescription?.service || "-" : operation.description || "-"}
                         </td>
                         <td className="px-4 py-3.5 text-sm text-gray-500">
-                          {isClinicMode ? clinicDescription?.professional || "-" : isRealEstateMode ? realEstateDescription?.responsible || "-" : statusLabel(operation.status)}
+                          {isClinicMode ? clinicDescription?.professional || "-" : isRealEstateMode ? realEstateDescription?.responsible || "-" : isServicesMode ? servicesDescription?.responsible || "-" : statusLabel(operation.status)}
                         </td>
                         <td className="px-4 py-3.5 text-sm text-gray-500">
-                          {isClinicMode ? clinicDescription?.procedure || "-" : isRealEstateMode ? realEstateDescription?.value || "-" : priorityLabel(operation.priority)}
+                          {isClinicMode ? clinicDescription?.procedure || "-" : isRealEstateMode ? realEstateDescription?.value || "-" : isServicesMode ? servicesDescription?.value || "-" : priorityLabel(operation.priority)}
                         </td>
-                        <td className="px-4 py-3.5 text-sm text-gray-500">{isRealEstateMode ? statusLabel(operation.status) : formatDateLabel(operation.dueDate || operation.createdAt)}</td>
+                        <td className="px-4 py-3.5 text-sm text-gray-500">
+                          {isRealEstateMode
+                            ? statusLabel(operation.status)
+                            : isServicesMode
+                              ? `${formatDateLabel(operation.dueDate || operation.createdAt)} · ${statusLabel(operation.status)}`
+                              : formatDateLabel(operation.dueDate || operation.createdAt)}
+                        </td>
                         <td className="px-4 py-3.5">
                           <div className="flex items-center justify-end gap-2">
                             <button
@@ -522,11 +620,15 @@ export function OperationsManager({
                       ? "Editar atendimento"
                       : isRealEstateMode
                         ? `Editar ${realEstateCopy.singular}`
+                        : isServicesMode
+                          ? `Editar ${servicesCopy.singular}`
                         : "Editar operacao"
                     : isClinicMode
                       ? "Novo atendimento"
                       : isRealEstateMode
                         ? `Novo ${realEstateCopy.singular}`
+                        : isServicesMode
+                          ? `Nova ${servicesCopy.singular}`
                         : "Nova operacao"}
                 </h2>
                 <p className="text-sm text-gray-500">
@@ -534,6 +636,8 @@ export function OperationsManager({
                     ? "Registre atendimentos usando a estrutura existente de operacoes."
                     : isRealEstateMode
                       ? `Registre ${realEstateCopy.plural} com imovel, finalidade, valor e responsavel usando a estrutura existente.`
+                      : isServicesMode
+                        ? `Registre ${servicesCopy.plural} com servico, valor, prazo e responsavel usando a estrutura existente.`
                       : "Estruture processos reais do seu workspace."}
                 </p>
               </div>
@@ -545,6 +649,8 @@ export function OperationsManager({
                   ? "Apenas owner, admin ou master podem editar e arquivar atendimentos."
                   : isRealEstateMode
                     ? `Apenas owner, admin ou master podem editar e arquivar ${realEstateCopy.plural}.`
+                    : isServicesMode
+                      ? `Apenas owner, admin ou master podem editar e arquivar ${servicesCopy.plural}.`
                     : "Apenas owner, admin ou master podem editar e arquivar operacoes."}
               </div>
             )}
@@ -552,11 +658,19 @@ export function OperationsManager({
             {error && <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 
             <div className="space-y-3">
-              <FormField label={isClinicMode ? "Atendimento" : isRealEstateMode ? realEstateCopy.capitalized : "Titulo"}>
+              <FormField label={isClinicMode ? "Atendimento" : isRealEstateMode ? realEstateCopy.capitalized : isServicesMode ? servicesCopy.capitalized : "Titulo"}>
                 <input
                   value={form.title}
                   onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-                  placeholder={isClinicMode ? "Nome do atendimento" : isRealEstateMode ? `Nome do ${realEstateCopy.singular}` : "Titulo da operacao"}
+                  placeholder={
+                    isClinicMode
+                      ? "Nome do atendimento"
+                      : isRealEstateMode
+                        ? `Nome do ${realEstateCopy.singular}`
+                        : isServicesMode
+                          ? `Nome da ${servicesCopy.singular}`
+                          : "Titulo da operacao"
+                  }
                   className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
                 />
               </FormField>
@@ -626,11 +740,49 @@ export function OperationsManager({
                   </FormField>
                 </>
               )}
-              <FormField label={isClinicMode ? "Observacoes" : isRealEstateMode ? "Descricao" : "Descricao"}>
+              {isServicesMode && (
+                <>
+                  <FormField label="Servico">
+                    <input
+                      value={form.property}
+                      onChange={(event) => setForm((prev) => ({ ...prev, property: event.target.value }))}
+                      placeholder="Nome do servico"
+                      className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
+                    />
+                  </FormField>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <FormField label="Valor">
+                      <input
+                        value={form.value}
+                        onChange={(event) => setForm((prev) => ({ ...prev, value: event.target.value }))}
+                        placeholder="R$ 0,00"
+                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
+                      />
+                    </FormField>
+                    <FormField label="Responsavel">
+                      <input
+                        value={form.responsible}
+                        onChange={(event) => setForm((prev) => ({ ...prev, responsible: event.target.value }))}
+                        placeholder="Responsavel principal"
+                        className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
+                      />
+                    </FormField>
+                  </div>
+                </>
+              )}
+              <FormField label={isClinicMode ? "Observacoes" : isRealEstateMode ? "Descricao" : isServicesMode ? "Descricao" : "Descricao"}>
                 <textarea
                   value={form.description}
                   onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-                  placeholder={isClinicMode ? "Observacoes do atendimento" : isRealEstateMode ? `Detalhes da ${realEstateCopy.singular}` : "Detalhes da operacao"}
+                  placeholder={
+                    isClinicMode
+                      ? "Observacoes do atendimento"
+                      : isRealEstateMode
+                        ? `Detalhes da ${realEstateCopy.singular}`
+                        : isServicesMode
+                          ? `Detalhes da ${servicesCopy.singular}`
+                          : "Detalhes da operacao"
+                  }
                   rows={4}
                   className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:border-gray-300 focus:outline-none"
                 />
@@ -661,7 +813,7 @@ export function OperationsManager({
                   </select>
                 </FormField>
               </div>
-              <FormField label={isClinicMode ? "Data do atendimento" : isRealEstateMode ? "Data" : "Prazo"}>
+              <FormField label={isClinicMode ? "Data do atendimento" : isRealEstateMode ? "Data" : isServicesMode ? "Prazo" : "Prazo"}>
                 <div className="relative">
                   <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
@@ -691,6 +843,8 @@ export function OperationsManager({
                       ? "Salvar atendimento"
                       : isRealEstateMode
                         ? `Salvar ${realEstateCopy.singular}`
+                        : isServicesMode
+                          ? `Salvar ${servicesCopy.singular}`
                         : "Salvar operacao"}
               </button>
             </div>

@@ -21,6 +21,7 @@ const portalDestinations: Record<string, string> = {
   produtos: "/portal/cadastros/produtos",
   procedimentos: "/portal/cadastros/produtos",
   servicos: "/portal/cadastros/servicos",
+  responsaveis: "/portal/cadastros/produtos",
   profissionais: "/portal/cadastros/servicos",
   projetos: "/portal/operacoes",
   ordens: "/portal/operacoes",
@@ -60,6 +61,7 @@ function resolveChatCopy(area: string, subLabel: string, segment?: string) {
       produtos: "Ver produtos no Portal",
       procedimentos: "Ver procedimentos no Portal",
       servicos: "Ver servicos no Portal",
+      responsaveis: "Ver responsaveis no Portal",
       profissionais: "Ver profissionais no Portal",
     }
 
@@ -69,6 +71,10 @@ function resolveChatCopy(area: string, subLabel: string, segment?: string) {
       quickActions:
         normalizedSub === "clientes" || normalizedSub === "pacientes"
           ? [normalizedSub === "pacientes" ? "Criar paciente" : "Criar cliente", normalizedSub === "pacientes" ? "Buscar paciente" : "Buscar cliente", portalLabelBySub[normalizedSub]]
+          : segment === "servicos" && normalizedSub === "servicos"
+            ? ["Cadastrar servico", "Buscar servico", portalLabelBySub[normalizedSub]]
+            : segment === "servicos" && normalizedSub === "responsaveis"
+              ? ["Cadastrar responsavel", "Buscar responsavel", portalLabelBySub[normalizedSub]]
           : segment === "imobiliarias" && normalizedSub === "proprietarios"
             ? ["Criar proprietario", "Buscar proprietario", portalLabelBySub[normalizedSub]]
             : segment === "imobiliarias" && normalizedSub === "interessados"
@@ -80,6 +86,19 @@ function resolveChatCopy(area: string, subLabel: string, segment?: string) {
   }
 
   if (area === "operacoes") {
+    if (segment === "servicos") {
+      const normalizedSub = slug(subLabel)
+
+      return {
+        subtitle: `Conversa operacional sobre ${subLabel.toLowerCase()}.`,
+        emptyLabel: `Ainda nao ha mensagens nesta conversa. Use o campo abaixo para falar com o COS sobre ${subLabel.toLowerCase()}.`,
+        quickActions:
+          normalizedSub === "ordens-de-servico"
+            ? ["Registrar ordem de servico", "Buscar ordem de servico", "Ver atendimentos no Portal"]
+            : ["Registrar atendimento", "Buscar atendimento", "Ver atendimentos no Portal"],
+      }
+    }
+
     if (segment === "imobiliarias") {
       const normalizedSub = slug(subLabel)
 
@@ -220,12 +239,32 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
               return
             }
 
+            if (workspace?.metadata?.segment === "servicos" && sub === "servicos") {
+              router.push("/portal/cadastros/leads")
+              return
+            }
+
+            if (workspace?.metadata?.segment === "servicos" && sub === "responsaveis") {
+              router.push("/portal/cadastros/produtos")
+              return
+            }
+
             router.push(portalDestinations[sub] || "/portal")
             return
           }
 
           if (label === "Criar cliente" || label === "Criar paciente") {
             router.push("/app/novo/cliente")
+            return
+          }
+
+          if (label === "Cadastrar servico") {
+            router.push("/app/novo/cliente?role=servico")
+            return
+          }
+
+          if (label === "Cadastrar responsavel") {
+            router.push("/app/novo/cliente?role=responsavel")
             return
           }
 
@@ -240,7 +279,12 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
           }
 
           if (label === "Criar operacao" || label === "Registrar atendimento") {
-            router.push("/app/novo/operacao")
+            router.push(label === "Registrar atendimento" ? "/app/novo/operacao?kind=atendimento" : "/app/novo/operacao")
+            return
+          }
+
+          if (label === "Registrar ordem de servico") {
+            router.push("/app/novo/operacao?kind=ordem")
             return
           }
 

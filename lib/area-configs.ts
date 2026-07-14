@@ -319,14 +319,14 @@ export const operationsSectorTemplates: Record<string, SectorTemplate> = {
     areas: {
       cadastros: {
         label: "Cadastros de servicos",
-        subsections: ["Clientes", "Leads", "Servicos", "Contratos"],
-        quickActions: ["Criar cliente", "Buscar cadastro", "Ver cadastros no Portal"],
+        subsections: ["Clientes", "Servicos", "Responsaveis"],
+        quickActions: ["Criar cliente", "Cadastrar servico", "Ver cadastros no Portal"],
         conversationSuggestion: "Base de servicos pronta para organizar atendimentos e entregas.",
       },
       operacoes: {
         label: "Atendimentos",
-        subsections: ["Ordens", "Execucoes", "Entregas"],
-        quickActions: ["Criar operacao", "Buscar operacao", "Ver operacoes no Portal"],
+        subsections: ["Ordens de servico", "Atendimentos"],
+        quickActions: ["Registrar ordem de servico", "Buscar atendimento", "Ver atendimentos no Portal"],
       },
       financeiro: {
         subsections: ["Recebimentos", "Despesas", "Fluxo de caixa"],

@@ -149,6 +149,7 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
   const { workspace } = useAuth()
   const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
   const isRealEstateWorkspace = workspace?.metadata?.segment === "imobiliarias"
+  const isServicesWorkspace = workspace?.metadata?.segment === "servicos"
   const [modal, setModal] = useState<PortalModal>(null)
   const [selectedAction, setSelectedAction] = useState<QuickActionType>("cliente")
   const [formValues, setFormValues] = useState<Record<string, string>>({})
@@ -179,9 +180,13 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
           if (item.type === "operacao") return { ...item, label: "Negociacao" }
         }
 
+        if (isServicesWorkspace) {
+          if (item.type === "operacao") return { ...item, label: "Ordem de servico" }
+        }
+
         return item
       }),
-    [isClinicWorkspace, isRealEstateWorkspace],
+    [isClinicWorkspace, isRealEstateWorkspace, isServicesWorkspace],
   )
   const resolvedQuickActionConfigs = useMemo<Record<QuickActionType, QuickActionConfig>>(
     () => ({
@@ -213,6 +218,20 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
                 { name: "responsavel", label: "Responsavel", placeholder: "Corretor responsavel" },
               ],
             }
+        : isServicesWorkspace
+          ? {
+              title: "Novo cliente",
+              description: "Prepare um novo cadastro da operacao de servicos.",
+              submit: "Salvar cliente",
+              fields: [
+                { name: "nome", label: "Cliente", placeholder: "Nome do cliente" },
+                { name: "email", label: "E-mail", placeholder: "E-mail de contato" },
+                { name: "telefone", label: "Telefone", placeholder: "Telefone" },
+                { name: "servico", label: "Servico", placeholder: "Servico principal" },
+                { name: "valor", label: "Valor", placeholder: "R$ 0,00" },
+                { name: "responsavel", label: "Responsavel", placeholder: "Responsavel principal" },
+              ],
+            }
         : quickActionConfigs.cliente,
       documento: isClinicWorkspace
         ? {
@@ -236,6 +255,8 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
                 { name: "descricao", label: "Conteudo", placeholder: "Resumo ou conteudo do documento imobiliario" },
               ],
             }
+        : isServicesWorkspace
+          ? quickActionConfigs.documento
         : quickActionConfigs.documento,
       operacao: isClinicWorkspace
         ? {
@@ -262,9 +283,21 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
                 { name: "responsavel", label: "Responsavel", placeholder: "Corretor responsavel" },
               ],
             }
+        : isServicesWorkspace
+          ? {
+              title: "Nova ordem de servico",
+              description: "Registre uma ordem de servico usando a estrutura existente de operacoes.",
+              submit: "Salvar ordem de servico",
+              fields: [
+                { name: "titulo", label: "Ordem de servico", placeholder: "Nome da ordem de servico" },
+                { name: "servico", label: "Servico", placeholder: "Servico principal" },
+                { name: "valor", label: "Valor", placeholder: "R$ 0,00" },
+                { name: "responsavel", label: "Responsavel", placeholder: "Responsavel principal" },
+              ],
+            }
         : quickActionConfigs.operacao,
     }),
-    [isClinicWorkspace, isRealEstateWorkspace],
+    [isClinicWorkspace, isRealEstateWorkspace, isServicesWorkspace],
   )
 
   const resetMeetingValues = () =>
@@ -349,6 +382,15 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
               ]
                 .filter(Boolean)
                 .join("\n")
+            : isServicesWorkspace
+              ? [
+                  "Perfil: Cliente",
+                  formValues.servico ? `Servico: ${formValues.servico}` : "",
+                  formValues.valor ? `Valor: ${formValues.valor}` : "",
+                  formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n")
             : "",
         status: "active",
       })
@@ -380,8 +422,13 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
           isRealEstateWorkspace && formValues.imovel ? `Imovel: ${formValues.imovel}` : "",
           isRealEstateWorkspace && formValues.finalidade ? `Finalidade: ${formValues.finalidade}` : "",
           isRealEstateWorkspace && formValues.valor ? `Valor: ${formValues.valor}` : "",
-          !isClinicWorkspace && !isRealEstateWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
-          !isClinicWorkspace && !isRealEstateWorkspace && formValues.status ? `Status desejado: ${formValues.status}` : "",
+          !isClinicWorkspace && !isRealEstateWorkspace && !isServicesWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+          isServicesWorkspace ? "Tipo: Ordem de servico" : "",
+          isServicesWorkspace && formValues.servico ? `Servico: ${formValues.servico}` : "",
+          isServicesWorkspace && formValues.valor ? `Valor: ${formValues.valor}` : "",
+          isServicesWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+          !isClinicWorkspace && !isRealEstateWorkspace && !isServicesWorkspace && formValues.responsavel ? `Responsavel: ${formValues.responsavel}` : "",
+          !isClinicWorkspace && !isRealEstateWorkspace && !isServicesWorkspace && formValues.status ? `Status desejado: ${formValues.status}` : "",
         ]
           .filter(Boolean)
           .join("\n"),
@@ -396,11 +443,13 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
       }
 
       toast({
-        title: isClinicWorkspace ? "Atendimento criado" : isRealEstateWorkspace ? "Negociacao criada" : "Operacao criada",
+        title: isClinicWorkspace ? "Atendimento criado" : isRealEstateWorkspace ? "Negociacao criada" : isServicesWorkspace ? "Ordem de servico criada" : "Operacao criada",
         description: isClinicWorkspace
           ? "O atendimento foi salvo com sucesso."
           : isRealEstateWorkspace
             ? "A negociacao foi salva com sucesso."
+            : isServicesWorkspace
+              ? "A ordem de servico foi salva com sucesso."
             : "A operacao foi salva com sucesso.",
       })
       setIsSubmitting(false)

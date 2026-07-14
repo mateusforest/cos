@@ -204,6 +204,7 @@ export default function AppHomePage() {
   }, [areaSources])
   const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
   const isRealEstateWorkspace = workspace?.metadata?.segment === "imobiliarias"
+  const isServicesWorkspace = workspace?.metadata?.segment === "servicos"
 
   const shortcutsStorageKey = useMemo(
     () => (workspace?.id ? `cos:operations:shortcuts:${workspace.id}` : null),
@@ -280,11 +281,15 @@ export default function AppHomePage() {
               ? "Adicione outro paciente ao workspace com dados reais."
               : isRealEstateWorkspace
                 ? "Adicione outro cliente ou proprietario ao workspace com dados reais."
+                : isServicesWorkspace
+                  ? "Adicione outro cliente, servico ou responsavel ao workspace com dados reais."
                 : "Adicione outro cliente ao workspace com dados reais."
             : isClinicWorkspace
               ? "Comece organizando sua base de pacientes."
               : isRealEstateWorkspace
                 ? "Comece organizando clientes, proprietarios e interessados."
+                : isServicesWorkspace
+                  ? "Comece organizando clientes, servicos e responsaveis."
                 : "Comece organizando sua base de clientes.",
       },
       {
@@ -312,7 +317,7 @@ export default function AppHomePage() {
             : "Os resumos gerados ficarão disponíveis nesta área.",
       },
     ],
-    [isClinicWorkspace, isRealEstateWorkspace, stats.clientes, summary?.documentsCount, summary?.financial.entriesCount, summary?.meetingsCount],
+    [isClinicWorkspace, isRealEstateWorkspace, isServicesWorkspace, stats.clientes, summary?.documentsCount, summary?.financial.entriesCount, summary?.meetingsCount],
   )
 
   const nextSteps = useMemo(
@@ -364,7 +369,7 @@ export default function AppHomePage() {
             : "Adicione membros quando quiser começar a colaboração.",
       },
     ],
-    [isClinicWorkspace, stats.clientes, stats.equipe, stats.operacoes, summary?.financial.entriesCount],
+    [isClinicWorkspace, isServicesWorkspace, stats.clientes, stats.equipe, stats.operacoes, summary?.financial.entriesCount],
   )
 
   useEffect(() => {

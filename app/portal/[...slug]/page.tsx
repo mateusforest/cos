@@ -203,6 +203,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   const { workspace } = useAuth()
   const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
   const isRealEstateWorkspace = workspace?.metadata?.segment === "imobiliarias"
+  const isServicesWorkspace = workspace?.metadata?.segment === "servicos"
   const key = slug[slug.length - 1]
   const salesSubsection = slug[0] === "vendas" && slug.length > 1 ? slug[1] : null
   const sharedArea = getCosAreaSourceByKey(key, workspace?.metadata?.segment)
@@ -221,9 +222,11 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
           ? `Gerencie ${String((titles[index] || section.title)).toLowerCase()} e relacionamentos reais do seu workspace.`
           : isRealEstateWorkspace
             ? `Gerencie ${String((titles[index] || section.title)).toLowerCase()} com a estrutura ja existente do seu workspace.`
+          : isServicesWorkspace
+            ? `Gerencie ${String((titles[index] || section.title)).toLowerCase()} com a estrutura ja existente do seu workspace.`
           : `Acompanhe ${String((titles[index] || section.title)).toLowerCase()} por aqui assim que a persistencia real deste modulo estiver conectada.`,
-    }))
-  }, [cadastrosArea?.subsections, isRealEstateWorkspace])
+    })).slice(0, titles.length)
+  }, [cadastrosArea?.subsections, isRealEstateWorkspace, isServicesWorkspace])
 
   useEffect(() => {
     if (sharedArea?.portalStatus === "redirect") {
@@ -283,8 +286,9 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
           title={cadastrosSections[0]?.title || "Clientes"}
           description={`Gerencie ${String(cadastrosSections[0]?.title || "clientes").toLowerCase()} e relacionamentos reais do seu workspace.`}
           variant="portal"
-          mode={isClinicWorkspace ? "clinic" : isRealEstateWorkspace ? "real-estate" : "default"}
+          mode={isClinicWorkspace ? "clinic" : isRealEstateWorkspace ? "real-estate" : isServicesWorkspace ? "services" : "default"}
           realEstateRole="client"
+          servicesRole="client"
         />
       </div>
     )
@@ -301,6 +305,21 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
             variant="portal"
             mode="real-estate"
             realEstateRole="owner"
+          />
+        </div>
+      )
+    }
+
+    if (isServicesWorkspace) {
+      return (
+        <div className="flex-1 flex flex-col h-full">
+          <PortalHeader />
+          <ClientsManager
+            title={cadastrosSections[1]?.title || "Servicos"}
+            description={`Gerencie ${String(cadastrosSections[1]?.title || "servicos").toLowerCase()} e valores reais do seu workspace.`}
+            variant="portal"
+            mode="services"
+            servicesRole="service"
           />
         </div>
       )
@@ -327,6 +346,21 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
             variant="portal"
             mode="real-estate"
             realEstateRole="interested"
+          />
+        </div>
+      )
+    }
+
+    if (isServicesWorkspace) {
+      return (
+        <div className="flex-1 flex flex-col h-full">
+          <PortalHeader />
+          <ClientsManager
+            title={cadastrosSections[2]?.title || "Responsaveis"}
+            description={`Gerencie ${String(cadastrosSections[2]?.title || "responsaveis").toLowerCase()} e atribuicoes reais do seu workspace.`}
+            variant="portal"
+            mode="services"
+            servicesRole="responsible"
           />
         </div>
       )
@@ -389,8 +423,9 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
           title={operationsArea?.label || "Operacoes"}
           description={`Organize ${operationsArea?.subsections.map((item) => item.toLowerCase()).join(", ") || "processos, atendimentos e fluxos operacionais"} com dados reais.`}
           variant="portal"
-          mode={isClinicWorkspace ? "clinic" : isRealEstateWorkspace ? "real-estate" : "default"}
+          mode={isClinicWorkspace ? "clinic" : isRealEstateWorkspace ? "real-estate" : isServicesWorkspace ? "services" : "default"}
           realEstateKind="all"
+          servicesKind="all"
         />
       </div>
     )
