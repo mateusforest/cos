@@ -45,7 +45,6 @@ import { OperationsDashboardProvider, useOperationsDashboard } from "@/component
 import { AppInteractionsProvider } from "@/components/app/app-interactions"
 import { useAuth } from "@/components/auth/auth-provider"
 import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
-import { chatAreaSources } from "@/lib/area-configs"
 import { SupportProvider, useSupport } from "@/components/support/support-context"
 import { Toaster } from "@/components/ui/toaster"
 

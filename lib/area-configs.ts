@@ -21,6 +21,7 @@ export type AreaConfig = {
   subsections: string[]
   quickActions: string[]
   messages: ChatMessage[]
+  conversationSuggestion?: string
 }
 
 export type CosAreaSource = {
@@ -38,12 +39,30 @@ export type CosAreaSource = {
   portalDestination: string
   showInChat: boolean
   showInPortalNav: boolean
+  conversationSuggestion?: string
+}
+
+type SectorAreaOverride = Partial<
+  Pick<
+    CosAreaSource,
+    "label" | "subsections" | "quickActions" | "messages" | "showInChat" | "showInPortalNav" | "conversationSuggestion"
+  >
+>
+
+type SectorTemplate = {
+  segment: string
+  label: string
+  areas: Partial<Record<string, SectorAreaOverride>>
 }
 
 export const slug = (value: string) =>
   value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "-")
 
-export const cosAreaSources: CosAreaSource[] = [
+function normalizeSegment(value?: string | null) {
+  return slug((value || "").trim())
+}
+
+const defaultAreaSources: CosAreaSource[] = [
   {
     key: "cadastros",
     label: "Cadastros",
@@ -59,6 +78,7 @@ export const cosAreaSources: CosAreaSource[] = [
     portalDestination: "/portal/cadastros",
     showInChat: true,
     showInPortalNav: true,
+    conversationSuggestion: "Sem registros",
   },
   {
     key: "operacoes",
@@ -75,6 +95,7 @@ export const cosAreaSources: CosAreaSource[] = [
     portalDestination: "/portal/operacoes",
     showInChat: true,
     showInPortalNav: true,
+    conversationSuggestion: "Sem registros",
   },
   {
     key: "vendas",
@@ -91,6 +112,7 @@ export const cosAreaSources: CosAreaSource[] = [
     portalDestination: "/portal/vendas",
     showInChat: true,
     showInPortalNav: true,
+    conversationSuggestion: "Conversa contextual pronta",
   },
   {
     key: "marketing",
@@ -123,6 +145,7 @@ export const cosAreaSources: CosAreaSource[] = [
     portalDestination: "/portal/financeiro",
     showInChat: true,
     showInPortalNav: true,
+    conversationSuggestion: "Sem registros",
   },
   {
     key: "equipe",
@@ -139,6 +162,7 @@ export const cosAreaSources: CosAreaSource[] = [
     portalDestination: "/portal/equipe",
     showInChat: true,
     showInPortalNav: true,
+    conversationSuggestion: "Sem registros",
   },
   {
     key: "documentos",
@@ -155,6 +179,7 @@ export const cosAreaSources: CosAreaSource[] = [
     portalDestination: "/portal/documentos",
     showInChat: true,
     showInPortalNav: true,
+    conversationSuggestion: "Sem registros",
   },
   {
     key: "reunioes",
@@ -171,6 +196,7 @@ export const cosAreaSources: CosAreaSource[] = [
     portalDestination: "/portal/reunioes",
     showInChat: true,
     showInPortalNav: true,
+    conversationSuggestion: "Sem registros",
   },
   {
     key: "sistema",
@@ -187,6 +213,7 @@ export const cosAreaSources: CosAreaSource[] = [
     portalDestination: "/portal/sistema",
     showInChat: true,
     showInPortalNav: false,
+    conversationSuggestion: "Configurações e logs",
   },
   {
     key: "suporte",
@@ -203,29 +230,100 @@ export const cosAreaSources: CosAreaSource[] = [
     portalDestination: "/portal/suporte",
     showInChat: true,
     showInPortalNav: false,
+    conversationSuggestion: "Sem registros",
   },
 ]
 
-export const chatAreaSources = cosAreaSources.filter((area) => area.showInChat)
-export const portalAreaSources = cosAreaSources.filter((area) => area.showInPortalNav)
-
-export const areaConfigs: Record<string, AreaConfig> = Object.fromEntries(
-  chatAreaSources.map((area) => [
-    area.key,
-    {
-      label: area.label,
-      icon: area.icon,
-      color: area.color,
-      bg: area.bg,
-      subsections: area.subsections,
-      quickActions: area.quickActions,
-      messages: area.messages,
+export const operationsSectorTemplates: Record<string, SectorTemplate> = {
+  default: {
+    segment: "default",
+    label: "Padrão",
+    areas: {},
+  },
+  clinicas: {
+    segment: "clinicas",
+    label: "Clínicas",
+    areas: {
+      cadastros: {
+        label: "Cadastros clínicos",
+        subsections: ["Pacientes", "Convênios", "Procedimentos", "Profissionais"],
+        quickActions: ["Criar paciente", "Buscar cadastro", "Ver cadastros no Portal"],
+        conversationSuggestion: "Base clínica pronta para organizar atendimentos.",
+      },
+      operacoes: {
+        label: "Atendimentos",
+        subsections: ["Consultas", "Exames", "Agendamentos"],
+        quickActions: ["Criar operação", "Buscar operação", "Ver operações no Portal"],
+      },
+      financeiro: {
+        subsections: ["Recebimentos", "Despesas", "Fluxo de caixa"],
+      },
+      documentos: {
+        subsections: ["Prontuários", "Arquivos", "Relatórios"],
+      },
     },
-  ]),
-) as Record<string, AreaConfig>
+  },
+}
 
-export function getCosAreaSourceByKey(key: string) {
-  return cosAreaSources.find((area) => area.key === key)
+function applySectorTemplate(area: CosAreaSource, override?: SectorAreaOverride): CosAreaSource {
+  if (!override) {
+    return area
+  }
+
+  return {
+    ...area,
+    ...override,
+    subsections: override.subsections ?? area.subsections,
+    quickActions: override.quickActions ?? area.quickActions,
+    messages: override.messages ?? area.messages,
+  }
+}
+
+export function getOperationsSectorTemplate(segment?: string | null) {
+  const normalizedSegment = normalizeSegment(segment)
+
+  return operationsSectorTemplates[normalizedSegment] ?? operationsSectorTemplates.default
+}
+
+export function getOperationsAreaSources(segment?: string | null) {
+  const template = getOperationsSectorTemplate(segment)
+
+  return defaultAreaSources.map((area) => applySectorTemplate(area, template.areas[area.key]))
+}
+
+export function getOperationsChatAreaSources(segment?: string | null) {
+  return getOperationsAreaSources(segment).filter((area) => area.showInChat)
+}
+
+export function getOperationsPortalAreaSources(segment?: string | null) {
+  return getOperationsAreaSources(segment).filter((area) => area.showInPortalNav)
+}
+
+export function getOperationsAreaConfigs(segment?: string | null): Record<string, AreaConfig> {
+  return Object.fromEntries(
+    getOperationsChatAreaSources(segment).map((area) => [
+      area.key,
+      {
+        label: area.label,
+        icon: area.icon,
+        color: area.color,
+        bg: area.bg,
+        subsections: area.subsections,
+        quickActions: area.quickActions,
+        messages: area.messages,
+        conversationSuggestion: area.conversationSuggestion,
+      },
+    ]),
+  ) as Record<string, AreaConfig>
+}
+
+export const cosAreaSources = defaultAreaSources
+export const chatAreaSources = getOperationsChatAreaSources()
+export const portalAreaSources = getOperationsPortalAreaSources()
+export const areaConfigs = getOperationsAreaConfigs()
+
+export function getCosAreaSourceByKey(key: string, segment?: string | null) {
+  return getOperationsAreaSources(segment).find((area) => area.key === key)
 }
 
 export const equipeGroups: Record<string, { label: string; messages: ChatMessage[] }> = {

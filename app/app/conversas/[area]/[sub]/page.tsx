@@ -7,7 +7,8 @@ import {
   runOperationsEngineAction,
 } from "@/actions/operations-engine"
 import { AreaChat, type ChatMessage } from "@/components/app/area-chat"
-import { areaConfigs, slug } from "@/lib/area-configs"
+import { useAuth } from "@/components/auth/auth-provider"
+import { getOperationsAreaConfigs, slug } from "@/lib/area-configs"
 
 const portalDestinations: Record<string, string> = {
   clientes: "/portal/cadastros/clientes",
@@ -111,6 +112,8 @@ function resolveChatCopy(area: string, subLabel: string) {
 export default function SubAreaPage({ params }: { params: Promise<{ area: string; sub: string }> }) {
   const { area, sub } = use(params)
   const router = useRouter()
+  const { workspace } = useAuth()
+  const areaConfigs = getOperationsAreaConfigs(workspace?.metadata?.segment)
   const config = areaConfigs[area]
   const [messages, setMessages] = useState<ChatMessage[]>(config?.messages ?? [])
   const [isLoadingMessages, setIsLoadingMessages] = useState(true)

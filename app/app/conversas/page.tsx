@@ -7,7 +7,8 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Search, SlidersHorizontal, ChevronRight, ChevronDown, Users } from "lucide-react"
 import { useOperationsDashboard } from "@/components/app/operations-dashboard-store"
 import { useAppInteractions } from "@/components/app/app-interactions"
-import { chatAreaSources, slug } from "@/lib/area-configs"
+import { useAuth } from "@/components/auth/auth-provider"
+import { getOperationsChatAreaSources, slug } from "@/lib/area-configs"
 
 type Conversation = {
   key: string
@@ -21,24 +22,33 @@ type Conversation = {
   subsections: string[]
 }
 
-const baseConversations: Conversation[] = chatAreaSources.map((area) => ({
-  key: area.key,
-  icon: area.icon as typeof Users,
-  label: area.label,
-  lastMessage: area.key === "vendas" ? "Conversa contextual pronta" : area.key === "sistema" ? "Configuracoes e logs" : "Sem registros",
-  time: "-",
-  count: 0,
-  color: area.color,
-  bgColor: area.bg,
-  subsections: area.subsections,
-}))
-
 export default function ConversasPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [expanded, setExpanded] = useState<string | null>(null)
   const { summary } = useOperationsDashboard()
+  const { workspace } = useAuth()
   const router = useRouter()
   const { openFilters } = useAppInteractions()
+  const areaSources = useMemo(
+    () => getOperationsChatAreaSources(workspace?.metadata?.segment),
+    [workspace?.metadata?.segment],
+  )
+
+  const baseConversations = useMemo<Conversation[]>(
+    () =>
+      areaSources.map((area) => ({
+        key: area.key,
+        icon: area.icon as typeof Users,
+        label: area.label,
+        lastMessage: area.conversationSuggestion || "Sem registros",
+        time: "-",
+        count: 0,
+        color: area.color,
+        bgColor: area.bg,
+        subsections: area.subsections,
+      })),
+    [areaSources],
+  )
 
   const conversations = useMemo(
     () =>
@@ -119,8 +129,8 @@ export default function ConversasPage() {
 
       <div className="space-y-1">
         {filtered.map((conversation, index) => {
-          const isOpen = expanded === conversation.label
-          const conversationHref = `/app/conversas/${slug(conversation.label)}`
+          const isOpen = expanded === conversation.key
+          const conversationHref = `/app/conversas/${conversation.key}`
 
           return (
             <motion.div
@@ -133,7 +143,7 @@ export default function ConversasPage() {
               <button
                 onClick={() => {
                   if (conversation.subsections.length > 0) {
-                    setExpanded(isOpen ? null : conversation.label)
+                    setExpanded(isOpen ? null : conversation.key)
                     return
                   }
                   router.push(conversationHref)
@@ -177,7 +187,7 @@ export default function ConversasPage() {
                       {conversation.subsections.map((subsection) => (
                         <Link
                           key={subsection}
-                          href={`/app/conversas/${slug(conversation.label)}/${slug(subsection)}`}
+                          href={`/app/conversas/${conversation.key}/${slug(subsection)}`}
                           className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-gray-50 active:bg-gray-100 transition-colors"
                         >
                           <span className="text-sm text-gray-700">{subsection}</span>
