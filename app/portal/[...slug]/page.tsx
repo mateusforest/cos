@@ -165,6 +165,8 @@ const VENDAS_SECTIONS = [
   },
 ] as const
 
+const SALES_ROUTE_ORDER = VENDAS_SECTIONS.map((section) => section.key)
+
 function titleize(slug: string) {
   return slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ")
 }
@@ -211,6 +213,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   const documentsArea = getCosAreaSourceByKey("documentos", effectiveSegment)
   const meetingsArea = getCosAreaSourceByKey("reunioes", effectiveSegment)
   const operationsArea = getCosAreaSourceByKey("operacoes", effectiveSegment)
+  const salesArea = getCosAreaSourceByKey("vendas", effectiveSegment)
   const cadastrosSections = useMemo(() => {
     const titles = cadastrosArea?.subsections?.length ? cadastrosArea.subsections : CADASTROS_SECTIONS.map((section) => section.title)
 
@@ -227,6 +230,25 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
           : `Acompanhe ${String((titles[index] || section.title)).toLowerCase()} por aqui assim que a persistencia real deste modulo estiver conectada.`,
     })).slice(0, titles.length)
   }, [cadastrosArea?.subsections, isRealEstateWorkspace, isServicesWorkspace])
+  const salesSections = useMemo(() => {
+    const titles = salesArea?.subsections?.length ? salesArea.subsections : VENDAS_SECTIONS.map((section) => section.title)
+
+    return titles.map((title, index) => {
+      const fallbackSection = VENDAS_SECTIONS[index] ?? VENDAS_SECTIONS[VENDAS_SECTIONS.length - 1]
+      const routeKey = SALES_ROUTE_ORDER[index] ?? fallbackSection.key
+
+      return {
+        key: routeKey,
+        title,
+        href: `/portal/vendas/${routeKey}`,
+        icon: fallbackSection.icon,
+        description:
+          routeKey === "propostas"
+            ? `Gerencie ${title.toLowerCase()} reais do seu workspace.`
+            : `Acompanhe ${title.toLowerCase()} por aqui assim que a persistencia real deste modulo estiver conectada.`,
+      }
+    })
+  }, [salesArea?.subsections])
 
   useEffect(() => {
     if (sharedArea?.portalStatus === "redirect") {
@@ -493,7 +515,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-              {VENDAS_SECTIONS.map((section) => (
+              {salesSections.map((section) => (
                 <Link
                   key={section.key}
                   href={section.href}

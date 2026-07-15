@@ -56,7 +56,11 @@ type SectorTemplate = {
 }
 
 export const slug = (value: string) =>
-  value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "-")
+  value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "-")
 
 function normalizeSegment(value?: string | null) {
   return slug((value || "").trim())
@@ -103,8 +107,8 @@ const defaultAreaSources: CosAreaSource[] = [
     icon: TrendingUp,
     color: "#3b82f6",
     bg: "#dbeafe",
-    subsections: ["Negociações", "Propostas", "Pedidos", "Vendas", "Funil"],
-    quickActions: ["Ver propostas", "Buscar negociacao", "Ver vendas no Portal"],
+    subsections: ["Negociações", "Propostas", "Pedidos", "Funil"],
+    quickActions: ["Ver propostas", "Buscar negociação", "Ver vendas no Portal"],
     messages: [],
     chatHref: "/app/conversas/vendas",
     portalHref: "/portal/vendas",
@@ -237,12 +241,12 @@ const defaultAreaSources: CosAreaSource[] = [
 export const operationsSectorTemplates: Record<string, SectorTemplate> = {
   default: {
     segment: "default",
-    label: "Padrao",
+    label: "Padrão",
     areas: {},
   },
   comercio: {
     segment: "comercio",
-    label: "Comercio",
+    label: "Comércio",
     areas: {
       cadastros: {
         label: "Cadastros comerciais",
@@ -254,13 +258,18 @@ export const operationsSectorTemplates: Record<string, SectorTemplate> = {
         label: "Pedidos",
         subsections: ["Pedidos", "Entregas", "Trocas"],
         quickActions: ["Registrar pedido", "Buscar pedido", "Ver pedidos no Portal"],
-        conversationSuggestion: "Pedidos e entregas organizados para a operacao comercial.",
+        conversationSuggestion: "Pedidos e entregas organizados para a operação comercial.",
+      },
+      vendas: {
+        subsections: ["Propostas", "Pedidos", "Pós-venda"],
+        quickActions: ["Criar proposta", "Buscar pedido", "Ver vendas no Portal"],
+        conversationSuggestion: "Acompanhe propostas, pedidos e pós-venda da operação comercial.",
       },
       financeiro: {
         subsections: ["Recebimentos", "Pagamentos", "Fluxo de caixa"],
       },
       documentos: {
-        subsections: ["Propostas", "Notas", "Relatorios"],
+        subsections: ["Propostas", "Notas", "Relatórios"],
       },
     },
   },
@@ -276,7 +285,7 @@ export const operationsSectorTemplates: Record<string, SectorTemplate> = {
       },
       operacoes: {
         label: "Atendimentos",
-        subsections: ["Consultas", "Agenda", "Exames"],
+        subsections: ["Consultas", "Agenda", "Exames", "Retornos"],
         quickActions: ["Registrar atendimento", "Buscar atendimento", "Ver atendimentos no Portal"],
       },
       financeiro: {
@@ -291,17 +300,17 @@ export const operationsSectorTemplates: Record<string, SectorTemplate> = {
   },
   saude: {
     segment: "saude",
-    label: "Saude",
+    label: "Saúde",
     areas: {
       cadastros: {
-        label: "Cadastros de saude",
-        subsections: ["Pacientes", "Convenios", "Procedimentos", "Profissionais"],
+        label: "Cadastros de saúde",
+        subsections: ["Pacientes", "Convênios", "Procedimentos", "Profissionais"],
         quickActions: ["Criar paciente", "Buscar paciente", "Ver pacientes no Portal"],
-        conversationSuggestion: "Base de saude pronta para organizar atendimentos e agendas.",
+        conversationSuggestion: "Base de saúde pronta para organizar atendimentos e agendas.",
       },
       operacoes: {
         label: "Atendimentos",
-        subsections: ["Consultas", "Agenda", "Exames"],
+        subsections: ["Consultas", "Agenda", "Exames", "Retornos"],
         quickActions: ["Registrar atendimento", "Buscar atendimento", "Ver atendimentos no Portal"],
         conversationSuggestion: "Atendimentos e exames prontos para acompanhamento no COS.",
       },
@@ -309,9 +318,9 @@ export const operationsSectorTemplates: Record<string, SectorTemplate> = {
         subsections: ["Recebimentos", "Despesas", "Fluxo de caixa"],
       },
       documentos: {
-        label: "Documentos de saude",
-        subsections: ["Guias", "Exames", "Relatorios"],
-        quickActions: ["Criar documento clinico", "Buscar arquivo", "Ver documentos no Portal"],
+        label: "Documentos de saúde",
+        subsections: ["Guias", "Exames", "Relatórios"],
+        quickActions: ["Criar documento clínico", "Buscar arquivo", "Ver documentos no Portal"],
       },
     },
   },
@@ -320,141 +329,156 @@ export const operationsSectorTemplates: Record<string, SectorTemplate> = {
     label: "Advocacia",
     areas: {
       cadastros: {
-        label: "Cadastros juridicos",
+        label: "Cadastros jurídicos",
         subsections: ["Clientes", "Casos", "Contrapartes", "Prazos"],
         quickActions: ["Criar cliente", "Buscar cadastro", "Ver cadastros no Portal"],
-        conversationSuggestion: "Base juridica pronta para acompanhar clientes e processos.",
+        conversationSuggestion: "Base jurídica pronta para acompanhar clientes e processos.",
       },
       operacoes: {
         label: "Processos",
-        subsections: ["Andamentos", "Audiencias", "Peticoes"],
-        quickActions: ["Criar operacao", "Buscar operacao", "Ver operacoes no Portal"],
+        subsections: ["Processos", "Andamentos", "Audiências", "Prazos"],
+        quickActions: ["Criar processo", "Buscar andamento", "Ver operações no Portal"],
       },
       financeiro: {
-        subsections: ["Honorarios", "Recebimentos", "Despesas"],
+        subsections: ["Honorários", "Recebimentos", "Despesas"],
       },
       documentos: {
-        subsections: ["Contratos", "Peticoes", "Relatorios"],
+        subsections: ["Contratos", "Petições", "Procurações", "Relatórios"],
       },
     },
   },
   educacao: {
     segment: "educacao",
-    label: "Educacao",
+    label: "Educação",
     areas: {
       cadastros: {
-        label: "Cadastros academicos",
-        subsections: ["Alunos", "Cursos", "Turmas", "Responsaveis"],
+        label: "Cadastros acadêmicos",
+        subsections: ["Alunos", "Turmas", "Cursos", "Responsáveis"],
         quickActions: ["Criar aluno", "Buscar turma", "Ver cadastros no Portal"],
-        conversationSuggestion: "Base academica pronta para organizar alunos, cursos e turmas.",
+        conversationSuggestion: "Base acadêmica pronta para organizar alunos, cursos e turmas.",
       },
       operacoes: {
-        label: "Academico",
-        subsections: ["Matriculas", "Aulas", "Atendimentos"],
-        quickActions: ["Registrar matricula", "Buscar aluno", "Ver academico no Portal"],
-        conversationSuggestion: "Matriculas, aulas e atendimentos prontos para acompanhamento.",
+        label: "Acadêmico",
+        subsections: ["Matrículas", "Aulas", "Presenças", "Atendimentos"],
+        quickActions: ["Registrar matrícula", "Buscar aluno", "Ver acadêmico no Portal"],
+        conversationSuggestion: "Matrículas, aulas e atendimentos prontos para acompanhamento.",
       },
       financeiro: {
         subsections: ["Mensalidades", "Pagamentos", "Fluxo de caixa"],
       },
       documentos: {
-        subsections: ["Contratos", "Boletins", "Relatorios"],
+        subsections: ["Contratos", "Boletins", "Relatórios"],
       },
     },
   },
   imobiliarias: {
     segment: "imobiliarias",
-    label: "Imobiliarias",
+    label: "Imobiliárias",
     areas: {
       cadastros: {
-        label: "Cadastros imobiliarios",
-        subsections: ["Clientes", "Proprietarios", "Interessados", "Imoveis"],
-        quickActions: ["Criar cliente", "Buscar proprietario", "Ver cadastros no Portal"],
-        conversationSuggestion: "Base imobiliaria pronta para organizar captacoes e negociacoes.",
+        label: "Cadastros imobiliários",
+        subsections: ["Clientes", "Proprietários", "Interessados", "Imóveis"],
+        quickActions: ["Criar cliente", "Buscar proprietário", "Ver cadastros no Portal"],
+        conversationSuggestion: "Base imobiliária pronta para organizar captações e negociações.",
       },
       operacoes: {
-        label: "Negociacoes",
-        subsections: ["Imoveis", "Visitas", "Negociacoes"],
-        quickActions: ["Registrar negociacao", "Buscar imovel", "Ver negociacoes no Portal"],
+        label: "Negociações",
+        subsections: ["Captações", "Visitas", "Negociações", "Locações"],
+        quickActions: ["Registrar negociação", "Buscar imóvel", "Ver negociações no Portal"],
+      },
+      vendas: {
+        subsections: ["Propostas", "Vendas", "Contratos"],
+        quickActions: ["Criar proposta", "Buscar venda", "Ver vendas no Portal"],
+        conversationSuggestion: "Acompanhe propostas, vendas e contratos do fluxo imobiliário.",
       },
       financeiro: {
-        subsections: ["Recebimentos", "Comissoes", "Fluxo de caixa"],
+        subsections: ["Recebimentos", "Comissões", "Fluxo de caixa"],
       },
       documentos: {
-        label: "Documentos imobiliarios",
+        label: "Documentos imobiliários",
         subsections: ["Contratos", "Vistorias", "Propostas"],
-        quickActions: ["Criar documento imobiliario", "Buscar arquivo", "Ver documentos no Portal"],
+        quickActions: ["Criar documento imobiliário", "Buscar arquivo", "Ver documentos no Portal"],
       },
     },
   },
   industria: {
     segment: "industria",
-    label: "Industria",
+    label: "Indústria",
     areas: {
       cadastros: {
         label: "Cadastros industriais",
-        subsections: ["Clientes", "Produtos", "Materiais", "Fornecedores"],
-        quickActions: ["Criar cliente", "Buscar material", "Ver cadastros no Portal"],
-        conversationSuggestion: "Base industrial pronta para organizar producao, materiais e clientes.",
+        subsections: ["Clientes", "Produtos", "Insumos", "Fornecedores"],
+        quickActions: ["Criar cliente", "Buscar insumo", "Ver cadastros no Portal"],
+        conversationSuggestion: "Base industrial pronta para organizar produção, insumos e clientes.",
       },
       operacoes: {
-        label: "Producao",
-        subsections: ["Ordens de producao", "Lotes", "Expedicao"],
-        quickActions: ["Registrar ordem de producao", "Buscar lote", "Ver producao no Portal"],
-        conversationSuggestion: "Ordens, lotes e expedicao prontas para acompanhamento.",
+        label: "Produção",
+        subsections: ["Ordens de produção", "Lotes", "Qualidade", "Expedição"],
+        quickActions: ["Registrar ordem de produção", "Buscar lote", "Ver produção no Portal"],
+        conversationSuggestion: "Ordens, lotes e expedição prontas para acompanhamento.",
+      },
+      vendas: {
+        subsections: ["Cotações", "Pedidos", "Contratos"],
+        quickActions: ["Criar cotação", "Buscar pedido", "Ver vendas no Portal"],
+        conversationSuggestion: "Acompanhe cotações, pedidos e contratos da operação industrial.",
       },
       financeiro: {
         subsections: ["Custos", "Recebimentos", "Fluxo de caixa"],
       },
       documentos: {
-        subsections: ["Ordens", "Laudos", "Relatorios"],
+        subsections: ["Ordens", "Laudos", "Relatórios"],
       },
     },
   },
   logistica: {
     segment: "logistica",
-    label: "Logistica",
+    label: "Logística",
     areas: {
       cadastros: {
-        label: "Cadastros logisticos",
-        subsections: ["Clientes", "Motoristas", "Veiculos", "Rotas"],
+        label: "Cadastros logísticos",
+        subsections: ["Clientes", "Motoristas", "Veículos", "Rotas"],
         quickActions: ["Criar cliente", "Buscar rota", "Ver cadastros no Portal"],
-        conversationSuggestion: "Base logistica pronta para organizar coletas, entregas e rotas.",
+        conversationSuggestion: "Base logística pronta para organizar coletas, entregas e rotas.",
       },
       operacoes: {
-        label: "Operacao logistica",
-        subsections: ["Coletas", "Entregas", "Ocorrencias"],
-        quickActions: ["Registrar entrega", "Buscar coleta", "Ver operacao no Portal"],
-        conversationSuggestion: "Coletas, entregas e ocorrencias prontas para acompanhamento.",
+        label: "Operação logística",
+        subsections: ["Coletas", "Cargas", "Entregas", "Viagens", "Ocorrências"],
+        quickActions: ["Registrar entrega", "Buscar coleta", "Ver operação no Portal"],
+        conversationSuggestion: "Coletas, entregas e ocorrências prontas para acompanhamento.",
       },
       financeiro: {
         subsections: ["Fretes", "Custos", "Fluxo de caixa"],
       },
       documentos: {
-        subsections: ["CTes", "Manifestos", "Relatorios"],
+        subsections: ["CT-e", "MDF-e", "Comprovantes", "Relatórios"],
       },
     },
   },
   servicos: {
     segment: "servicos",
-    label: "Servicos",
+    label: "Serviços",
     areas: {
       cadastros: {
-        label: "Cadastros de servicos",
-        subsections: ["Clientes", "Servicos", "Responsaveis"],
-        quickActions: ["Criar cliente", "Cadastrar servico", "Ver cadastros no Portal"],
-        conversationSuggestion: "Base de servicos pronta para organizar atendimentos e entregas.",
+        label: "Cadastros de serviços",
+        subsections: ["Clientes", "Serviços", "Responsáveis"],
+        quickActions: ["Criar cliente", "Cadastrar serviço", "Ver cadastros no Portal"],
+        conversationSuggestion: "Base de serviços pronta para organizar atendimentos e entregas.",
       },
       operacoes: {
         label: "Atendimentos",
-        subsections: ["Ordens de servico", "Atendimentos"],
-        quickActions: ["Registrar ordem de servico", "Buscar atendimento", "Ver atendimentos no Portal"],
+        subsections: ["Ordens de serviço", "Atendimentos", "Agenda"],
+        quickActions: ["Registrar ordem de serviço", "Buscar atendimento", "Ver atendimentos no Portal"],
+      },
+      vendas: {
+        subsections: ["Oportunidades", "Propostas", "Contratos"],
+        quickActions: ["Criar proposta", "Buscar oportunidade", "Ver vendas no Portal"],
+        conversationSuggestion: "Acompanhe oportunidades, propostas e contratos de serviços.",
       },
       financeiro: {
         subsections: ["Recebimentos", "Despesas", "Fluxo de caixa"],
       },
       documentos: {
-        subsections: ["Propostas", "Contratos", "Relatorios"],
+        subsections: ["Propostas", "Contratos", "Relatórios"],
       },
     },
   },
@@ -463,46 +487,46 @@ export const operationsSectorTemplates: Record<string, SectorTemplate> = {
     label: "Contabilidade",
     areas: {
       cadastros: {
-        label: "Cadastros contabeis",
-        subsections: ["Clientes", "Empresas", "Obrigacoes", "Responsaveis"],
-        quickActions: ["Criar cliente", "Buscar obrigacao", "Ver cadastros no Portal"],
-        conversationSuggestion: "Base contabil pronta para organizar clientes, empresas e obrigacoes.",
+        label: "Cadastros contábeis",
+        subsections: ["Clientes", "Empresas", "Obrigações", "Responsáveis"],
+        quickActions: ["Criar cliente", "Buscar obrigação", "Ver cadastros no Portal"],
+        conversationSuggestion: "Base contábil pronta para organizar clientes, empresas e obrigações.",
       },
       operacoes: {
-        label: "Rotinas contabeis",
-        subsections: ["Lancamentos", "Fechamentos", "Entregas"],
-        quickActions: ["Registrar lancamento", "Buscar fechamento", "Ver rotinas no Portal"],
-        conversationSuggestion: "Lancamentos, fechamentos e entregas prontos para acompanhamento.",
+        label: "Rotinas contábeis",
+        subsections: ["Fechamentos", "Apurações", "Entregas"],
+        quickActions: ["Registrar fechamento", "Buscar apuração", "Ver rotinas no Portal"],
+        conversationSuggestion: "Fechamentos, apurações e entregas prontos para acompanhamento.",
       },
       financeiro: {
-        subsections: ["Honorarios", "Recebimentos", "Despesas"],
+        subsections: ["Honorários", "Recebimentos", "Despesas"],
       },
       documentos: {
-        subsections: ["Balancetes", "Guias", "Relatorios"],
+        subsections: ["Balancetes", "Guias", "Relatórios"],
       },
     },
   },
   construcao: {
     segment: "construcao",
-    label: "Construcao",
+    label: "Construção",
     areas: {
       cadastros: {
         label: "Cadastros de obras",
-        subsections: ["Clientes", "Obras", "Fornecedores", "Responsaveis"],
+        subsections: ["Clientes", "Obras", "Fornecedores", "Responsáveis"],
         quickActions: ["Criar cliente", "Buscar obra", "Ver cadastros no Portal"],
-        conversationSuggestion: "Base de construcao pronta para organizar obras, equipes e fornecedores.",
+        conversationSuggestion: "Base de construção pronta para organizar obras, equipes e fornecedores.",
       },
       operacoes: {
         label: "Obras",
-        subsections: ["Cronogramas", "Execucoes", "Vistorias"],
+        subsections: ["Cronogramas", "Execuções", "Medições", "Vistorias"],
         quickActions: ["Registrar obra", "Buscar vistoria", "Ver obras no Portal"],
-        conversationSuggestion: "Cronogramas, execucoes e vistorias prontos para acompanhamento.",
+        conversationSuggestion: "Cronogramas, execuções e vistorias prontos para acompanhamento.",
       },
       financeiro: {
-        subsections: ["Medicoes", "Custos", "Fluxo de caixa"],
+        subsections: ["Medições", "Custos", "Fluxo de caixa"],
       },
       documentos: {
-        subsections: ["Contratos", "Projetos", "Relatorios"],
+        subsections: ["Contratos", "Projetos", "Relatórios"],
       },
     },
   },
@@ -518,15 +542,15 @@ export const operationsSectorTemplates: Record<string, SectorTemplate> = {
       },
       operacoes: {
         label: "Pessoas",
-        subsections: ["Admissoes", "Treinamentos", "Atendimentos"],
-        quickActions: ["Registrar admissao", "Buscar vaga", "Ver pessoas no Portal"],
-        conversationSuggestion: "Admissoes, treinamentos e atendimentos prontos para acompanhamento.",
+        subsections: ["Recrutamentos", "Admissões", "Treinamentos", "Férias"],
+        quickActions: ["Registrar admissão", "Buscar vaga", "Ver pessoas no Portal"],
+        conversationSuggestion: "Recrutamentos, admissões, treinamentos e férias prontos para acompanhamento.",
       },
       financeiro: {
-        subsections: ["Folha", "Beneficios", "Reembolsos"],
+        subsections: ["Folha", "Benefícios", "Reembolsos"],
       },
       documentos: {
-        subsections: ["Curriculos", "Contratos", "Relatorios"],
+        subsections: ["Currículos", "Contratos", "Relatórios"],
       },
     },
   },
