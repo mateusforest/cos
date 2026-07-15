@@ -9,6 +9,7 @@ import { AuthLayout } from "@/components/cos/auth-layout"
 import { ensureWorkspaceForCurrentUserAction, loginAction } from "@/actions/auth"
 import { PublicAuthRouteGuard } from "@/components/auth/auth-route-guard"
 import { useAuth } from "@/components/auth/auth-provider"
+import { COSLoading } from "@/components/cos/cos-loading"
 import type { WorkspaceType } from "@/lib/auth"
 
 export default function LoginPage() {
@@ -24,6 +25,7 @@ export default function LoginPage() {
   const [isPending, startTransition] = useTransition()
   const [isWorkspacePending, startWorkspaceTransition] = useTransition()
   const canRecoverWorkspace = Boolean(authenticatedUser && !workspace && !isLoading)
+  const isSubmitting = isPending || isWorkspacePending
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -77,6 +79,14 @@ export default function LoginPage() {
   return (
     <PublicAuthRouteGuard>
       <AuthLayout>
+      {isSubmitting ? (
+        <COSLoading
+          title={isWorkspacePending ? "Criando seu workspace no COS" : "Entrando no COS"}
+          description={isWorkspacePending ? "Estamos preparando sua estrutura inicial." : "Estamos validando suas credenciais e organizando sua sessao."}
+          currentStep={isWorkspacePending ? "Preparando workspace" : "Validando acesso"}
+        />
+      ) : (
+        <>
       <div className="flex justify-center mb-8">
         <Image
           src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/COS%20LOGO%20%281%29-mBU7xqdIZoWP3indGVxJrDFLu8urZH.png"
@@ -195,6 +205,8 @@ export default function LoginPage() {
           Criar conta
         </Link>
       </p>
+        </>
+      )}
       </AuthLayout>
     </PublicAuthRouteGuard>
   )

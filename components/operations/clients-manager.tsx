@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Loader2, Pencil, Plus, Search, Trash2, UserPlus } from "lucide-react"
+import { Pencil, Plus, Search, Trash2, UserPlus } from "lucide-react"
 import {
   createClientAction,
   deleteClientAction,
@@ -10,6 +10,7 @@ import {
   type ClientStatus,
 } from "@/actions/clients"
 import { useAuth } from "@/components/auth/auth-provider"
+import { COSLoading } from "@/components/cos/cos-loading"
 
 type ClientRecord = {
   id: string
@@ -490,16 +491,19 @@ export function ClientsManager({
           </div>
 
           {isLoading ? (
-            <div className="flex items-center justify-center py-16 text-sm text-gray-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {isClinicMode
-                ? "Carregando pacientes..."
-                : isRealEstateMode
-                  ? `Carregando ${realEstateCopy.plural}...`
-                  : isServicesMode
-                    ? `Carregando ${servicesCopy.plural}...`
-                  : "Carregando clientes..."}
-            </div>
+            <COSLoading
+              title={
+                isClinicMode
+                  ? "Carregando pacientes"
+                  : isRealEstateMode
+                    ? `Carregando ${realEstateCopy.plural}`
+                    : isServicesMode
+                      ? `Carregando ${servicesCopy.plural}`
+                      : "Carregando clientes"
+              }
+              description="Estamos organizando os cadastros reais do seu workspace."
+              currentStep="Carregando cadastros"
+            />
           ) : filteredClients.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-16 text-center">
               <p className="text-sm text-gray-500">

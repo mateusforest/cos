@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { BarChart3, FileText, Loader2, Paperclip, Pencil, Plus, Search, Trash2, TrendingUp, Upload } from "lucide-react"
+import { BarChart3, FileText, Paperclip, Pencil, Plus, Search, Trash2, TrendingUp, Upload } from "lucide-react"
 import {
   createDocumentAction,
   deleteDocumentAction,
@@ -12,6 +12,7 @@ import {
 } from "@/actions/documents"
 import { uploadDocumentFile } from "@/lib/document-upload"
 import { useAuth } from "@/components/auth/auth-provider"
+import { COSLoading } from "@/components/cos/cos-loading"
 
 type DocumentRecord = {
   id: string
@@ -351,10 +352,11 @@ export function DocumentsManager({
           </div>
 
           {isLoading ? (
-            <div className="flex items-center justify-center py-16 text-sm text-gray-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {uiCopy.loadingLabel}
-            </div>
+            <COSLoading
+              title={uiCopy.loadingLabel.replace("...", "")}
+              description="Estamos reunindo os documentos reais desta area."
+              currentStep="Carregando documentos"
+            />
           ) : filteredDocuments.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-16 text-center">
               <p className="text-sm text-gray-500">{uiCopy.emptyLabel}</p>

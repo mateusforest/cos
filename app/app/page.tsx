@@ -29,6 +29,7 @@ import { useAppInteractions } from "@/components/app/app-interactions"
 import { useOperationsDashboard } from "@/components/app/operations-dashboard-store"
 import { useAuth } from "@/components/auth/auth-provider"
 import type { ChatMessage } from "@/components/app/area-chat"
+import { COSLoading } from "@/components/cos/cos-loading"
 import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 import { useSupport } from "@/components/support/support-context"
 import { toast } from "@/hooks/use-toast"
@@ -848,15 +849,11 @@ export default function AppHomePage() {
 
                 <div className="rounded-xl border border-gray-100 bg-white p-3">
                   {!isShortcutsReady || isStatsLoading ? (
-                    <div className="grid grid-cols-4 gap-2">
-                      {Array.from({ length: 4 }).map((_, index) => (
-                        <div key={index} className="flex flex-col items-center gap-2 py-1">
-                          <div className="h-4 w-4 animate-pulse rounded bg-gray-200" />
-                          <div className="h-4 w-12 animate-pulse rounded bg-gray-200" />
-                          <div className="h-3 w-16 animate-pulse rounded bg-gray-100" />
-                        </div>
-                      ))}
-                    </div>
+                    <COSLoading
+                      title="Carregando atalhos"
+                      description="Estamos preparando os indicadores da sua operacao."
+                      currentStep="Organizando atalhos"
+                    />
                   ) : (
                     <div className={`grid gap-2 ${enabledShortcuts.length <= 4 ? "grid-cols-4" : "grid-cols-3"}`}>
                       {enabledShortcuts.map((shortcut) => (

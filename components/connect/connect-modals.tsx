@@ -13,6 +13,7 @@ import {
   type ConnectSourceStatus,
 } from "@/actions/connect"
 import { addWorkspaceMemberAction } from "@/actions/workspace"
+import { COSLoading } from "@/components/cos/cos-loading"
 import { useConnect } from "@/components/connect/connect-store"
 
 const sourceTypeOptions = [
@@ -40,9 +41,6 @@ const actionTypes: Array<{ value: ConnectActionType; label: string }> = [
 
 const fieldClassName =
   "w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-[#0a0a0a] focus:outline-none focus:border-gray-300"
-
-const COS_LOGO =
-  "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/COS%20LOGO%20%281%29-mBU7xqdIZoWP3indGVxJrDFLu8urZH.png"
 
 const preparationSteps = ["Identificar", "Analisar", "Organizar", "Finalizar"] as const
 
@@ -447,42 +445,11 @@ export function ConnectModals() {
           <ModalHeader title="Nova fonte" onClose={resetAndClose} icon={SourceIcon} />
           <div className="space-y-4">
             {isSubmitting ? (
-              <div className="rounded-3xl border border-gray-100 bg-gray-50 px-6 py-10 text-center">
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ repeat: Number.POSITIVE_INFINITY, duration: 2, ease: "linear" }}
-                  className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-white shadow-sm"
-                >
-                  <Image src={COS_LOGO} alt="COS" width={34} height={34} className="h-8 w-8" />
-                </motion.div>
-                <p className="text-base font-semibold text-[#0a0a0a]">O COS esta preparando sua operacao.</p>
-                <p className="mt-2 text-sm leading-relaxed text-gray-500">
-                  Estamos analisando a fonte e organizando tudo para voce.
-                </p>
-                <div className="mt-6 overflow-hidden rounded-full bg-white">
-                  <motion.div
-                    className="h-2 rounded-full bg-[#0a0a0a]"
-                    animate={{ width: `${((preparationStepIndex + 1) / preparationSteps.length) * 100}%` }}
-                  />
-                </div>
-                <div className="mt-5 space-y-2 text-left">
-                  {preparationSteps.map((step, index) => {
-                    const isDone = index <= preparationStepIndex
-                    return (
-                      <div key={step} className="flex items-center gap-2 text-sm">
-                        <span
-                          className={`flex h-6 w-6 items-center justify-center rounded-full border ${
-                            isDone ? "border-[#0a0a0a] bg-[#0a0a0a] text-white" : "border-gray-200 bg-white text-gray-300"
-                          }`}
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                        </span>
-                        <span className={isDone ? "text-[#0a0a0a]" : "text-gray-400"}>{step}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
+              <COSLoading
+                title="O COS esta preparando sua operacao."
+                description="Estamos analisando a fonte e organizando tudo para voce."
+                currentStep={preparationSteps[preparationStepIndex]}
+              />
             ) : (
               <>
             <InfoCard text={getSourceInfoText(sourceForm.sourceType)} />

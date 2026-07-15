@@ -16,6 +16,7 @@ import {
   Users,
   LifeBuoy,
 } from "lucide-react"
+import { COSLoading } from "@/components/cos/cos-loading"
 import { useConnect } from "@/components/connect/connect-store"
 
 const sourceTypeIcon: Record<string, typeof Database> = {
@@ -101,9 +102,11 @@ export default function ConnectConversasPage() {
         </motion.div>
 
         {isLoading ? (
-          Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="h-20 animate-pulse rounded-xl bg-white" />
-          ))
+          <COSLoading
+            title="Carregando conversas"
+            description="Estamos organizando as fontes e sessoes do seu Connect."
+            currentStep="Carregando conversas"
+          />
         ) : (
           filteredSources.map((source, index) => {
             const isOpen = expanded === source.id

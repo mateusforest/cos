@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Briefcase, CalendarDays, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react"
+import { Briefcase, CalendarDays, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import {
   createOperationAction,
   deleteOperationAction,
@@ -11,6 +11,7 @@ import {
   type OperationStatus,
 } from "@/actions/operations"
 import { useAuth } from "@/components/auth/auth-provider"
+import { COSLoading } from "@/components/cos/cos-loading"
 
 type OperationRecord = {
   id: string
@@ -515,16 +516,19 @@ export function OperationsManager({
           </div>
 
           {isLoading ? (
-            <div className="flex items-center justify-center py-16 text-sm text-gray-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {isClinicMode
-                ? "Carregando atendimentos..."
-                : isRealEstateMode
-                  ? `Carregando ${realEstateCopy.plural}...`
-                  : isServicesMode
-                    ? `Carregando ${servicesCopy.plural}...`
-                  : "Carregando operacoes..."}
-            </div>
+            <COSLoading
+              title={
+                isClinicMode
+                  ? "Carregando atendimentos"
+                  : isRealEstateMode
+                    ? `Carregando ${realEstateCopy.plural}`
+                    : isServicesMode
+                      ? `Carregando ${servicesCopy.plural}`
+                      : "Carregando operacoes"
+              }
+              description="Estamos organizando os registros operacionais do seu workspace."
+              currentStep="Carregando operacoes"
+            />
           ) : filteredOperations.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-16 text-center">
               <p className="text-sm text-gray-500">

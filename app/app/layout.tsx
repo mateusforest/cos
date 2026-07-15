@@ -45,6 +45,7 @@ import { OperationsDashboardProvider, useOperationsDashboard } from "@/component
 import { AppInteractionsProvider } from "@/components/app/app-interactions"
 import { useAuth } from "@/components/auth/auth-provider"
 import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
+import { COSLoading } from "@/components/cos/cos-loading"
 import { OperationsTemplatePreviewProvider } from "@/components/operations/operations-template-preview"
 import { SupportProvider, useSupport } from "@/components/support/support-context"
 import { Toaster } from "@/components/ui/toaster"
@@ -501,12 +502,11 @@ function DesktopContextPanel() {
           </div>
           <div className="space-y-2">
             {isLoading && !financialSummary ? (
-              Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5">
-                  <span className="h-3 w-24 animate-pulse rounded bg-gray-200" />
-                  <span className="h-4 w-20 animate-pulse rounded bg-gray-200" />
-                </div>
-              ))
+              <COSLoading
+                title="Carregando financeiro"
+                description="Estamos reunindo o resumo financeiro do workspace."
+                currentStep="Atualizando contexto"
+              />
             ) : (
               financeiro.map((f) => (
                 <div key={f.label} className={`flex items-center justify-between rounded-xl px-3 py-2.5 ${f.accent ? "bg-[#0a0a0a]" : "bg-gray-50"}`}>
@@ -527,17 +527,11 @@ function DesktopContextPanel() {
             <span className="text-sm font-semibold text-[#0a0a0a]">Atividades recentes</span>
           </div>
           {isLoading && activities.length === 0 ? (
-            <div className="space-y-3">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="flex items-start gap-2.5">
-                  <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-gray-200" />
-                  <div className="flex-1 space-y-1.5">
-                    <div className="h-3 w-40 animate-pulse rounded bg-gray-200" />
-                    <div className="h-3 w-24 animate-pulse rounded bg-gray-100" />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <COSLoading
+              title="Carregando atividades"
+              description="Estamos reunindo os registros mais recentes do seu workspace."
+              currentStep="Atualizando contexto"
+            />
           ) : activities.length === 0 ? (
             <p className="text-sm text-gray-500">Nenhum registro ainda.</p>
           ) : (

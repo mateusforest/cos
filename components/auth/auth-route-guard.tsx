@@ -4,12 +4,13 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { canAccessPath, resolveHomePath } from "@/lib/auth-routing"
 import { useAuth } from "@/components/auth/auth-provider"
+import { COSLoading } from "@/components/cos/cos-loading"
 
 function GuardLoading({ label }: { label: string }) {
   return (
     <div className="flex min-h-screen items-center justify-center px-6">
-      <div className="rounded-2xl border border-gray-100 bg-white px-5 py-4 text-sm text-gray-500 shadow-sm">
-        {label}
+      <div className="w-full max-w-md">
+        <COSLoading title={label} description="Estamos preparando seu acesso ao COS." currentStep="Verificacao de sessao" />
       </div>
     </div>
   )

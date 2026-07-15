@@ -25,6 +25,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion"
 import { createContext, useContext, useState } from "react"
 import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
+import { COSLoading } from "@/components/cos/cos-loading"
 import { ConnectProvider, useConnect } from "@/components/connect/connect-store"
 import { ConnectModals } from "@/components/connect/connect-modals"
 import { ConnectHeaderActions } from "@/components/connect/connect-header-actions"
@@ -310,10 +311,12 @@ function DesktopSidebar() {
           <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Fontes</span>
         </div>
         {isLoading ? (
-          <div className="space-y-2 px-2">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="h-16 animate-pulse rounded-xl bg-gray-100" />
-            ))}
+          <div className="px-2">
+            <COSLoading
+              title="Carregando fontes"
+              description="Estamos recuperando as fontes conectadas do seu Connect."
+              currentStep="Carregando fontes"
+            />
           </div>
         ) : sources.length === 0 ? (
           <div className="px-3 py-6 text-center">
@@ -390,10 +393,11 @@ function DesktopContextPanel() {
       </div>
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {isLoading ? (
-          <>
-            <div className="h-24 animate-pulse rounded-2xl bg-gray-100" />
-            <div className="h-24 animate-pulse rounded-2xl bg-gray-100" />
-          </>
+          <COSLoading
+            title="Carregando contexto"
+            description="Estamos organizando o panorama atual do seu Connect."
+            currentStep="Carregando contexto"
+          />
         ) : sources.length === 0 ? (
           <>
             <p className="mb-2 text-sm leading-relaxed text-gray-500">

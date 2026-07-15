@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { CalendarDays, Loader2, MapPin, Pencil, Plus, Search, Users, Video } from "lucide-react"
+import { CalendarDays, MapPin, Pencil, Plus, Search, Users, Video } from "lucide-react"
 import {
   createMeetingAction,
   getMeetingsAction,
@@ -11,6 +11,7 @@ import {
   type MeetingType,
 } from "@/actions/meetings"
 import { useAuth } from "@/components/auth/auth-provider"
+import { COSLoading } from "@/components/cos/cos-loading"
 
 type MeetingRecord = {
   id: string
@@ -329,10 +330,16 @@ export function MeetingsManager({
           </div>
 
           {isLoading ? (
-            <div className="flex items-center justify-center py-16 text-sm text-gray-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <>
+            <COSLoading
+              title="Carregando reunioes"
+              description="Estamos reunindo as reunioes e os estados reais do COS Meet."
+              currentStep="Carregando reunioes"
+            />
+            <div className="hidden">
               Carregando reuniões...
             </div>
+            </>
           ) : filteredMeetings.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-16 text-center">
               <p className="text-sm text-gray-500">Nenhuma reunião registrada ainda.</p>

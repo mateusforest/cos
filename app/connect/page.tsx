@@ -5,6 +5,7 @@ import { motion } from "framer-motion"
 import { Clock3, Mic, Send, Database, FileSpreadsheet, Mail, MessageCircle, Plug, LifeBuoy } from "lucide-react"
 import { useState } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
+import { COSLoading } from "@/components/cos/cos-loading"
 import { useConnect } from "@/components/connect/connect-store"
 import { useSupport } from "@/components/support/support-context"
 
@@ -169,11 +170,11 @@ export default function ConnectHomePage() {
         </div>
 
         {isLoading ? (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="h-24 animate-pulse rounded-xl bg-white" />
-            ))}
-          </div>
+          <COSLoading
+            title="Carregando fontes"
+            description="Estamos reunindo o status atual das suas fontes do Connect."
+            currentStep="Carregando Connect"
+          />
         ) : hasSources ? (
           <div className="rounded-xl border border-gray-100 bg-white p-3">
             <div className="grid gap-2 sm:grid-cols-2">

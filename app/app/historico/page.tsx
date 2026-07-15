@@ -9,7 +9,6 @@ import {
   FolderOpen,
   Grid3X3,
   LifeBuoy,
-  Loader2,
   RefreshCw,
   Search,
   Settings,
@@ -23,6 +22,7 @@ import {
 } from "lucide-react"
 import { getWorkspaceActivityLogsAction } from "@/actions/activity"
 import { useAppInteractions } from "@/components/app/app-interactions"
+import { COSLoading } from "@/components/cos/cos-loading"
 import { humanizeActivityAction } from "@/lib/activity/humanize"
 
 type ActivityItem = {
@@ -204,10 +204,11 @@ export default function HistoricoPage() {
       {error && <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-sm text-gray-500">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Carregando historico...
-        </div>
+        <COSLoading
+          title="Carregando historico"
+          description="Estamos reunindo as atividades reais do seu workspace."
+          currentStep="Carregando historico"
+        />
       ) : filteredLogs.length === 0 ? (
         <div className="py-12 text-center">
           <p className="text-sm text-gray-500">Nenhum registro ainda.</p>

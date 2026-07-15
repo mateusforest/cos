@@ -36,6 +36,7 @@ import {
   type MeetingType,
 } from "@/actions/meetings"
 import { useAuth } from "@/components/auth/auth-provider"
+import { COSLoading } from "@/components/cos/cos-loading"
 import { uploadDocumentFile } from "@/lib/document-upload"
 import { LiveKitMeetingRoom } from "@/components/operations/livekit-meeting-room"
 
@@ -558,9 +559,12 @@ export function MeetingDetailsView({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-16 text-sm text-gray-500">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        Carregando reuniao...
+      <div className="py-6">
+        <COSLoading
+          title="Carregando reuniao"
+          description="Estamos recuperando os detalhes e o historico desta reuniao."
+          currentStep="Carregando COS Meet"
+        />
       </div>
     )
   }

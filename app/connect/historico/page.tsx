@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, SlidersHorizontal, X, Clock, Tag, Plug, Inbox } from "lucide-react"
 import { getConnectHistoryAction } from "@/actions/connect"
+import { COSLoading } from "@/components/cos/cos-loading"
 import { useConnect } from "@/components/connect/connect-store"
 import { useSupport } from "@/components/support/support-context"
 import { humanizeActivityAction } from "@/lib/activity/humanize"
@@ -149,11 +150,11 @@ export default function ConnectHistoricoPage() {
       </div>
 
       {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="h-16 animate-pulse rounded-xl bg-gray-100" />
-          ))}
-        </div>
+        <COSLoading
+          title="Carregando historico"
+          description="Estamos reunindo as atividades reais do seu Connect."
+          currentStep="Carregando historico"
+        />
       ) : filtered.length === 0 ? (
         <div className="mt-16 flex flex-col items-center text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100">

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { ChevronLeft, Send, Mic, Plus, Sparkles, type LucideIcon } from "lucide-react"
+import { COSLoading } from "@/components/cos/cos-loading"
 import { toast } from "@/hooks/use-toast"
 
 export type ChatMessage = {
@@ -143,10 +144,13 @@ export function AreaChat({
         <div className="space-y-3 pb-4">
         {isLoadingHistory ? (
           <div className="flex flex-col items-center justify-center text-center h-full py-16">
-            <span className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: bg }}>
-              <Icon className="w-6 h-6" style={{ color }} />
-            </span>
-            <p className="text-sm text-gray-500 max-w-xs">Carregando mensagens...</p>
+            <div className="w-full max-w-md">
+              <COSLoading
+                title="Carregando mensagens"
+                description="Estamos recuperando o historico desta conversa."
+                currentStep="Organizando conversa"
+              />
+            </div>
           </div>
         ) : chat.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center h-full py-16">
