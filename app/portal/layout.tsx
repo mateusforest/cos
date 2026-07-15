@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
 import { useAuth } from "@/components/auth/auth-provider"
+import { OperationsTemplatePreviewProvider, useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 import { getOperationsPortalAreaSources } from "@/lib/area-configs"
 import { PortalUIProvider, usePortalUI } from "@/components/portal/portal-ui-context"
 import { PortalInteractionsProvider, usePortalInteractions } from "@/components/portal/portal-interactions"
@@ -29,14 +30,18 @@ import { UserAvatar } from "@/components/shared/user-avatar"
 import { Toaster } from "@/components/ui/toaster"
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
+  const { workspace } = useAuth()
+
   return (
     <ProtectedRouteGuard>
-      <PortalUIProvider>
-        <PortalInteractionsProvider>
-          <PortalShell>{children}</PortalShell>
-          <Toaster />
-        </PortalInteractionsProvider>
-      </PortalUIProvider>
+      <OperationsTemplatePreviewProvider realSegment={workspace?.metadata?.segment}>
+        <PortalUIProvider>
+          <PortalInteractionsProvider>
+            <PortalShell>{children}</PortalShell>
+            <Toaster />
+          </PortalInteractionsProvider>
+        </PortalUIProvider>
+      </OperationsTemplatePreviewProvider>
     </ProtectedRouteGuard>
   )
 }
@@ -46,12 +51,13 @@ function PortalShell({ children }: { children: React.ReactNode }) {
   const { mobileMenuOpen, setMobileMenuOpen } = usePortalUI()
   const { openInstall } = usePortalInteractions()
   const { user, profile, workspace } = useAuth()
+  const { effectiveSegment } = useOperationsTemplatePreview()
   const pathname = usePathname()
   const displayName = profile?.full_name || user?.email || "Sua conta"
   const displayRole = profile?.global_role === "master" ? "Master" : "Administrador"
   const areaSources = useMemo(
-    () => getOperationsPortalAreaSources(workspace?.metadata?.segment),
-    [workspace?.metadata?.segment],
+    () => getOperationsPortalAreaSources(effectiveSegment),
+    [effectiveSegment],
   )
   const mainNavItems = useMemo(
     () => [

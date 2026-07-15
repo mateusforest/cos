@@ -30,7 +30,7 @@ import { usePortalInteractions } from "@/components/portal/portal-interactions"
 import { toast } from "@/hooks/use-toast"
 import { getPortalHomeOverviewAction } from "@/actions/activity"
 import { getOperationsConversationsAction } from "@/actions/operations-engine"
-import { useAuth } from "@/components/auth/auth-provider"
+import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 import { getOperationsAreaSources } from "@/lib/area-configs"
 
 type Insight = {
@@ -156,8 +156,8 @@ const AUDIO_WAVEFORM = Array.from({ length: 50 }, (_, i) => Math.round((Math.sin
 export default function PortalHomePage() {
   const router = useRouter()
   const { openQuickActionForm, openQuickActions, openDeleteConfirm } = usePortalInteractions()
-  const { workspace } = useAuth()
-  const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
+  const { effectiveSegment } = useOperationsTemplatePreview()
+  const isClinicWorkspace = effectiveSegment === "clinicas"
   const [chatInput, setChatInput] = useState("")
   const [insights, setInsights] = useState(initialInsights)
   const [audioTranscript, setAudioTranscript] = useState("")
@@ -173,8 +173,8 @@ export default function PortalHomePage() {
   const finalTranscriptRef = useRef("")
   const micActionRef = useRef<"finalize" | "cancel">("finalize")
   const areaSources = useMemo(
-    () => getOperationsAreaSources(workspace?.metadata?.segment),
-    [workspace?.metadata?.segment],
+    () => getOperationsAreaSources(effectiveSegment),
+    [effectiveSegment],
   )
   const cadastrosArea = areaSources.find((area) => area.key === "cadastros")
   const financeiroArea = areaSources.find((area) => area.key === "financeiro")

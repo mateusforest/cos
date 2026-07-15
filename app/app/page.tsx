@@ -29,6 +29,7 @@ import { useAppInteractions } from "@/components/app/app-interactions"
 import { useOperationsDashboard } from "@/components/app/operations-dashboard-store"
 import { useAuth } from "@/components/auth/auth-provider"
 import type { ChatMessage } from "@/components/app/area-chat"
+import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 import { useSupport } from "@/components/support/support-context"
 import { toast } from "@/hooks/use-toast"
 import { getOperationsAreaSources } from "@/lib/area-configs"
@@ -165,6 +166,7 @@ function parseConversationArea(value?: string | null): ActiveConversation {
 export default function AppHomePage() {
   const router = useRouter()
   const { user, profile, workspace } = useAuth()
+  const { effectiveSegment } = useOperationsTemplatePreview()
   const { summary, isLoading: isStatsLoading, refreshSummary } = useOperationsDashboard()
   const { openSupport } = useSupport()
   const { openTeam } = useAppInteractions()
@@ -187,8 +189,8 @@ export default function AppHomePage() {
   const finalTranscriptRef = useRef("")
   const micActionRef = useRef<"finalize" | "cancel">("finalize")
   const areaSources = useMemo(
-    () => getOperationsAreaSources(workspace?.metadata?.segment),
-    [workspace?.metadata?.segment],
+    () => getOperationsAreaSources(effectiveSegment),
+    [effectiveSegment],
   )
   const areaLabels = useMemo(() => {
     const findLabel = (key: string, fallback: string) => areaSources.find((area) => area.key === key)?.label || fallback
@@ -202,9 +204,9 @@ export default function AppHomePage() {
       reunioes: findLabel("reunioes", "Reunioes"),
     }
   }, [areaSources])
-  const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
-  const isRealEstateWorkspace = workspace?.metadata?.segment === "imobiliarias"
-  const isServicesWorkspace = workspace?.metadata?.segment === "servicos"
+  const isClinicWorkspace = effectiveSegment === "clinicas"
+  const isRealEstateWorkspace = effectiveSegment === "imobiliarias"
+  const isServicesWorkspace = effectiveSegment === "servicos"
 
   const shortcutsStorageKey = useMemo(
     () => (workspace?.id ? `cos:operations:shortcuts:${workspace.id}` : null),

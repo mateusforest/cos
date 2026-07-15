@@ -14,7 +14,7 @@ import { OperationsManager } from "@/components/operations/operations-manager"
 import { SupportWorkspaceCenter } from "@/components/support/support-workspace-center"
 import { getCosAreaSourceByKey } from "@/lib/area-configs"
 import { SystemActivityManager } from "@/components/portal/system-activity-manager"
-import { useAuth } from "@/components/auth/auth-provider"
+import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 
 const SECTION_META: Record<string, { title: string; description: string; ctaLabel: string; emptyLabel: string; listHref: string }> = {
   conversas: {
@@ -200,17 +200,17 @@ function metaForDocumentKey(key: string) {
 export default function PortalSectionPage({ params }: { params: Promise<{ slug: string[] }> }) {
   const { slug } = use(params)
   const router = useRouter()
-  const { workspace } = useAuth()
-  const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
-  const isRealEstateWorkspace = workspace?.metadata?.segment === "imobiliarias"
-  const isServicesWorkspace = workspace?.metadata?.segment === "servicos"
+  const { effectiveSegment } = useOperationsTemplatePreview()
+  const isClinicWorkspace = effectiveSegment === "clinicas"
+  const isRealEstateWorkspace = effectiveSegment === "imobiliarias"
+  const isServicesWorkspace = effectiveSegment === "servicos"
   const key = slug[slug.length - 1]
   const salesSubsection = slug[0] === "vendas" && slug.length > 1 ? slug[1] : null
-  const sharedArea = getCosAreaSourceByKey(key, workspace?.metadata?.segment)
-  const cadastrosArea = getCosAreaSourceByKey("cadastros", workspace?.metadata?.segment)
-  const documentsArea = getCosAreaSourceByKey("documentos", workspace?.metadata?.segment)
-  const meetingsArea = getCosAreaSourceByKey("reunioes", workspace?.metadata?.segment)
-  const operationsArea = getCosAreaSourceByKey("operacoes", workspace?.metadata?.segment)
+  const sharedArea = getCosAreaSourceByKey(key, effectiveSegment)
+  const cadastrosArea = getCosAreaSourceByKey("cadastros", effectiveSegment)
+  const documentsArea = getCosAreaSourceByKey("documentos", effectiveSegment)
+  const meetingsArea = getCosAreaSourceByKey("reunioes", effectiveSegment)
+  const operationsArea = getCosAreaSourceByKey("operacoes", effectiveSegment)
   const cadastrosSections = useMemo(() => {
     const titles = cadastrosArea?.subsections?.length ? cadastrosArea.subsections : CADASTROS_SECTIONS.map((section) => section.title)
 

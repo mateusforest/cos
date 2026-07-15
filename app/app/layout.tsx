@@ -45,6 +45,7 @@ import { OperationsDashboardProvider, useOperationsDashboard } from "@/component
 import { AppInteractionsProvider } from "@/components/app/app-interactions"
 import { useAuth } from "@/components/auth/auth-provider"
 import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
+import { OperationsTemplatePreviewProvider } from "@/components/operations/operations-template-preview"
 import { SupportProvider, useSupport } from "@/components/support/support-context"
 import { Toaster } from "@/components/ui/toaster"
 
@@ -611,10 +612,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <ProtectedRouteGuard>
       <SupportProvider>
         <AppInteractionsProvider>
-          <OperationsDashboardProvider workspaceId={workspace?.id}>
-            <AppShell>{children}</AppShell>
-            <Toaster />
-          </OperationsDashboardProvider>
+          <OperationsTemplatePreviewProvider realSegment={workspace?.metadata?.segment}>
+            <OperationsDashboardProvider workspaceId={workspace?.id}>
+              <AppShell>{children}</AppShell>
+              <Toaster />
+            </OperationsDashboardProvider>
+          </OperationsTemplatePreviewProvider>
         </AppInteractionsProvider>
       </SupportProvider>
     </ProtectedRouteGuard>

@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Search, SlidersHorizontal, ChevronRight, ChevronDown, Users } from "lucide-react"
 import { useOperationsDashboard } from "@/components/app/operations-dashboard-store"
 import { useAppInteractions } from "@/components/app/app-interactions"
-import { useAuth } from "@/components/auth/auth-provider"
+import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 import { getOperationsChatAreaSources, slug } from "@/lib/area-configs"
 
 type Conversation = {
@@ -26,12 +26,12 @@ export default function ConversasPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [expanded, setExpanded] = useState<string | null>(null)
   const { summary } = useOperationsDashboard()
-  const { workspace } = useAuth()
+  const { effectiveSegment } = useOperationsTemplatePreview()
   const router = useRouter()
   const { openFilters } = useAppInteractions()
   const areaSources = useMemo(
-    () => getOperationsChatAreaSources(workspace?.metadata?.segment),
-    [workspace?.metadata?.segment],
+    () => getOperationsChatAreaSources(effectiveSegment),
+    [effectiveSegment],
   )
 
   const baseConversations = useMemo<Conversation[]>(

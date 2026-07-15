@@ -7,7 +7,7 @@ import {
   runOperationsEngineAction,
 } from "@/actions/operations-engine"
 import { AreaChat, type ChatMessage } from "@/components/app/area-chat"
-import { useAuth } from "@/components/auth/auth-provider"
+import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 import { getOperationsAreaConfigs, slug } from "@/lib/area-configs"
 
 const portalDestinations: Record<string, string> = {
@@ -176,8 +176,8 @@ function resolveChatCopy(area: string, subLabel: string, segment?: string, areaQ
 export default function SubAreaPage({ params }: { params: Promise<{ area: string; sub: string }> }) {
   const { area, sub } = use(params)
   const router = useRouter()
-  const { workspace } = useAuth()
-  const areaConfigs = getOperationsAreaConfigs(workspace?.metadata?.segment)
+  const { effectiveSegment } = useOperationsTemplatePreview()
+  const areaConfigs = getOperationsAreaConfigs(effectiveSegment)
   const config = areaConfigs[area]
   const [messages, setMessages] = useState<ChatMessage[]>(config?.messages ?? [])
   const [isLoadingMessages, setIsLoadingMessages] = useState(true)
@@ -186,7 +186,7 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
     config?.subsections.find((section) => slug(section) === sub) ??
     sub.charAt(0).toUpperCase() + sub.slice(1).replace(/-/g, " ")
 
-  const chatCopy = resolveChatCopy(area, subLabel, workspace?.metadata?.segment, config?.quickActions)
+  const chatCopy = resolveChatCopy(area, subLabel, effectiveSegment ?? undefined, config?.quickActions)
 
   useEffect(() => {
     let isMounted = true
@@ -252,12 +252,12 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
               }
             }
 
-            if (workspace?.metadata?.segment === "servicos" && sub === "servicos") {
+            if (effectiveSegment === "servicos" && sub === "servicos") {
               router.push("/portal/cadastros/leads")
               return
             }
 
-            if (workspace?.metadata?.segment === "servicos" && sub === "responsaveis") {
+            if (effectiveSegment === "servicos" && sub === "responsaveis") {
               router.push("/portal/cadastros/produtos")
               return
             }

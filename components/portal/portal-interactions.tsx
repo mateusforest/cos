@@ -19,7 +19,7 @@ import { createClientAction } from "@/actions/clients"
 import { createDocumentAction } from "@/actions/documents"
 import { createMeetingAction } from "@/actions/meetings"
 import { createOperationAction } from "@/actions/operations"
-import { useAuth } from "@/components/auth/auth-provider"
+import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 import { toast } from "@/hooks/use-toast"
 
 type QuickActionType = "cliente" | "documento" | "operacao" | "reuniao" | "tarefa" | "relatorio"
@@ -146,10 +146,10 @@ export function usePortalInteractions() {
 }
 
 export function PortalInteractionsProvider({ children }: { children: ReactNode }) {
-  const { workspace } = useAuth()
-  const isClinicWorkspace = workspace?.metadata?.segment === "clinicas"
-  const isRealEstateWorkspace = workspace?.metadata?.segment === "imobiliarias"
-  const isServicesWorkspace = workspace?.metadata?.segment === "servicos"
+  const { effectiveSegment } = useOperationsTemplatePreview()
+  const isClinicWorkspace = effectiveSegment === "clinicas"
+  const isRealEstateWorkspace = effectiveSegment === "imobiliarias"
+  const isServicesWorkspace = effectiveSegment === "servicos"
   const [modal, setModal] = useState<PortalModal>(null)
   const [selectedAction, setSelectedAction] = useState<QuickActionType>("cliente")
   const [formValues, setFormValues] = useState<Record<string, string>>({})

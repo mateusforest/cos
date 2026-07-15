@@ -9,7 +9,7 @@ import {
   runOperationsEngineAction,
 } from "@/actions/operations-engine"
 import { AreaChat, type ChatMessage } from "@/components/app/area-chat"
-import { useAuth } from "@/components/auth/auth-provider"
+import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 import { SupportWorkspaceCenter } from "@/components/support/support-workspace-center"
 import { useSupport } from "@/components/support/support-context"
 import { getOperationsAreaConfigs, slug } from "@/lib/area-configs"
@@ -18,8 +18,8 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
   const { area } = use(params)
   const router = useRouter()
   const { openSupport } = useSupport()
-  const { workspace } = useAuth()
-  const areaConfigs = getOperationsAreaConfigs(workspace?.metadata?.segment)
+  const { effectiveSegment } = useOperationsTemplatePreview()
+  const areaConfigs = getOperationsAreaConfigs(effectiveSegment)
   const config = areaConfigs[area]
   const isChatArea = Boolean(config) && config.subsections.length === 0 && area !== "suporte"
   const [messages, setMessages] = useState<ChatMessage[]>(config?.messages ?? [])
