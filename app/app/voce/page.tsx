@@ -29,6 +29,7 @@ import {
 import { updateProfileAction } from "@/actions/profile"
 import { useAppInteractions } from "@/components/app/app-interactions"
 import { useAuth } from "@/components/auth/auth-provider"
+import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { toast } from "@/hooks/use-toast"
 import { uploadAvatarFile } from "@/lib/avatar-upload"
@@ -65,7 +66,8 @@ export default function VocePage() {
   const [profileError, setProfileError] = useState("")
   const [savingProfile, setSavingProfile] = useState(false)
   const [selectedAvatarName, setSelectedAvatarName] = useState("")
-  const { user, profile, workspace, refresh } = useAuth()
+  const { user, profile, workspace, canManageWorkspace, refresh } = useAuth()
+  const { previewSegment, setPreviewSegment, templateOptions, realTemplateLabel } = useOperationsTemplatePreview()
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const {
     openCompany,
@@ -340,6 +342,36 @@ export default function VocePage() {
           <MenuItem key={item.label} icon={item.icon} label={item.label} sublabel={item.sublabel} onClick={item.onClick} />
         ))}
       </Section>
+
+      {canManageWorkspace && (
+        <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.225 }} className="mb-6">
+          <h2 className="mb-2 px-2 text-sm font-semibold text-gray-500">Preview de template</h2>
+          <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white p-4">
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100">
+              <Sparkles className="h-5 w-5 text-gray-600" />
+            </div>
+            <p className="text-base font-semibold text-[#0a0a0a]">Visualizar outro template do COS Operacoes</p>
+            <p className="mt-1 text-sm text-gray-500">
+              Aplica apenas nesta sessao atual em Home, Conversas e Portal. Recarregar volta para o template real do workspace.
+            </p>
+            <div className="mt-4 space-y-1.5">
+              <label className="block text-sm font-medium text-[#0a0a0a]">Template exibido</label>
+              <select
+                value={previewSegment ?? ""}
+                onChange={(event) => setPreviewSegment(event.target.value || null)}
+                className={fieldClassName}
+              >
+                <option value="">Workspace real ({realTemplateLabel})</option>
+                {templateOptions.map((template) => (
+                  <option key={template.key} value={template.key}>
+                    {template.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       <Section title="Faturamento" delay={0.25}>
         <MenuItem icon={Receipt} label="Faturamento do COS" sublabel="Historico, cobrancas e notas fiscais" onClick={() => setSheet("faturamento")} />
