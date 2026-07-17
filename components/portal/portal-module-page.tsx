@@ -3,22 +3,24 @@
 import Link from "next/link"
 import { Search, SlidersHorizontal, Plus } from "lucide-react"
 import { PortalHeader, PortalPageHeader } from "@/components/portal/portal-header"
-import { usePortalInteractions } from "@/components/portal/portal-interactions"
+import { usePortalInteractions, type QuickActionType } from "@/components/portal/portal-interactions"
 
 export function PortalModulePage({
   title,
   description,
   ctaLabel,
+  ctaType,
   emptyLabel,
   listHref,
 }: {
   title: string
   description: string
   ctaLabel?: string
+  ctaType?: QuickActionType
   emptyLabel: string
   listHref: string
 }) {
-  const { openFilters, openQuickActions } = usePortalInteractions()
+  const { openFilters, openQuickActionForm, openQuickActions } = usePortalInteractions()
 
   return (
     <div className="flex-1 flex flex-col h-full">
@@ -29,7 +31,7 @@ export function PortalModulePage({
             <PortalPageHeader title={title} description={description} />
             {ctaLabel ? (
               <button
-                onClick={openQuickActions}
+                onClick={() => (ctaType ? openQuickActionForm(ctaType) : openQuickActions())}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#0a0a0a] px-4 py-2.5 text-sm text-white hover:bg-gray-800 transition-colors"
               >
                 <Plus className="w-4 h-4" />

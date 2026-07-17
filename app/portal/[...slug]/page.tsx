@@ -6,17 +6,27 @@ import { ArrowRight, BarChart3, Box, Briefcase, FileSignature, Receipt, Shopping
 import { useRouter } from "next/navigation"
 import { PortalHeader } from "@/components/portal/portal-header"
 import { PortalModulePage } from "@/components/portal/portal-module-page"
+import type { QuickActionType } from "@/components/portal/portal-interactions"
 import { ClientsManager } from "@/components/operations/clients-manager"
 import { DocumentsManager } from "@/components/operations/documents-manager"
 import { FinancialManager } from "@/components/operations/financial-manager"
 import { MeetingsManager } from "@/components/operations/meetings-manager"
 import { OperationsManager } from "@/components/operations/operations-manager"
 import { SupportWorkspaceCenter } from "@/components/support/support-workspace-center"
-import { getCosAreaSourceByKey } from "@/lib/area-configs"
+import { getCosAreaSourceByKey, slug as slugify } from "@/lib/area-configs"
 import { SystemActivityManager } from "@/components/portal/system-activity-manager"
 import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 
-const SECTION_META: Record<string, { title: string; description: string; ctaLabel: string; emptyLabel: string; listHref: string }> = {
+type SectionMeta = {
+  title: string
+  description: string
+  ctaLabel: string
+  emptyLabel: string
+  listHref: string
+  ctaType?: QuickActionType
+}
+
+const SECTION_META: Record<string, SectionMeta> = {
   conversas: {
     title: "Conversas",
     description: "Acompanhe conversas e solicitacoes do portal em um so lugar.",
@@ -167,8 +177,310 @@ const VENDAS_SECTIONS = [
 
 const SALES_ROUTE_ORDER = VENDAS_SECTIONS.map((section) => section.key)
 
+type SessionPortalMeta = {
+  description: string
+  emptyLabel: string
+  ctaLabel?: string
+  ctaType?: QuickActionType
+}
+
+const SESSION_PORTAL_META: Record<string, SessionPortalMeta> = {
+  clientes: {
+    description: "Gerencie clientes e relacionamentos reais do seu workspace.",
+    emptyLabel: "Nenhum cliente cadastrado.",
+    ctaLabel: "Novo cliente",
+    ctaType: "cliente",
+  },
+  pacientes: {
+    description: "Gerencie pacientes e relacionamentos reais do seu workspace.",
+    emptyLabel: "Nenhum paciente cadastrado.",
+    ctaLabel: "Novo paciente",
+    ctaType: "cliente",
+  },
+  alunos: {
+    description: "Gerencie alunos e relacionamentos reais do seu workspace.",
+    emptyLabel: "Nenhum aluno cadastrado.",
+    ctaLabel: "Novo aluno",
+    ctaType: "cliente",
+  },
+  candidatos: {
+    description: "Gerencie candidatos e relacionamentos reais do seu workspace.",
+    emptyLabel: "Nenhum candidato cadastrado.",
+    ctaLabel: "Novo candidato",
+    ctaType: "cliente",
+  },
+  imoveis: {
+    description: "Gerencie imoveis usando a estrutura operacional ja existente do seu workspace.",
+    emptyLabel: "Nenhum imovel cadastrado.",
+    ctaLabel: "Novo imovel",
+    ctaType: "operacao",
+  },
+  motoristas: {
+    description: "Consulte motoristas do portal por aqui quando a persistencia real desta sessao estiver conectada.",
+    emptyLabel: "Nenhum motorista cadastrado.",
+    ctaLabel: "Novo motorista",
+  },
+  fornecedores: {
+    description: "Consulte fornecedores do portal por aqui quando a persistencia real desta sessao estiver conectada.",
+    emptyLabel: "Nenhum fornecedor cadastrado.",
+    ctaLabel: "Novo fornecedor",
+  },
+  veiculos: {
+    description: "Consulte veiculos do portal por aqui quando a persistencia real desta sessao estiver conectada.",
+    emptyLabel: "Nenhum veiculo cadastrado.",
+    ctaLabel: "Novo veiculo",
+  },
+  rotas: {
+    description: "Consulte rotas do portal por aqui quando a persistencia real desta sessao estiver conectada.",
+    emptyLabel: "Nenhuma rota cadastrada.",
+    ctaLabel: "Nova rota",
+  },
+  leads: {
+    description: "Consulte leads do portal por aqui quando a persistencia real desta sessao estiver conectada.",
+    emptyLabel: "Nenhum lead cadastrado.",
+    ctaLabel: "Novo lead",
+  },
+  produtos: {
+    description: "Consulte produtos do portal por aqui quando a persistencia real desta sessao estiver conectada.",
+    emptyLabel: "Nenhum produto cadastrado.",
+    ctaLabel: "Novo produto",
+  },
+  servicos: {
+    description: "Consulte servicos do portal por aqui quando a persistencia real desta sessao estiver conectada.",
+    emptyLabel: "Nenhum servico cadastrado.",
+    ctaLabel: "Novo servico",
+  },
+  consultas: {
+    description: "Organize consultas com a estrutura operacional ja existente do seu workspace.",
+    emptyLabel: "Nenhuma consulta agendada.",
+    ctaLabel: "Nova consulta",
+    ctaType: "operacao",
+  },
+  ordens: {
+    description: "Organize ordens com a estrutura operacional ja existente do seu workspace.",
+    emptyLabel: "Nenhuma ordem cadastrada.",
+    ctaLabel: "Nova ordem",
+    ctaType: "operacao",
+  },
+  processos: {
+    description: "Organize processos com a estrutura operacional ja existente do seu workspace.",
+    emptyLabel: "Nenhum processo cadastrado.",
+    ctaLabel: "Novo processo",
+    ctaType: "operacao",
+  },
+  entregas: {
+    description: "Organize entregas com a estrutura operacional ja existente do seu workspace.",
+    emptyLabel: "Nenhuma entrega registrada.",
+    ctaLabel: "Nova entrega",
+    ctaType: "operacao",
+  },
+  viagens: {
+    description: "Organize viagens com a estrutura operacional ja existente do seu workspace.",
+    emptyLabel: "Nenhuma viagem registrada.",
+    ctaLabel: "Nova viagem",
+    ctaType: "operacao",
+  },
+  audiencias: {
+    description: "Organize audiencias com a estrutura operacional ja existente do seu workspace.",
+    emptyLabel: "Nenhuma audiencia cadastrada.",
+    ctaLabel: "Nova audiencia",
+    ctaType: "operacao",
+  },
+  atendimentos: {
+    description: "Organize atendimentos com a estrutura operacional ja existente do seu workspace.",
+    emptyLabel: "Nenhum atendimento registrado.",
+    ctaLabel: "Novo atendimento",
+    ctaType: "operacao",
+  },
+  "ordens-de-servico": {
+    description: "Organize ordens de servico com a estrutura operacional ja existente do seu workspace.",
+    emptyLabel: "Nenhuma ordem de servico registrada.",
+    ctaLabel: "Nova ordem de servico",
+    ctaType: "operacao",
+  },
+  "ordens-de-producao": {
+    description: "Organize ordens de producao com a estrutura operacional ja existente do seu workspace.",
+    emptyLabel: "Nenhuma ordem de producao registrada.",
+    ctaLabel: "Nova producao",
+    ctaType: "operacao",
+  },
+  negociacoes: {
+    description: "Consulte negociacoes do portal por aqui quando a persistencia real desta sessao estiver conectada.",
+    emptyLabel: "Nenhuma negociacao registrada.",
+    ctaLabel: "Nova negociacao",
+  },
+  pedidos: {
+    description: "Consulte pedidos do portal por aqui quando a persistencia real desta sessao estiver conectada.",
+    emptyLabel: "Nenhum pedido registrado.",
+    ctaLabel: "Novo pedido",
+  },
+  propostas: {
+    description: "Centralize propostas reais e acompanhe seus rascunhos e envios.",
+    emptyLabel: "Nenhuma proposta cadastrada.",
+    ctaLabel: "Nova proposta",
+    ctaType: "documento",
+  },
+  cotacoes: {
+    description: "Consulte cotacoes do portal por aqui quando a persistencia real desta sessao estiver conectada.",
+    emptyLabel: "Nenhuma cotacao cadastrada.",
+    ctaLabel: "Nova cotacao",
+  },
+  oportunidades: {
+    description: "Consulte oportunidades do portal por aqui quando a persistencia real desta sessao estiver conectada.",
+    emptyLabel: "Nenhuma oportunidade cadastrada.",
+    ctaLabel: "Nova oportunidade",
+  },
+  contratos: {
+    description: "Gerencie contratos reais do seu workspace.",
+    emptyLabel: "Nenhum contrato cadastrado.",
+    ctaLabel: "Novo contrato",
+    ctaType: "documento",
+  },
+  peticoes: {
+    description: "Centralize peticoes reais do seu workspace.",
+    emptyLabel: "Nenhuma peticao cadastrada.",
+    ctaLabel: "Nova peticao",
+    ctaType: "documento",
+  },
+  relatorios: {
+    description: "Acompanhe relatorios reais salvos no seu workspace.",
+    emptyLabel: "Nenhum relatorio cadastrado.",
+    ctaLabel: "Novo relatorio",
+    ctaType: "relatorio",
+  },
+  exames: {
+    description: "Centralize exames reais do seu workspace.",
+    emptyLabel: "Nenhum exame cadastrado.",
+    ctaLabel: "Novo exame",
+    ctaType: "documento",
+  },
+  guias: {
+    description: "Centralize guias reais do seu workspace.",
+    emptyLabel: "Nenhuma guia cadastrada.",
+    ctaLabel: "Nova guia",
+    ctaType: "documento",
+  },
+  arquivos: {
+    description: "Centralize arquivos reais do seu workspace.",
+    emptyLabel: "Nenhum arquivo cadastrado.",
+    ctaLabel: "Novo documento",
+    ctaType: "documento",
+  },
+  recebimentos: {
+    description: "Acompanhe recebimentos reais do seu workspace.",
+    emptyLabel: "Nenhum recebimento registrado.",
+    ctaLabel: "Novo recebimento",
+    ctaType: "financeiro",
+  },
+  pagamentos: {
+    description: "Acompanhe pagamentos reais do seu workspace.",
+    emptyLabel: "Nenhum pagamento registrado.",
+    ctaLabel: "Novo pagamento",
+    ctaType: "financeiro",
+  },
+  despesas: {
+    description: "Acompanhe despesas reais do seu workspace.",
+    emptyLabel: "Nenhuma despesa registrada.",
+    ctaLabel: "Nova despesa",
+    ctaType: "financeiro",
+  },
+  honorarios: {
+    description: "Acompanhe honorarios reais do seu workspace.",
+    emptyLabel: "Nenhum honorario registrado.",
+    ctaLabel: "Novo honorario",
+    ctaType: "financeiro",
+  },
+  ganhos: {
+    description: "Acompanhe ganhos reais do seu workspace.",
+    emptyLabel: "Nenhum ganho registrado.",
+    ctaLabel: "Novo lancamento",
+    ctaType: "financeiro",
+  },
+  gastos: {
+    description: "Acompanhe gastos reais do seu workspace.",
+    emptyLabel: "Nenhum gasto registrado.",
+    ctaLabel: "Novo lancamento",
+    ctaType: "financeiro",
+  },
+  "fluxo-de-caixa": {
+    description: "Acompanhe o fluxo de caixa real do seu workspace.",
+    emptyLabel: "Nenhum lancamento registrado.",
+    ctaLabel: "Novo lancamento",
+    ctaType: "financeiro",
+  },
+  reunioes: {
+    description: "Organize reunioes, gravacoes e resumos do COS Meet.",
+    emptyLabel: "Nenhuma reuniao registrada.",
+    ctaLabel: "Nova reuniao",
+    ctaType: "reuniao",
+  },
+  marketing: {
+    description: "Acompanhe campanhas e iniciativas de marketing por aqui.",
+    emptyLabel: "Nenhuma campanha cadastrada.",
+    ctaLabel: "Nova campanha",
+  },
+}
+
 function titleize(slug: string) {
   return slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ")
+}
+
+function resolveSessionPortalMeta(areaKey: string, sessionLabel: string): SessionPortalMeta {
+  const normalized = slugify(sessionLabel)
+  const explicit = SESSION_PORTAL_META[normalized]
+
+  if (explicit) {
+    return explicit
+  }
+
+  if (areaKey === "cadastros") {
+    return {
+      description: `Consulte ${sessionLabel.toLowerCase()} do portal por aqui quando a persistencia real desta sessao estiver conectada.`,
+      emptyLabel: `Nenhum ${sessionLabel.toLowerCase()} cadastrado.`,
+      ctaLabel: `Novo ${sessionLabel.slice(0, -1).toLowerCase()}`,
+    }
+  }
+
+  if (areaKey === "operacoes") {
+    return {
+      description: `Organize ${sessionLabel.toLowerCase()} com a estrutura operacional ja existente do seu workspace.`,
+      emptyLabel: `Nenhum ${sessionLabel.slice(0, -1).toLowerCase()} registrado.`,
+      ctaLabel: `Novo ${sessionLabel.slice(0, -1).toLowerCase()}`,
+      ctaType: "operacao",
+    }
+  }
+
+  if (areaKey === "financeiro") {
+    return {
+      description: `Acompanhe ${sessionLabel.toLowerCase()} reais do seu workspace.`,
+      emptyLabel: `Nenhum ${sessionLabel.slice(0, -1).toLowerCase()} registrado.`,
+      ctaLabel: "Novo lancamento",
+      ctaType: "financeiro",
+    }
+  }
+
+  if (areaKey === "documentos") {
+    return {
+      description: `Centralize ${sessionLabel.toLowerCase()} reais do seu workspace.`,
+      emptyLabel: `Nenhum ${sessionLabel.slice(0, -1).toLowerCase()} cadastrado.`,
+      ctaLabel: "Novo documento",
+      ctaType: normalized === "relatorios" ? "relatorio" : "documento",
+    }
+  }
+
+  if (areaKey === "vendas") {
+    return {
+      description: `Consulte ${sessionLabel.toLowerCase()} do portal por aqui quando a persistencia real desta sessao estiver conectada.`,
+      emptyLabel: `Nenhum ${sessionLabel.slice(0, -1).toLowerCase()} registrado.`,
+      ctaLabel: `Novo ${sessionLabel.slice(0, -1).toLowerCase()}`,
+    }
+  }
+
+  return {
+    description: "Gerencie esta area do portal com busca, filtros e acao principal.",
+    emptyLabel: "Nenhum registro disponivel ainda.",
+    ctaLabel: "Nova acao",
+  }
 }
 
 function metaForDocumentKey(key: string) {
@@ -214,20 +526,15 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   const meetingsArea = getCosAreaSourceByKey("reunioes", effectiveSegment)
   const operationsArea = getCosAreaSourceByKey("operacoes", effectiveSegment)
   const salesArea = getCosAreaSourceByKey("vendas", effectiveSegment)
+  const rootAreaKey = slug[0] || key
+  const rootArea = getCosAreaSourceByKey(rootAreaKey, effectiveSegment)
   const cadastrosSections = useMemo(() => {
     const titles = cadastrosArea?.subsections?.length ? cadastrosArea.subsections : CADASTROS_SECTIONS.map((section) => section.title)
 
     return CADASTROS_SECTIONS.map((section, index) => ({
       ...section,
       title: titles[index] || section.title,
-      description:
-        index === 0
-          ? `Gerencie ${String((titles[index] || section.title)).toLowerCase()} e relacionamentos reais do seu workspace.`
-          : isRealEstateWorkspace
-            ? `Gerencie ${String((titles[index] || section.title)).toLowerCase()} com a estrutura ja existente do seu workspace.`
-          : isServicesWorkspace
-            ? `Gerencie ${String((titles[index] || section.title)).toLowerCase()} com a estrutura ja existente do seu workspace.`
-          : `Acompanhe ${String((titles[index] || section.title)).toLowerCase()} por aqui assim que a persistencia real deste modulo estiver conectada.`,
+      description: resolveSessionPortalMeta("cadastros", titles[index] || section.title).description,
     })).slice(0, titles.length)
   }, [cadastrosArea?.subsections, isRealEstateWorkspace, isServicesWorkspace])
   const salesSections = useMemo(() => {
@@ -242,10 +549,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
         title,
         href: `/portal/vendas/${routeKey}`,
         icon: fallbackSection.icon,
-        description:
-          routeKey === "propostas"
-            ? `Gerencie ${title.toLowerCase()} reais do seu workspace.`
-            : `Acompanhe ${title.toLowerCase()} por aqui assim que a persistencia real deste modulo estiver conectada.`,
+        description: resolveSessionPortalMeta("vendas", title).description,
       }
     })
   }, [salesArea?.subsections])
@@ -350,8 +654,10 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     return (
       <PortalModulePage
         title={cadastrosSections[1]?.title || "Leads"}
-        description={`Consulte ${String(cadastrosSections[1]?.title || "leads").toLowerCase()} do portal por aqui quando a persistencia real deste modulo estiver conectada.`}
-        emptyLabel="Nenhum lead disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace."
+        description={resolveSessionPortalMeta("cadastros", cadastrosSections[1]?.title || "Leads").description}
+        ctaLabel={resolveSessionPortalMeta("cadastros", cadastrosSections[1]?.title || "Leads").ctaLabel}
+        ctaType={resolveSessionPortalMeta("cadastros", cadastrosSections[1]?.title || "Leads").ctaType}
+        emptyLabel={resolveSessionPortalMeta("cadastros", cadastrosSections[1]?.title || "Leads").emptyLabel}
         listHref="/portal/cadastros"
       />
     )
@@ -391,8 +697,10 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     return (
       <PortalModulePage
         title={cadastrosSections[2]?.title || "Produtos"}
-        description={`Consulte ${String(cadastrosSections[2]?.title || "produtos").toLowerCase()} do portal por aqui quando a persistencia real deste modulo estiver conectada.`}
-        emptyLabel="Nenhum produto disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace."
+        description={resolveSessionPortalMeta("cadastros", cadastrosSections[2]?.title || "Produtos").description}
+        ctaLabel={resolveSessionPortalMeta("cadastros", cadastrosSections[2]?.title || "Produtos").ctaLabel}
+        ctaType={resolveSessionPortalMeta("cadastros", cadastrosSections[2]?.title || "Produtos").ctaType}
+        emptyLabel={resolveSessionPortalMeta("cadastros", cadastrosSections[2]?.title || "Produtos").emptyLabel}
         listHref="/portal/cadastros"
       />
     )
@@ -417,8 +725,10 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     return (
       <PortalModulePage
         title={cadastrosSections[3]?.title || "Servicos"}
-        description={`Consulte ${String(cadastrosSections[3]?.title || "servicos").toLowerCase()} do portal por aqui quando a persistencia real deste modulo estiver conectada.`}
-        emptyLabel="Nenhum servico disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace."
+        description={resolveSessionPortalMeta("cadastros", cadastrosSections[3]?.title || "Servicos").description}
+        ctaLabel={resolveSessionPortalMeta("cadastros", cadastrosSections[3]?.title || "Servicos").ctaLabel}
+        ctaType={resolveSessionPortalMeta("cadastros", cadastrosSections[3]?.title || "Servicos").ctaType}
+        emptyLabel={resolveSessionPortalMeta("cadastros", cadastrosSections[3]?.title || "Servicos").emptyLabel}
         listHref="/portal/cadastros"
       />
     )
@@ -469,35 +779,15 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     }
 
     if (salesSubsection === "negociacoes" || salesSubsection === "pedidos" || salesSubsection === "funil" || salesSubsection === "vendas") {
-      const titles: Record<string, { title: string; description: string; emptyLabel: string }> = {
-        negociacoes: {
-          title: "Negociacoes",
-          description: "Consulte negociacoes do portal por aqui quando a persistencia real deste modulo estiver conectada.",
-          emptyLabel: "Nenhuma negociacao disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace.",
-        },
-        pedidos: {
-          title: "Pedidos",
-          description: "Consulte pedidos do portal por aqui quando a persistencia real deste modulo estiver conectada.",
-          emptyLabel: "Nenhum pedido disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace.",
-        },
-        vendas: {
-          title: "Vendas",
-          description: "Consulte vendas do portal por aqui quando a persistencia real deste modulo estiver conectada.",
-          emptyLabel: "Nenhuma venda disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace.",
-        },
-        funil: {
-          title: "Funil",
-          description: "Consulte o funil do portal por aqui quando a persistencia real deste modulo estiver conectada.",
-          emptyLabel: "Nenhum dado de funil disponivel ainda. Este modulo ainda nao possui persistencia real conectada neste workspace.",
-        },
-      }
-
-      const meta = titles[salesSubsection]
+      const sessionTitle = salesSections.find((section) => section.key === salesSubsection)?.title || titleize(salesSubsection)
+      const meta = resolveSessionPortalMeta("vendas", sessionTitle)
 
       return (
         <PortalModulePage
-          title={meta.title}
+          title={sessionTitle}
           description={meta.description}
+          ctaLabel={meta.ctaLabel}
+          ctaType={meta.ctaType}
           emptyLabel={meta.emptyLabel}
           listHref="/portal/vendas"
         />
@@ -540,11 +830,14 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   }
 
   if (key === "marketing") {
+    const meta = resolveSessionPortalMeta("marketing", "Marketing")
+
     return (
       <PortalModulePage
         title="Marketing"
-        description="Acompanhe campanhas e iniciativas de marketing por aqui, sem depender do fluxo de chat."
-        emptyLabel="Nenhuma acao de marketing disponivel ainda."
+        description={meta.description}
+        ctaLabel={meta.ctaLabel}
+        emptyLabel={meta.emptyLabel}
         listHref="/portal/marketing"
       />
     )
@@ -601,12 +894,21 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     )
   }
 
-  const meta = SECTION_META[key] ?? {
-    title: titleize(key),
-    description: "Gerencie esta area do portal com busca, filtros e acao principal.",
-    ctaLabel: "Nova acao",
-    emptyLabel: "Nenhum registro disponivel ainda.",
-    listHref: `/portal/${slug.join("/")}`,
+  const resolvedSessionTitle =
+    rootArea?.subsections?.find((item) => slugify(item) === key) ||
+    SECTION_META[key]?.title ||
+    titleize(key)
+  const sessionMeta =
+    rootArea && rootAreaKey !== key
+      ? resolveSessionPortalMeta(rootAreaKey, resolvedSessionTitle)
+      : resolveSessionPortalMeta(key, resolvedSessionTitle)
+  const meta: SectionMeta = SECTION_META[key] ?? {
+    title: resolvedSessionTitle,
+    description: sessionMeta.description,
+    ctaLabel: sessionMeta.ctaLabel || "Nova acao",
+    emptyLabel: sessionMeta.emptyLabel,
+    listHref: rootArea ? `/portal/${rootAreaKey}` : `/portal/${slug.join("/")}`,
+    ctaType: sessionMeta.ctaType,
   }
 
   return (
@@ -614,6 +916,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
       title={meta.title}
       description={meta.description}
       ctaLabel={meta.ctaLabel}
+      ctaType={meta.ctaType}
       emptyLabel={meta.emptyLabel}
       listHref={meta.listHref}
     />

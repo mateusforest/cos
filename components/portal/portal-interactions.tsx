@@ -6,6 +6,7 @@ import {
   BarChart3,
   Briefcase,
   CheckSquare,
+  DollarSign,
   FileText,
   Monitor,
   SlidersHorizontal,
@@ -17,12 +18,13 @@ import {
 } from "lucide-react"
 import { createClientAction } from "@/actions/clients"
 import { createDocumentAction } from "@/actions/documents"
+import { createFinancialEntryAction } from "@/actions/financial"
 import { createMeetingAction } from "@/actions/meetings"
 import { createOperationAction } from "@/actions/operations"
 import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 import { toast } from "@/hooks/use-toast"
 
-type QuickActionType = "cliente" | "documento" | "operacao" | "reuniao" | "tarefa" | "relatorio"
+export type QuickActionType = "cliente" | "documento" | "financeiro" | "operacao" | "reuniao" | "tarefa" | "relatorio"
 type PortalModal = "quickActions" | "quickActionForm" | "install" | "meeting" | "delete" | "filters" | null
 type FilterKey = "periodo" | "tipo" | "status" | "responsavel" | "area"
 
@@ -54,6 +56,7 @@ const quickActionItems: Array<{
 }> = [
   { type: "cliente", label: "Cliente", icon: UserPlus, color: "#3b82f6", bg: "#dbeafe" },
   { type: "documento", label: "Documento", icon: FileText, color: "#6366f1", bg: "#e0e7ff" },
+  { type: "financeiro", label: "Lancamento", icon: DollarSign, color: "#22c55e", bg: "#dcfce7" },
   { type: "operacao", label: "Operacao", icon: Briefcase, color: "#8b5cf6", bg: "#ede9fe" },
   { type: "reuniao", label: "Reuniao", icon: Video, color: "#ef4444", bg: "#fee2e2" },
   { type: "tarefa", label: "Tarefa", icon: CheckSquare, color: "#22c55e", bg: "#dcfce7" },
@@ -79,6 +82,17 @@ const quickActionConfigs: Record<QuickActionType, QuickActionConfig> = {
       { name: "titulo", label: "Titulo", placeholder: "Titulo do documento" },
       { name: "tipo", label: "Tipo", placeholder: "Contrato, arquivo, proposta ou relatorio" },
       { name: "descricao", label: "Conteudo", placeholder: "Resumo ou conteudo do documento" },
+    ],
+  },
+  financeiro: {
+    title: "Novo lancamento",
+    description: "Registre um novo lancamento financeiro do workspace.",
+    submit: "Salvar lancamento",
+    fields: [
+      { name: "titulo", label: "Titulo", placeholder: "Titulo do lancamento" },
+      { name: "tipo", label: "Tipo", placeholder: "Ganho ou gasto" },
+      { name: "valor", label: "Valor", placeholder: "0,00" },
+      { name: "categoria", label: "Categoria", placeholder: "Categoria do lancamento" },
     ],
   },
   operacao: {
@@ -473,6 +487,31 @@ export function PortalInteractionsProvider({ children }: { children: ReactNode }
       }
 
       toast({ title: "Documento criado", description: "O documento foi salvo com sucesso." })
+      setIsSubmitting(false)
+      setFormValues({})
+      closeModal()
+      return
+    }
+
+    if (selectedAction === "financeiro") {
+      const normalizedType = (formValues.tipo ?? "").trim().toLowerCase()
+      const result = await createFinancialEntryAction({
+        title: formValues.titulo ?? "",
+        type: normalizedType === "gasto" || normalizedType === "expense" || normalizedType === "despesa" ? "expense" : "income",
+        amount: formValues.valor ?? "",
+        category: formValues.categoria ?? "",
+        dueDate: "",
+        paidAt: "",
+        notes: "",
+      })
+
+      if (result.error) {
+        setIsSubmitting(false)
+        toast({ title: "Nao foi possivel salvar", description: result.error })
+        return
+      }
+
+      toast({ title: "Lancamento criado", description: "O lancamento foi salvo com sucesso." })
       setIsSubmitting(false)
       setFormValues({})
       closeModal()
