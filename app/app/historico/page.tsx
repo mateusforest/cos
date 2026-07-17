@@ -9,6 +9,7 @@ import {
   FolderOpen,
   Grid3X3,
   LifeBuoy,
+  Megaphone,
   RefreshCw,
   Search,
   Settings,
@@ -23,7 +24,9 @@ import {
 import { getWorkspaceActivityLogsAction } from "@/actions/activity"
 import { useAppInteractions } from "@/components/app/app-interactions"
 import { COSLoading } from "@/components/cos/cos-loading"
-import { humanizeActivityAction } from "@/lib/activity/humanize"
+import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
+import { humanizeActivityAction, humanizeActivityDescription } from "@/lib/activity/humanize"
+import { getOperationsAreaSources } from "@/lib/area-configs"
 
 type ActivityItem = {
   id: string
@@ -32,19 +35,6 @@ type ActivityItem = {
   description: string
   createdAt: string | null
 }
-
-const filters = [
-  { id: "todos", icon: Grid3X3, label: "Todos" },
-  { id: "clients", icon: Users, label: "Clientes" },
-  { id: "financeiro", icon: DollarSign, label: "Financeiro" },
-  { id: "support", icon: LifeBuoy, label: "Suporte" },
-  { id: "operacoes", icon: Briefcase, label: "Operacoes" },
-  { id: "vendas", icon: TrendingUp, label: "Vendas" },
-  { id: "equipe", icon: UsersRound, label: "Equipe" },
-  { id: "documentos", icon: FolderOpen, label: "Documentos" },
-  { id: "reunioes", icon: Video, label: "Reunioes" },
-  { id: "sistema", icon: Settings, label: "Sistema" },
-] as const
 
 const actionLabels: Record<string, string> = {
   financial_entry_created: "Lançamento financeiro criado",
@@ -83,6 +73,7 @@ function formatDateTime(value: string | null) {
 }
 
 function iconForArea(area: string) {
+  if (area === "marketing") return Megaphone
   if (area === "clients") return Users
   if (area === "financial") return DollarSign
   if (area === "support") return LifeBuoy
@@ -93,6 +84,7 @@ function iconForArea(area: string) {
 }
 
 function colorForArea(area: string) {
+  if (area === "marketing") return { color: "#ec4899", bgColor: "#fce7f3" }
   if (area === "clients") return { color: "#3b82f6", bgColor: "#dbeafe" }
   if (area === "financial") return { color: "#22c55e", bgColor: "#dcfce7" }
   if (area === "support") return { color: "#6b7280", bgColor: "#f3f4f6" }
@@ -103,6 +95,7 @@ function colorForArea(area: string) {
 }
 
 function humanizeArea(area: string) {
+  if (area === "marketing") return "Studio"
   if (area === "clients") return "Clientes"
   if (area === "financial") return "Financeiro"
   if (area === "support") return "Suporte"
@@ -120,6 +113,25 @@ export default function HistoricoPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const { openFilters } = useAppInteractions()
+  const { effectiveSegment } = useOperationsTemplatePreview()
+  const areaSources = useMemo(() => getOperationsAreaSources(effectiveSegment), [effectiveSegment])
+  const studioArea = areaSources.find((area) => area.key === "marketing")
+  const filters = useMemo(
+    () => [
+      { id: "todos", icon: Grid3X3, label: "Todos" },
+      { id: "clients", icon: Users, label: "Clientes" },
+      { id: "financeiro", icon: DollarSign, label: "Financeiro" },
+      { id: "support", icon: LifeBuoy, label: "Suporte" },
+      { id: "operacoes", icon: Briefcase, label: "Operacoes" },
+      { id: "vendas", icon: TrendingUp, label: "Vendas" },
+      { id: "marketing", icon: studioArea?.icon || Megaphone, label: studioArea?.label || "Studio" },
+      { id: "equipe", icon: UsersRound, label: "Equipe" },
+      { id: "documentos", icon: FolderOpen, label: "Documentos" },
+      { id: "reunioes", icon: Video, label: "Reunioes" },
+      { id: "sistema", icon: Settings, label: "Sistema" },
+    ],
+    [studioArea],
+  )
 
   useEffect(() => {
     const load = async () => {
@@ -153,6 +165,8 @@ export default function HistoricoPage() {
               ? log.area === "documents"
               : activeFilter === "reunioes"
                 ? log.area === "meetings"
+                : activeFilter === "marketing"
+                  ? log.area === "marketing"
                 : log.area === activeFilter)
 
       const term = query.trim().toLowerCase()
@@ -229,7 +243,7 @@ export default function HistoricoPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-[#0a0a0a]">{humanizeActivityAction(log.action, log.description)}</p>
-                  <p className="truncate text-sm text-gray-500">{log.description}</p>
+                  <p className="truncate text-sm text-gray-500">{humanizeActivityDescription(log.action, log.description)}</p>
                 </div>
                 <span className="text-xs text-gray-400">{formatDateTime(log.createdAt)}</span>
               </button>
@@ -266,7 +280,7 @@ export default function HistoricoPage() {
                   </span>
                   <div>
                     <h3 className="font-semibold text-[#0a0a0a]">{humanizeActivityAction(selected.action, selected.description)}</h3>
-                    <p className="text-sm text-gray-500">{selected.description}</p>
+                    <p className="text-sm text-gray-500">{humanizeActivityDescription(selected.action, selected.description)}</p>
                   </div>
                 </div>
                 <button onClick={() => setSelected(null)} className="rounded-full p-1.5 hover:bg-gray-100" aria-label="Fechar">

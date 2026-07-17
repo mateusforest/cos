@@ -7,7 +7,7 @@ import { Loader2, MessageSquare, Sparkles, User } from "lucide-react"
 import { getOperationsConversationsAction } from "@/actions/operations-engine"
 import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 import { PortalHeader, PortalPageHeader } from "@/components/portal/portal-header"
-import { getOperationsAreaConfigs, slug } from "@/lib/area-configs"
+import { getCosAreaSourceByKey, getOperationsAreaConfigs, slug } from "@/lib/area-configs"
 
 type PortalConversation = {
   id: string
@@ -46,9 +46,11 @@ function humanizeArea(area: string) {
   const parts = area.split("/").filter(Boolean)
   if (parts.length === 0) return "Geral"
 
-  return parts
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).replace(/-/g, " "))
-    .join(" / ")
+  const [rootArea, subArea] = parts
+  const areaSource = getCosAreaSourceByKey(rootArea)
+  const rootLabel = areaSource?.label || (rootArea.charAt(0).toUpperCase() + rootArea.slice(1).replace(/-/g, " "))
+
+  return subArea ? `${rootLabel} / ${subArea.charAt(0).toUpperCase() + subArea.slice(1).replace(/-/g, " ")}` : rootLabel
 }
 
 export default function PortalConversasPage() {
