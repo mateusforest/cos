@@ -191,6 +191,11 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
   const chatCopy = resolveChatCopy(area, subLabel, effectiveSegment ?? undefined, config?.quickActions)
 
   useEffect(() => {
+    if (!config) {
+      setIsLoadingMessages(false)
+      return
+    }
+
     let isMounted = true
 
     const loadMessages = async () => {
@@ -206,6 +211,17 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
       }
 
       if (result.success) {
+        if (conversationId && result.conversationId) {
+          const [resolvedArea, resolvedSubArea] = String(result.conversationArea || `${area}/${sub}`).split("/")
+
+          if (resolvedArea !== area || (resolvedSubArea && resolvedSubArea !== sub)) {
+            const params = new URLSearchParams({ conversationId })
+            const nextHref = resolvedSubArea ? `/app/conversas/${resolvedArea}/${resolvedSubArea}?${params.toString()}` : `/app/conversas/${resolvedArea}?${params.toString()}`
+            router.replace(nextHref)
+            return
+          }
+        }
+
         setMessages(result.messages)
       } else {
         setMessages(config?.messages ?? [])
@@ -219,11 +235,11 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
     return () => {
       isMounted = false
     }
-  }, [area, sub, config, conversationId])
+  }, [area, sub, config, conversationId, router])
 
   return (
     <AreaChat
-      conversationKey={`${area}/${sub}`}
+      conversationKey={conversationId ? `${area}/${sub}:${conversationId}` : `${area}/${sub}`}
       title={subLabel}
       subtitle={chatCopy.subtitle}
       icon={config?.icon ?? areaConfigs.sistema.icon}

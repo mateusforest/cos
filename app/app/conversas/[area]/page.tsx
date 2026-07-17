@@ -26,9 +26,10 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
   const [messages, setMessages] = useState<ChatMessage[]>(config?.messages ?? [])
   const [isLoadingMessages, setIsLoadingMessages] = useState(isChatArea)
   const conversationId = searchParams.get("conversationId")?.trim() || ""
+  const shouldOpenConversation = Boolean(conversationId) || isChatArea
 
   useEffect(() => {
-    if (!config || !isChatArea) {
+    if (!config || area === "suporte" || !shouldOpenConversation) {
       return
     }
 
@@ -46,6 +47,23 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
       }
 
       if (result.success) {
+        if (conversationId && result.conversationId) {
+          const [resolvedArea, resolvedSubArea] = String(result.conversationArea || area).split("/")
+
+          if (resolvedArea !== area) {
+            const params = new URLSearchParams({ conversationId })
+            const nextHref = resolvedSubArea ? `/app/conversas/${resolvedArea}/${resolvedSubArea}?${params.toString()}` : `/app/conversas/${resolvedArea}?${params.toString()}`
+            router.replace(nextHref)
+            return
+          }
+
+          if (resolvedSubArea) {
+            const params = new URLSearchParams({ conversationId })
+            router.replace(`/app/conversas/${area}/${resolvedSubArea}?${params.toString()}`)
+            return
+          }
+        }
+
         setMessages(result.messages)
       } else {
         setMessages(config.messages ?? [])
@@ -59,7 +77,7 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
     return () => {
       isMounted = false
     }
-  }, [area, config, conversationId, isChatArea])
+  }, [area, config, conversationId, router, shouldOpenConversation])
 
   if (!config) {
     return (
@@ -84,10 +102,10 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
     return <SupportWorkspaceCenter backHref="/app/conversas" compact />
   }
 
-  if (config.subsections.length === 0) {
+  if (config.subsections.length === 0 || conversationId) {
     return (
       <AreaChat
-        conversationKey={area}
+        conversationKey={conversationId ? `${area}:${conversationId}` : area}
         title={config.label}
         subtitle={
           area === "sistema"

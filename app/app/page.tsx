@@ -273,8 +273,19 @@ export default function AppHomePage() {
       }
 
       if (result.success) {
+        const nextConversation = parseConversationArea(result.conversationArea)
+
+        if (result.conversationId && nextConversation.area !== "general") {
+          const params = new URLSearchParams({ conversationId })
+          const nextHref = nextConversation.subArea
+            ? `/app/conversas/${nextConversation.area}/${nextConversation.subArea}?${params.toString()}`
+            : `/app/conversas/${nextConversation.area}?${params.toString()}`
+          router.replace(nextHref)
+          return
+        }
+
         setChatMessages(result.messages)
-        setActiveConversation(generalConversation)
+        setActiveConversation(nextConversation.area === "general" ? generalConversation : nextConversation)
       } else {
         setChatMessages([])
       }
@@ -287,7 +298,7 @@ export default function AppHomePage() {
     return () => {
       isMounted = false
     }
-  }, [conversationId])
+  }, [conversationId, router])
 
   useEffect(() => {
     if (!shortcutsStorageKey || !shortcutPreferences || !isShortcutsReady || typeof window === "undefined") {
