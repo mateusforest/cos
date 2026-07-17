@@ -14,6 +14,7 @@ import { MeetingsManager } from "@/components/operations/meetings-manager"
 import { OperationsManager } from "@/components/operations/operations-manager"
 import { SupportWorkspaceCenter } from "@/components/support/support-workspace-center"
 import { getCosAreaSourceByKey, slug as slugify } from "@/lib/area-configs"
+import { getOperationsPortalSessionAction } from "@/lib/operations-template-capabilities"
 import { SystemActivityManager } from "@/components/portal/system-activity-manager"
 import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 
@@ -24,6 +25,8 @@ type SectionMeta = {
   emptyLabel: string
   listHref: string
   ctaType?: QuickActionType
+  ctaHref?: string
+  ctaNotice?: string
 }
 
 const SECTION_META: Record<string, SectionMeta> = {
@@ -182,6 +185,8 @@ type SessionPortalMeta = {
   emptyLabel: string
   ctaLabel?: string
   ctaType?: QuickActionType
+  ctaHref?: string
+  ctaNotice?: string
 }
 
 const SESSION_PORTAL_META: Record<string, SessionPortalMeta> = {
@@ -425,19 +430,43 @@ function titleize(slug: string) {
   return slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ")
 }
 
-function resolveSessionPortalMeta(areaKey: string, sessionLabel: string): SessionPortalMeta {
+function resolveSessionPortalMeta(segment: string | null | undefined, areaKey: string, sessionLabel: string): SessionPortalMeta {
   const normalized = slugify(sessionLabel)
   const explicit = SESSION_PORTAL_META[normalized]
+  const capabilityAction = getOperationsPortalSessionAction(segment, areaKey, sessionLabel)
+
+  const actionMeta =
+    capabilityAction.kind === "route"
+      ? {
+          ctaLabel: capabilityAction.label,
+          ctaHref: capabilityAction.href,
+        }
+      : capabilityAction.kind === "modal"
+        ? {
+            ctaLabel: capabilityAction.label,
+            ctaType: capabilityAction.actionType as QuickActionType,
+          }
+        : capabilityAction.kind === "future"
+          ? {
+              ctaLabel: capabilityAction.label,
+              ctaNotice: capabilityAction.message,
+            }
+          : {
+              ctaLabel: capabilityAction.label,
+            }
 
   if (explicit) {
-    return explicit
+    return {
+      ...explicit,
+      ...actionMeta,
+    }
   }
 
   if (areaKey === "cadastros") {
     return {
       description: `Consulte ${sessionLabel.toLowerCase()} do portal por aqui quando a persistencia real desta sessao estiver conectada.`,
       emptyLabel: `Nenhum ${sessionLabel.toLowerCase()} cadastrado.`,
-      ctaLabel: `Novo ${sessionLabel.slice(0, -1).toLowerCase()}`,
+      ...actionMeta,
     }
   }
 
@@ -445,8 +474,7 @@ function resolveSessionPortalMeta(areaKey: string, sessionLabel: string): Sessio
     return {
       description: `Organize ${sessionLabel.toLowerCase()} com a estrutura operacional ja existente do seu workspace.`,
       emptyLabel: `Nenhum ${sessionLabel.slice(0, -1).toLowerCase()} registrado.`,
-      ctaLabel: `Novo ${sessionLabel.slice(0, -1).toLowerCase()}`,
-      ctaType: "operacao",
+      ...actionMeta,
     }
   }
 
@@ -454,8 +482,7 @@ function resolveSessionPortalMeta(areaKey: string, sessionLabel: string): Sessio
     return {
       description: `Acompanhe ${sessionLabel.toLowerCase()} reais do seu workspace.`,
       emptyLabel: `Nenhum ${sessionLabel.slice(0, -1).toLowerCase()} registrado.`,
-      ctaLabel: "Novo lancamento",
-      ctaType: "financeiro",
+      ...actionMeta,
     }
   }
 
@@ -463,8 +490,7 @@ function resolveSessionPortalMeta(areaKey: string, sessionLabel: string): Sessio
     return {
       description: `Centralize ${sessionLabel.toLowerCase()} reais do seu workspace.`,
       emptyLabel: `Nenhum ${sessionLabel.slice(0, -1).toLowerCase()} cadastrado.`,
-      ctaLabel: "Novo documento",
-      ctaType: normalized === "relatorios" ? "relatorio" : "documento",
+      ...actionMeta,
     }
   }
 
@@ -472,14 +498,14 @@ function resolveSessionPortalMeta(areaKey: string, sessionLabel: string): Sessio
     return {
       description: `Consulte ${sessionLabel.toLowerCase()} do portal por aqui quando a persistencia real desta sessao estiver conectada.`,
       emptyLabel: `Nenhum ${sessionLabel.slice(0, -1).toLowerCase()} registrado.`,
-      ctaLabel: `Novo ${sessionLabel.slice(0, -1).toLowerCase()}`,
+      ...actionMeta,
     }
   }
 
   return {
     description: "Gerencie esta area do portal com busca, filtros e acao principal.",
     emptyLabel: "Nenhum registro disponivel ainda.",
-    ctaLabel: "Nova acao",
+    ...actionMeta,
   }
 }
 
@@ -534,9 +560,9 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     return CADASTROS_SECTIONS.map((section, index) => ({
       ...section,
       title: titles[index] || section.title,
-      description: resolveSessionPortalMeta("cadastros", titles[index] || section.title).description,
+      description: resolveSessionPortalMeta(effectiveSegment, "cadastros", titles[index] || section.title).description,
     })).slice(0, titles.length)
-  }, [cadastrosArea?.subsections, isRealEstateWorkspace, isServicesWorkspace])
+  }, [cadastrosArea?.subsections, effectiveSegment])
   const salesSections = useMemo(() => {
     const titles = salesArea?.subsections?.length ? salesArea.subsections : VENDAS_SECTIONS.map((section) => section.title)
 
@@ -549,10 +575,10 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
         title,
         href: `/portal/vendas/${routeKey}`,
         icon: fallbackSection.icon,
-        description: resolveSessionPortalMeta("vendas", title).description,
+        description: resolveSessionPortalMeta(effectiveSegment, "vendas", title).description,
       }
     })
-  }, [salesArea?.subsections])
+  }, [effectiveSegment, salesArea?.subsections])
 
   useEffect(() => {
     if (sharedArea?.portalStatus === "redirect") {
@@ -654,10 +680,12 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     return (
       <PortalModulePage
         title={cadastrosSections[1]?.title || "Leads"}
-        description={resolveSessionPortalMeta("cadastros", cadastrosSections[1]?.title || "Leads").description}
-        ctaLabel={resolveSessionPortalMeta("cadastros", cadastrosSections[1]?.title || "Leads").ctaLabel}
-        ctaType={resolveSessionPortalMeta("cadastros", cadastrosSections[1]?.title || "Leads").ctaType}
-        emptyLabel={resolveSessionPortalMeta("cadastros", cadastrosSections[1]?.title || "Leads").emptyLabel}
+        description={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[1]?.title || "Leads").description}
+        ctaLabel={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[1]?.title || "Leads").ctaLabel}
+        ctaType={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[1]?.title || "Leads").ctaType}
+        ctaHref={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[1]?.title || "Leads").ctaHref}
+        ctaNotice={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[1]?.title || "Leads").ctaNotice}
+        emptyLabel={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[1]?.title || "Leads").emptyLabel}
         listHref="/portal/cadastros"
       />
     )
@@ -697,10 +725,12 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     return (
       <PortalModulePage
         title={cadastrosSections[2]?.title || "Produtos"}
-        description={resolveSessionPortalMeta("cadastros", cadastrosSections[2]?.title || "Produtos").description}
-        ctaLabel={resolveSessionPortalMeta("cadastros", cadastrosSections[2]?.title || "Produtos").ctaLabel}
-        ctaType={resolveSessionPortalMeta("cadastros", cadastrosSections[2]?.title || "Produtos").ctaType}
-        emptyLabel={resolveSessionPortalMeta("cadastros", cadastrosSections[2]?.title || "Produtos").emptyLabel}
+        description={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[2]?.title || "Produtos").description}
+        ctaLabel={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[2]?.title || "Produtos").ctaLabel}
+        ctaType={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[2]?.title || "Produtos").ctaType}
+        ctaHref={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[2]?.title || "Produtos").ctaHref}
+        ctaNotice={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[2]?.title || "Produtos").ctaNotice}
+        emptyLabel={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[2]?.title || "Produtos").emptyLabel}
         listHref="/portal/cadastros"
       />
     )
@@ -725,10 +755,12 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     return (
       <PortalModulePage
         title={cadastrosSections[3]?.title || "Servicos"}
-        description={resolveSessionPortalMeta("cadastros", cadastrosSections[3]?.title || "Servicos").description}
-        ctaLabel={resolveSessionPortalMeta("cadastros", cadastrosSections[3]?.title || "Servicos").ctaLabel}
-        ctaType={resolveSessionPortalMeta("cadastros", cadastrosSections[3]?.title || "Servicos").ctaType}
-        emptyLabel={resolveSessionPortalMeta("cadastros", cadastrosSections[3]?.title || "Servicos").emptyLabel}
+        description={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[3]?.title || "Servicos").description}
+        ctaLabel={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[3]?.title || "Servicos").ctaLabel}
+        ctaType={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[3]?.title || "Servicos").ctaType}
+        ctaHref={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[3]?.title || "Servicos").ctaHref}
+        ctaNotice={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[3]?.title || "Servicos").ctaNotice}
+        emptyLabel={resolveSessionPortalMeta(effectiveSegment, "cadastros", cadastrosSections[3]?.title || "Servicos").emptyLabel}
         listHref="/portal/cadastros"
       />
     )
@@ -780,7 +812,7 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
 
     if (salesSubsection === "negociacoes" || salesSubsection === "pedidos" || salesSubsection === "funil" || salesSubsection === "vendas") {
       const sessionTitle = salesSections.find((section) => section.key === salesSubsection)?.title || titleize(salesSubsection)
-      const meta = resolveSessionPortalMeta("vendas", sessionTitle)
+      const meta = resolveSessionPortalMeta(effectiveSegment, "vendas", sessionTitle)
 
       return (
         <PortalModulePage
@@ -788,6 +820,8 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
           description={meta.description}
           ctaLabel={meta.ctaLabel}
           ctaType={meta.ctaType}
+          ctaHref={meta.ctaHref}
+          ctaNotice={meta.ctaNotice}
           emptyLabel={meta.emptyLabel}
           listHref="/portal/vendas"
         />
@@ -830,13 +864,15 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   }
 
   if (key === "marketing") {
-    const meta = resolveSessionPortalMeta("marketing", "Marketing")
+    const meta = resolveSessionPortalMeta(effectiveSegment, "marketing", "Marketing")
 
     return (
       <PortalModulePage
         title="Marketing"
         description={meta.description}
         ctaLabel={meta.ctaLabel}
+        ctaHref={meta.ctaHref}
+        ctaNotice={meta.ctaNotice}
         emptyLabel={meta.emptyLabel}
         listHref="/portal/marketing"
       />
@@ -900,8 +936,8 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     titleize(key)
   const sessionMeta =
     rootArea && rootAreaKey !== key
-      ? resolveSessionPortalMeta(rootAreaKey, resolvedSessionTitle)
-      : resolveSessionPortalMeta(key, resolvedSessionTitle)
+      ? resolveSessionPortalMeta(effectiveSegment, rootAreaKey, resolvedSessionTitle)
+      : resolveSessionPortalMeta(effectiveSegment, key, resolvedSessionTitle)
   const meta: SectionMeta = SECTION_META[key] ?? {
     title: resolvedSessionTitle,
     description: sessionMeta.description,
@@ -909,6 +945,8 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
     emptyLabel: sessionMeta.emptyLabel,
     listHref: rootArea ? `/portal/${rootAreaKey}` : `/portal/${slug.join("/")}`,
     ctaType: sessionMeta.ctaType,
+    ctaHref: sessionMeta.ctaHref,
+    ctaNotice: sessionMeta.ctaNotice,
   }
 
   return (
@@ -917,6 +955,8 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
       description={meta.description}
       ctaLabel={meta.ctaLabel}
       ctaType={meta.ctaType}
+      ctaHref={meta.ctaHref}
+      ctaNotice={meta.ctaNotice}
       emptyLabel={meta.emptyLabel}
       listHref={meta.listHref}
     />

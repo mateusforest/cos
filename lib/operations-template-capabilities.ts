@@ -6,6 +6,14 @@ export type OperationsCapabilitySupport = "supported" | "future"
 
 export type OperationsCapabilityReuseMode = "shared-generic" | "dedicated" | "future"
 
+export type OperationsCapabilityPortalActionType =
+  | "cliente"
+  | "documento"
+  | "financeiro"
+  | "operacao"
+  | "reuniao"
+  | "relatorio"
+
 export type OperationsSessionCapability = {
   areaKey: string
   areaLabel: string
@@ -33,6 +41,27 @@ export type OperationsTemplateCapabilityMap = {
   label: string
   areas: OperationsAreaCapabilityMap[]
 }
+
+export type OperationsPortalSessionAction =
+  | {
+      kind: "route"
+      label: string
+      href: string
+    }
+  | {
+      kind: "modal"
+      label: string
+      actionType: OperationsCapabilityPortalActionType
+    }
+  | {
+      kind: "future"
+      label: string
+      message: string
+    }
+  | {
+      kind: "global"
+      label: string
+    }
 
 type CapabilityDefinition = Omit<
   OperationsSessionCapability,
@@ -375,6 +404,149 @@ export function getOperationsSessionCapability(segment: string | null | undefine
     sessionLabel,
     ...resolveDefinition(normalizedSegment, areaKey, sessionLabel),
   } satisfies OperationsSessionCapability
+}
+
+function singularizeSessionLabel(value: string) {
+  const trimmed = value.trim()
+
+  if (!trimmed) {
+    return "item"
+  }
+
+  const irregulars: Record<string, string> = {
+    Clientes: "cliente",
+    Pacientes: "paciente",
+    Alunos: "aluno",
+    Candidatos: "candidato",
+    Imoveis: "imovel",
+    Imóveis: "imovel",
+    Motoristas: "motorista",
+    Fornecedores: "fornecedor",
+    Veículos: "veiculo",
+    Rotas: "rota",
+    Casos: "caso",
+    Obrigacoes: "obrigacao",
+    Obrigações: "obrigacao",
+    Curriculos: "curriculo",
+    Currículos: "curriculo",
+    Cargas: "carga",
+    Produtos: "produto",
+    Leads: "lead",
+    Honorarios: "honorario",
+    Honorários: "honorario",
+    Recebimentos: "recebimento",
+    Pedidos: "pedido",
+    Cotacoes: "cotacao",
+    Cotações: "cotacao",
+    Propostas: "proposta",
+    Contratos: "contrato",
+    Relatorios: "relatorio",
+    Relatórios: "relatorio",
+    Exames: "exame",
+    Consultas: "consulta",
+    Processos: "processo",
+    Entregas: "entrega",
+    Viagens: "viagem",
+    Audiencias: "audiencia",
+    Audiências: "audiencia",
+    Veiculos: "veiculo",
+    Obras: "obra",
+  }
+
+  if (irregulars[trimmed]) {
+    return irregulars[trimmed]
+  }
+
+  const normalized = trimmed.toLowerCase()
+
+  if (normalized.endsWith("oes")) return `${normalized.slice(0, -3)}ao`
+  if (normalized.endsWith("ães")) return `${normalized.slice(0, -3)}ao`
+  if (normalized.endsWith("s")) return normalized.slice(0, -1)
+  return normalized
+}
+
+function buildPortalActionLabel(sessionLabel: string) {
+  const singular = singularizeSessionLabel(sessionLabel)
+
+  if (
+    singular.startsWith("ordem") ||
+    singular.startsWith("rota") ||
+    singular.startsWith("audiencia") ||
+    singular.startsWith("audiencia") ||
+    singular.startsWith("obrigacao") ||
+    singular.startsWith("obrigação") ||
+    singular.startsWith("carga") ||
+    singular.startsWith("cotacao") ||
+    singular.startsWith("cotação") ||
+    singular.startsWith("proposta") ||
+    singular.startsWith("consulta") ||
+    singular.startsWith("viagem") ||
+    singular.startsWith("despesa") ||
+    singular.startsWith("peticao") ||
+    singular.startsWith("petição") ||
+    singular.startsWith("reuniao") ||
+    singular.startsWith("reunião")
+  ) {
+    return `Nova ${singular}`
+  }
+
+  return `Novo ${singular}`
+}
+
+function resolvePortalActionType(capability: OperationsSessionCapability): OperationsCapabilityPortalActionType | null {
+  if (capability.reusedStructure === "clients") return "cliente"
+  if (capability.reusedStructure === "operations") return "operacao"
+  if (capability.reusedStructure === "financial_entries") return "financeiro"
+  if (capability.reusedStructure === "meetings") return "reuniao"
+
+  if (capability.reusedStructure === "documents") {
+    return capability.sessionKey === "relatorios" ? "relatorio" : "documento"
+  }
+
+  return null
+}
+
+export function getOperationsPortalSessionAction(segment: string | null | undefined, areaKey: string, sessionLabel: string): OperationsPortalSessionAction {
+  const capability = getOperationsSessionCapability(segment, areaKey, sessionLabel)
+  const label = buildPortalActionLabel(sessionLabel)
+
+  if (!capability) {
+    return {
+      kind: "global",
+      label,
+    }
+  }
+
+  if (capability.support === "future" || !capability.allowedActions.includes("create")) {
+    return {
+      kind: "future",
+      label,
+      message: `${sessionLabel} ainda nao possui fluxo real de criacao nesta sessao do Portal.`,
+    }
+  }
+
+  if (capability.existingRoute) {
+    return {
+      kind: "route",
+      label,
+      href: capability.existingRoute,
+    }
+  }
+
+  const actionType = resolvePortalActionType(capability)
+
+  if (actionType) {
+    return {
+      kind: "modal",
+      label,
+      actionType,
+    }
+  }
+
+  return {
+    kind: "global",
+    label,
+  }
 }
 
 export const operationsTemplateCapabilityMaps = getAllOperationsTemplateCapabilityMaps()

@@ -1,15 +1,19 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Search, SlidersHorizontal, Plus } from "lucide-react"
 import { PortalHeader, PortalPageHeader } from "@/components/portal/portal-header"
 import { usePortalInteractions, type QuickActionType } from "@/components/portal/portal-interactions"
+import { toast } from "@/hooks/use-toast"
 
 export function PortalModulePage({
   title,
   description,
   ctaLabel,
   ctaType,
+  ctaHref,
+  ctaNotice,
   emptyLabel,
   listHref,
 }: {
@@ -17,10 +21,35 @@ export function PortalModulePage({
   description: string
   ctaLabel?: string
   ctaType?: QuickActionType
+  ctaHref?: string
+  ctaNotice?: string
   emptyLabel: string
   listHref: string
 }) {
+  const router = useRouter()
   const { openFilters, openQuickActionForm, openQuickActions } = usePortalInteractions()
+
+  const handlePrimaryAction = () => {
+    if (ctaHref) {
+      router.push(ctaHref)
+      return
+    }
+
+    if (ctaType) {
+      openQuickActionForm(ctaType)
+      return
+    }
+
+    if (ctaNotice) {
+      toast({
+        title: ctaLabel || title,
+        description: ctaNotice,
+      })
+      return
+    }
+
+    openQuickActions()
+  }
 
   return (
     <div className="flex-1 flex flex-col h-full">
@@ -31,7 +60,7 @@ export function PortalModulePage({
             <PortalPageHeader title={title} description={description} />
             {ctaLabel ? (
               <button
-                onClick={() => (ctaType ? openQuickActionForm(ctaType) : openQuickActions())}
+                onClick={handlePrimaryAction}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#0a0a0a] px-4 py-2.5 text-sm text-white hover:bg-gray-800 transition-colors"
               >
                 <Plus className="w-4 h-4" />
