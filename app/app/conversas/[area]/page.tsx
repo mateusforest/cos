@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useEffect, useState } from "react"
+import { use, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ChevronLeft, ChevronRight, MessageSquare } from "lucide-react"
@@ -20,8 +20,8 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
   const searchParams = useSearchParams()
   const { openSupport } = useSupport()
   const { effectiveSegment } = useOperationsTemplatePreview()
-  const areaConfigs = getOperationsAreaConfigs(effectiveSegment)
-  const config = areaConfigs[area]
+  const areaConfigs = useMemo(() => getOperationsAreaConfigs(effectiveSegment), [effectiveSegment])
+  const config = useMemo(() => areaConfigs[area], [areaConfigs, area])
   const isChatArea = Boolean(config) && config.subsections.length === 0 && area !== "suporte"
   const [messages, setMessages] = useState<ChatMessage[]>(config?.messages ?? [])
   const [isLoadingMessages, setIsLoadingMessages] = useState(isChatArea)

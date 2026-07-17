@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useEffect, useState } from "react"
+import { use, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   getOperationsConversationMessagesAction,
@@ -178,17 +178,23 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
   const router = useRouter()
   const searchParams = useSearchParams()
   const { effectiveSegment } = useOperationsTemplatePreview()
-  const areaConfigs = getOperationsAreaConfigs(effectiveSegment)
-  const config = areaConfigs[area]
+  const areaConfigs = useMemo(() => getOperationsAreaConfigs(effectiveSegment), [effectiveSegment])
+  const config = useMemo(() => areaConfigs[area], [areaConfigs, area])
   const [messages, setMessages] = useState<ChatMessage[]>(config?.messages ?? [])
   const [isLoadingMessages, setIsLoadingMessages] = useState(true)
   const conversationId = searchParams.get("conversationId")?.trim() || ""
 
-  const subLabel =
-    config?.subsections.find((section) => slug(section) === sub) ??
-    sub.charAt(0).toUpperCase() + sub.slice(1).replace(/-/g, " ")
+  const subLabel = useMemo(
+    () =>
+      config?.subsections.find((section) => slug(section) === sub) ??
+      sub.charAt(0).toUpperCase() + sub.slice(1).replace(/-/g, " "),
+    [config, sub],
+  )
 
-  const chatCopy = resolveChatCopy(area, subLabel, effectiveSegment ?? undefined, config?.quickActions)
+  const chatCopy = useMemo(
+    () => resolveChatCopy(area, subLabel, effectiveSegment ?? undefined, config?.quickActions),
+    [area, subLabel, effectiveSegment, config],
+  )
 
   useEffect(() => {
     if (!config) {
