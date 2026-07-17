@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import {
   ArrowRight,
@@ -24,7 +24,7 @@ import {
   X,
 } from "lucide-react"
 import { createMeetingAction } from "@/actions/meetings"
-import { runOperationsEngineAction } from "@/actions/operations-engine"
+import { getOperationsConversationMessagesAction, runOperationsEngineAction } from "@/actions/operations-engine"
 import { useAppInteractions } from "@/components/app/app-interactions"
 import { useOperationsDashboard } from "@/components/app/operations-dashboard-store"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -166,6 +166,7 @@ function parseConversationArea(value?: string | null): ActiveConversation {
 
 export default function AppHomePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user, profile, workspace } = useAuth()
   const { effectiveSegment } = useOperationsTemplatePreview()
   const { summary, isLoading: isStatsLoading, refreshSummary } = useOperationsDashboard()
@@ -185,6 +186,7 @@ export default function AppHomePage() {
   const [micState, setMicState] = useState<MicState>("idle")
   const [micPreview, setMicPreview] = useState("")
   const [isEngineRunning, setIsEngineRunning] = useState(false)
+  const [isLoadingConversation, setIsLoadingConversation] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
@@ -208,6 +210,7 @@ export default function AppHomePage() {
   const isClinicWorkspace = effectiveSegment === "clinicas"
   const isRealEstateWorkspace = effectiveSegment === "imobiliarias"
   const isServicesWorkspace = effectiveSegment === "servicos"
+  const conversationId = searchParams.get("conversationId")?.trim() || ""
 
   const shortcutsStorageKey = useMemo(
     () => (workspace?.id ? `cos:operations:shortcuts:${workspace.id}` : null),
@@ -250,6 +253,41 @@ export default function AppHomePage() {
       setIsShortcutsReady(true)
     }
   }, [shortcutsStorageKey])
+
+  useEffect(() => {
+    if (!conversationId) {
+      return
+    }
+
+    let isMounted = true
+
+    const loadConversation = async () => {
+      setIsLoadingConversation(true)
+
+      const result = await getOperationsConversationMessagesAction({
+        conversationId,
+      })
+
+      if (!isMounted) {
+        return
+      }
+
+      if (result.success) {
+        setChatMessages(result.messages)
+        setActiveConversation(generalConversation)
+      } else {
+        setChatMessages([])
+      }
+
+      setIsLoadingConversation(false)
+    }
+
+    void loadConversation()
+
+    return () => {
+      isMounted = false
+    }
+  }, [conversationId])
 
   useEffect(() => {
     if (!shortcutsStorageKey || !shortcutPreferences || !isShortcutsReady || typeof window === "undefined") {
@@ -814,7 +852,15 @@ export default function AppHomePage() {
             )}
           </AnimatePresence>
 
-          {chatMessages.length === 0 ? (
+          {isLoadingConversation ? (
+            <div className="flex min-h-full flex-col justify-center py-6">
+              <COSLoading
+                title="Carregando conversa"
+                description="Estamos recuperando o historico desta conversa."
+                currentStep="Organizando conversa"
+              />
+            </div>
+          ) : chatMessages.length === 0 ? (
             <div className="flex min-h-full flex-col justify-center py-6">
               <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3 }} className="mb-4 self-center">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100">

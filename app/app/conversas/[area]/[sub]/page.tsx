@@ -1,7 +1,7 @@
 "use client"
 
 import { use, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   getOperationsConversationMessagesAction,
   runOperationsEngineAction,
@@ -176,11 +176,13 @@ function resolveChatCopy(area: string, subLabel: string, segment?: string, areaQ
 export default function SubAreaPage({ params }: { params: Promise<{ area: string; sub: string }> }) {
   const { area, sub } = use(params)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { effectiveSegment } = useOperationsTemplatePreview()
   const areaConfigs = getOperationsAreaConfigs(effectiveSegment)
   const config = areaConfigs[area]
   const [messages, setMessages] = useState<ChatMessage[]>(config?.messages ?? [])
   const [isLoadingMessages, setIsLoadingMessages] = useState(true)
+  const conversationId = searchParams.get("conversationId")?.trim() || ""
 
   const subLabel =
     config?.subsections.find((section) => slug(section) === sub) ??
@@ -196,6 +198,7 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
       const result = await getOperationsConversationMessagesAction({
         area,
         subArea: sub,
+        conversationId: conversationId || undefined,
       })
 
       if (!isMounted) {
@@ -216,7 +219,7 @@ export default function SubAreaPage({ params }: { params: Promise<{ area: string
     return () => {
       isMounted = false
     }
-  }, [area, sub, config])
+  }, [area, sub, config, conversationId])
 
   return (
     <AreaChat

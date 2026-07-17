@@ -5,7 +5,9 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Loader2, MessageSquare, Sparkles, User } from "lucide-react"
 import { getOperationsConversationsAction } from "@/actions/operations-engine"
+import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
 import { PortalHeader, PortalPageHeader } from "@/components/portal/portal-header"
+import { getOperationsAreaConfigs, slug } from "@/lib/area-configs"
 
 type PortalConversation = {
   id: string
@@ -19,21 +21,25 @@ type PortalConversation = {
   ctaHref?: string
 }
 
-function resolvePortalHref(area: string) {
+function resolveAppConversationHref(area: string, conversationId: string, segment?: string | null) {
   const [rootArea, subArea] = area.split("/")
+  const areaConfigs = getOperationsAreaConfigs(segment)
+  const areaConfig = areaConfigs[rootArea]
+  const params = new URLSearchParams({ conversationId })
 
-  if (subArea === "propostas" || rootArea === "vendas") return "/portal/vendas"
-  if (subArea === "relatorios") return "/portal/relatorios"
-  if (rootArea === "cadastros") return subArea ? `/portal/cadastros/${subArea}` : "/portal/cadastros"
-  if (rootArea === "operacoes") return "/portal/operacoes"
-  if (rootArea === "financeiro") return "/portal/financeiro"
-  if (rootArea === "equipe") return "/portal/equipe"
-  if (rootArea === "documentos") return "/portal/documentos"
-  if (rootArea === "reunioes") return "/portal/reunioes"
-  if (rootArea === "suporte") return "/portal/suporte"
-  if (rootArea === "sistema") return "/portal/sistema"
+  if (!areaConfig) {
+    return `/app?${params.toString()}`
+  }
 
-  return "/portal"
+  if (subArea) {
+    const hasValidSubArea = areaConfig.subsections.some((section) => slug(section) === subArea)
+
+    if (hasValidSubArea) {
+      return `/app/conversas/${rootArea}/${subArea}?${params.toString()}`
+    }
+  }
+
+  return `/app/conversas/${rootArea}?${params.toString()}`
 }
 
 function humanizeArea(area: string) {
@@ -47,6 +53,7 @@ function humanizeArea(area: string) {
 
 export default function PortalConversasPage() {
   const searchParams = useSearchParams()
+  const { effectiveSegment } = useOperationsTemplatePreview()
   const initialQuery = searchParams.get("q")?.trim() || ""
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -93,7 +100,7 @@ export default function PortalConversasPage() {
         <div className="max-w-6xl mx-auto px-6 py-8">
           <PortalPageHeader
             title="Conversas"
-            description="Conversas reais salvas pelo COS em ai_conversations e ai_messages."
+            description="Acompanhe e retome as conversas da sua operação."
           />
 
           {error && <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
@@ -113,7 +120,7 @@ export default function PortalConversasPage() {
             ) : (
               <div className="divide-y divide-gray-100">
                 {filteredConversations.map((conversation) => {
-                  const href = conversation.ctaHref || resolvePortalHref(conversation.area)
+                  const href = resolveAppConversationHref(conversation.area, conversation.id, effectiveSegment)
 
                   return (
                     <Link
@@ -138,7 +145,7 @@ export default function PortalConversasPage() {
 
                         <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
                           <MessageSquare className="h-3.5 w-3.5" />
-                          <span>{conversation.ctaLabel || "Abrir sessao relacionada"}</span>
+                          <span>Abrir sessao relacionada</span>
                         </div>
                       </div>
                     </Link>

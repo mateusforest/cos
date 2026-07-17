@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ChevronLeft, ChevronRight, MessageSquare } from "lucide-react"
 import {
   getOperationsConversationMessagesAction,
@@ -17,6 +17,7 @@ import { getOperationsAreaConfigs, slug } from "@/lib/area-configs"
 export default function AreaPage({ params }: { params: Promise<{ area: string }> }) {
   const { area } = use(params)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { openSupport } = useSupport()
   const { effectiveSegment } = useOperationsTemplatePreview()
   const areaConfigs = getOperationsAreaConfigs(effectiveSegment)
@@ -24,6 +25,7 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
   const isChatArea = Boolean(config) && config.subsections.length === 0 && area !== "suporte"
   const [messages, setMessages] = useState<ChatMessage[]>(config?.messages ?? [])
   const [isLoadingMessages, setIsLoadingMessages] = useState(isChatArea)
+  const conversationId = searchParams.get("conversationId")?.trim() || ""
 
   useEffect(() => {
     if (!config || !isChatArea) {
@@ -34,7 +36,10 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
 
     const loadMessages = async () => {
       setIsLoadingMessages(true)
-      const result = await getOperationsConversationMessagesAction({ area })
+      const result = await getOperationsConversationMessagesAction({
+        area,
+        conversationId: conversationId || undefined,
+      })
 
       if (!isMounted) {
         return
@@ -54,7 +59,7 @@ export default function AreaPage({ params }: { params: Promise<{ area: string }>
     return () => {
       isMounted = false
     }
-  }, [area, config, isChatArea])
+  }, [area, config, conversationId, isChatArea])
 
   if (!config) {
     return (

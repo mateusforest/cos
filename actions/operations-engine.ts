@@ -610,17 +610,13 @@ export async function runOperationsEngineAction(input: OperationsEngineInput) {
 export async function getOperationsConversationMessagesAction(input?: {
   area?: string
   subArea?: string
+  conversationId?: string
 }) {
   const actor = await getOperationsConversationActor()
 
   if ("error" in actor) {
     return { error: actor.error }
   }
-
-  const conversationArea = buildOperationsConversationArea({
-    area: input?.area,
-    subArea: input?.subArea,
-  })
 
   const conversationsTable = actor.adminClient.from("ai_conversations") as {
     select: (columns: string) => {
@@ -633,12 +629,25 @@ export async function getOperationsConversationMessagesAction(input?: {
       }
     }
   }
-  const conversationQuery = (await conversationsTable
-    .select("id, workspace_id, user_id, area, title")
-    .eq("workspace_id", actor.access.workspace.id)
-    .eq("user_id", actor.user.id)
-    .eq("area", conversationArea)
-    .maybeSingle()) as { data: ConversationRow | null; error: QueryError }
+  const conversationArea = buildOperationsConversationArea({
+    area: input?.area,
+    subArea: input?.subArea,
+  })
+  const conversationQuery = (
+    input?.conversationId
+      ? await conversationsTable
+          .select("id, workspace_id, user_id, area, title")
+          .eq("workspace_id", actor.access.workspace.id)
+          .eq("user_id", actor.user.id)
+          .eq("id", input.conversationId)
+          .maybeSingle()
+      : await conversationsTable
+          .select("id, workspace_id, user_id, area, title")
+          .eq("workspace_id", actor.access.workspace.id)
+          .eq("user_id", actor.user.id)
+          .eq("area", conversationArea)
+          .maybeSingle()
+  ) as { data: ConversationRow | null; error: QueryError }
   const conversation = conversationQuery.data as ConversationRow | null
   const conversationError = conversationQuery.error as QueryError
 
@@ -649,6 +658,7 @@ export async function getOperationsConversationMessagesAction(input?: {
   if (!conversation) {
     return {
       success: true,
+      conversationId: input?.conversationId ?? null,
       conversationArea,
       messages: [] as PersistedOperationsChatMessage[],
     }
@@ -675,7 +685,7 @@ export async function getOperationsConversationMessagesAction(input?: {
   return {
     success: true,
     conversationId: conversation.id,
-    conversationArea,
+    conversationArea: conversation.area || conversationArea,
     messages: (rows ?? [])
       .map(mapConversationMessage)
       .filter((message: PersistedOperationsChatMessage | null): message is PersistedOperationsChatMessage => Boolean(message)),
