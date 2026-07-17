@@ -2,9 +2,9 @@
 
 import { use, useEffect, useMemo } from "react"
 import Link from "next/link"
-import { ArrowRight, BarChart3, Box, Briefcase, FileSignature, Receipt, ShoppingCart, TrendingUp, Users } from "lucide-react"
+import { ArrowRight, BarChart3, Box, Briefcase, Clapperboard, FileImage, FileSignature, Layers3, Megaphone, Receipt, ShoppingCart, TrendingUp, Users } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { PortalHeader } from "@/components/portal/portal-header"
+import { PortalHeader, PortalPageHeader } from "@/components/portal/portal-header"
 import { PortalModulePage } from "@/components/portal/portal-module-page"
 import type { QuickActionType } from "@/components/portal/portal-interactions"
 import { ClientsManager } from "@/components/operations/clients-manager"
@@ -17,6 +17,7 @@ import { getCosAreaSourceByKey, slug as slugify } from "@/lib/area-configs"
 import { getOperationsPortalSessionAction } from "@/lib/operations-template-capabilities"
 import { SystemActivityManager } from "@/components/portal/system-activity-manager"
 import { useOperationsTemplatePreview } from "@/components/operations/operations-template-preview"
+import { toast } from "@/hooks/use-toast"
 
 type SectionMeta = {
   title: string
@@ -179,6 +180,33 @@ const VENDAS_SECTIONS = [
 ] as const
 
 const SALES_ROUTE_ORDER = VENDAS_SECTIONS.map((section) => section.key)
+
+const STUDIO_CARDS = [
+  {
+    title: "Criativos",
+    description: "Posts, carrosseis, stories, banners e materiais para redes sociais.",
+    icon: Layers3,
+    actionLabel: "Em breve",
+  },
+  {
+    title: "Campanhas",
+    description: "Estrategias, copies, anuncios, calendarios editoriais e campanhas completas.",
+    icon: Megaphone,
+    actionLabel: "Em breve",
+  },
+  {
+    title: "Imagens",
+    description: "Geracao e edicao de imagens utilizando OpenAI.",
+    icon: FileImage,
+    actionLabel: "Em breve",
+  },
+  {
+    title: "Videos",
+    description: "Geracao de videos utilizando Luma.",
+    icon: Clapperboard,
+    actionLabel: "Em breve",
+  },
+] as const
 
 type SessionPortalMeta = {
   description: string
@@ -864,18 +892,62 @@ export default function PortalSectionPage({ params }: { params: Promise<{ slug: 
   }
 
   if (key === "marketing") {
-    const meta = resolveSessionPortalMeta(effectiveSegment, "marketing", "Marketing")
+    const handleStudioNotice = () => {
+      toast({
+        title: "Nova criacao",
+        description: "O Studio ainda esta em implementacao. Em breve voce podera criar conteudos por conversa por aqui.",
+      })
+    }
 
     return (
-      <PortalModulePage
-        title="Marketing"
-        description={meta.description}
-        ctaLabel={meta.ctaLabel}
-        ctaHref={meta.ctaHref}
-        ctaNotice={meta.ctaNotice}
-        emptyLabel={meta.emptyLabel}
-        listHref="/portal/marketing"
-      />
+      <div className="flex-1 flex flex-col h-full">
+        <PortalHeader />
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-7xl mx-auto px-6 py-8">
+            <div className="mb-8 flex items-start justify-between gap-4">
+              <PortalPageHeader
+                title="Studio"
+                description="Crie campanhas, imagens, videos e conteudos por conversa."
+              />
+              <button
+                onClick={handleStudioNotice}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#0a0a0a] px-4 py-2.5 text-sm text-white transition-colors hover:bg-gray-800"
+              >
+                Nova criacao
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 sm:p-6">
+              <div className="mb-6 flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-[#0a0a0a]">Studio criativo</p>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Escolha a frente que deseja preparar. As integracoes reais ainda serao conectadas nas proximas etapas.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {STUDIO_CARDS.map((card) => (
+                  <div key={card.title} className="rounded-2xl border border-gray-100 bg-gray-50/60 p-5">
+                    <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm">
+                      <card.icon className="h-5 w-5 text-[#0a0a0a]" />
+                    </span>
+                    <p className="text-base font-semibold text-[#0a0a0a]">{card.title}</p>
+                    <p className="mt-2 text-sm text-gray-500">{card.description}</p>
+                    <button
+                      onClick={handleStudioNotice}
+                      className="mt-5 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-gray-100"
+                    >
+                      {card.actionLabel}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     )
   }
 
