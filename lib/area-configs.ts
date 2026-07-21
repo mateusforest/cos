@@ -55,6 +55,19 @@ type SectorTemplate = {
   areas: Partial<Record<string, SectorAreaOverride>>
 }
 
+const standardAreaLabels: Record<string, string> = {
+  cadastros: "Cadastros",
+  operacoes: "Operações",
+  vendas: "Vendas",
+  financeiro: "Financeiro",
+  equipe: "Equipe",
+  documentos: "Documentos",
+  reunioes: "Reuniões",
+  marketing: "Studio",
+  sistema: "Sistema",
+  suporte: "Suporte",
+}
+
 export const slug = (value: string) =>
   value
     .toLowerCase()
@@ -563,16 +576,19 @@ export const operationsSectorTemplates: Record<string, SectorTemplate> = {
 }
 
 function applySectorTemplate(area: CosAreaSource, override?: SectorAreaOverride): CosAreaSource {
-  if (!override) {
-    return area
-  }
+  const nextArea = override
+    ? {
+        ...area,
+        ...override,
+        subsections: override.subsections ?? area.subsections,
+        quickActions: override.quickActions ?? area.quickActions,
+        messages: override.messages ?? area.messages,
+      }
+    : area
 
   return {
-    ...area,
-    ...override,
-    subsections: override.subsections ?? area.subsections,
-    quickActions: override.quickActions ?? area.quickActions,
-    messages: override.messages ?? area.messages,
+    ...nextArea,
+    label: standardAreaLabels[nextArea.key] ?? nextArea.label,
   }
 }
 
