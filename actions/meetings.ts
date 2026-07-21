@@ -6,6 +6,10 @@ import { buildLiveKitRoomName, createLiveKitRoomServiceClient, createLiveKitToke
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server"
 
 type DatabaseMeetingStatus = "draft" | "recorded" | "transcribed" | "archived"
+const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
+const meetInsightsModel = "gpt-5-mini"
+const meetInsightsTimeoutMs = 45000
+const meetTranscriptPromptLimit = 12000
 
 export type MeetingStatus = "scheduled" | "in_progress" | "finished"
 export type MeetingType = "video" | "in_person"
@@ -59,6 +63,41 @@ export type MeetingHistoryEntry = {
 export type MeetingTranscriptionState = {
   status: "not_available" | "planned"
   note: string
+}
+
+export type MeetingInsightTask = {
+  id: string
+  text: string
+  responsible: string | null
+  deadline: string | null
+}
+
+export type MeetingInsightResponsible = {
+  id: string
+  name: string
+  context: string
+  deadline: string | null
+}
+
+export type MeetingInsightsResult = {
+  executiveSummary: string
+  mainTopics: string[]
+  decisions: string[]
+  tasks: MeetingInsightTask[]
+  responsibles: MeetingInsightResponsible[]
+  risks: string[]
+  openQuestions: string[]
+  nextSteps: string[]
+}
+
+export type MeetingInsightsStatus = "disabled" | "awaiting_transcription" | "ready" | "processing" | "completed" | "failed"
+
+export type MeetingInsightsState = {
+  status: MeetingInsightsStatus
+  processedAt: string | null
+  error: string | null
+  transcriptHash: string | null
+  result: MeetingInsightsResult | null
 }
 
 export type MeetingJoinRequest = {
@@ -128,6 +167,8 @@ type MeetingMetadata = {
   timeline: MeetingTimelineEvent[]
   history: MeetingHistoryEntry[]
   transcriptionState: MeetingTranscriptionState
+  transcriptText: string
+  insights: MeetingInsightsState
   joinRequests: MeetingJoinRequest[]
   connectedParticipants: ConnectedMeetingParticipant[]
   sessionRecord: MeetingSessionRecord
@@ -178,6 +219,8 @@ type MeetingPayload = {
   attachments?: MeetingAttachment[]
   timeline?: MeetingTimelineEvent[]
   transcriptionState?: MeetingTranscriptionState
+  transcriptText?: string
+  insights?: MeetingInsightsState
   joinRequests?: MeetingJoinRequest[]
   connectedParticipants?: ConnectedMeetingParticipant[]
   sessionRecord?: Partial<MeetingSessionRecord>
@@ -241,6 +284,218 @@ function createEmptyAnalysisSections(): MeetingAnalysisSections {
     pendingItems: [],
     responsibles: [],
     nextSteps: [],
+  }
+}
+
+function createEmptyInsightsState(status: MeetingInsightsStatus = "awaiting_transcription"): MeetingInsightsState {
+  return {
+    status,
+    processedAt: null,
+    error: null,
+    transcriptHash: null,
+    result: null,
+  }
+}
+
+function normalizeInsightTextList(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean)
+    : []
+}
+
+function normalizeMeetingInsightTasks(value: unknown) {
+  if (!Array.isArray(value)) return [] as MeetingInsightTask[]
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null
+      const record = item as Record<string, unknown>
+      const text = typeof record.text === "string" ? record.text.trim() : ""
+      if (!text) return null
+
+      return {
+        id: typeof record.id === "string" && record.id.trim() ? record.id : createId("insight_task"),
+        text,
+        responsible: typeof record.responsible === "string" && record.responsible.trim() ? record.responsible.trim() : null,
+        deadline: typeof record.deadline === "string" && record.deadline.trim() ? record.deadline.trim() : null,
+      } satisfies MeetingInsightTask
+    })
+    .filter((item): item is MeetingInsightTask => Boolean(item))
+}
+
+function normalizeMeetingInsightResponsibles(value: unknown) {
+  if (!Array.isArray(value)) return [] as MeetingInsightResponsible[]
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null
+      const record = item as Record<string, unknown>
+      const name = typeof record.name === "string" ? record.name.trim() : ""
+      const context = typeof record.context === "string" ? record.context.trim() : ""
+      if (!name) return null
+
+      return {
+        id: typeof record.id === "string" && record.id.trim() ? record.id : createId("insight_responsible"),
+        name,
+        context,
+        deadline: typeof record.deadline === "string" && record.deadline.trim() ? record.deadline.trim() : null,
+      } satisfies MeetingInsightResponsible
+    })
+    .filter((item): item is MeetingInsightResponsible => Boolean(item))
+}
+
+function normalizeMeetingInsightsResult(value: unknown): MeetingInsightsResult | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const executiveSummary = typeof record.executiveSummary === "string" ? record.executiveSummary.trim() : ""
+  if (!executiveSummary) {
+    return null
+  }
+
+  return {
+    executiveSummary,
+    mainTopics: normalizeInsightTextList(record.mainTopics),
+    decisions: normalizeInsightTextList(record.decisions),
+    tasks: normalizeMeetingInsightTasks(record.tasks),
+    responsibles: normalizeMeetingInsightResponsibles(record.responsibles),
+    risks: normalizeInsightTextList(record.risks),
+    openQuestions: normalizeInsightTextList(record.openQuestions),
+    nextSteps: normalizeInsightTextList(record.nextSteps),
+  }
+}
+
+function normalizeMeetingInsightsState(value?: Partial<MeetingInsightsState> | null) {
+  const defaultState = createEmptyInsightsState()
+  if (!value || typeof value !== "object") {
+    return defaultState
+  }
+
+  const result = normalizeMeetingInsightsResult(value.result)
+  const status: MeetingInsightsStatus =
+    value.status === "disabled" ||
+    value.status === "awaiting_transcription" ||
+    value.status === "ready" ||
+    value.status === "processing" ||
+    value.status === "completed" ||
+    value.status === "failed"
+      ? value.status
+      : defaultState.status
+
+  return {
+    status,
+    processedAt: typeof value.processedAt === "string" && value.processedAt.trim() ? value.processedAt : null,
+    error: typeof value.error === "string" && value.error.trim() ? value.error.trim() : null,
+    transcriptHash: typeof value.transcriptHash === "string" && value.transcriptHash.trim() ? value.transcriptHash : null,
+    result,
+  }
+}
+
+function extractStoredTranscriptText(value?: string | null) {
+  if (!value || value.startsWith(MEETING_METADATA_PREFIX)) {
+    return ""
+  }
+
+  return value.trim()
+}
+
+function syncMeetingInsightsState({
+  currentState,
+  cosShouldExtract,
+  transcriptText,
+}: {
+  currentState?: MeetingInsightsState | null
+  cosShouldExtract: boolean
+  transcriptText: string
+}): MeetingInsightsState {
+  const normalizedState = normalizeMeetingInsightsState(currentState)
+
+  if (normalizedState.result && normalizedState.status === "completed") {
+    return normalizedState
+  }
+
+  if (!cosShouldExtract) {
+    return {
+      ...normalizedState,
+      status: "disabled",
+      error: null,
+    }
+  }
+
+  if (!transcriptText.trim()) {
+    return {
+      ...normalizedState,
+      status: "awaiting_transcription",
+      error: null,
+    }
+  }
+
+  if (normalizedState.status === "processing") {
+    return normalizedState
+  }
+
+  if (normalizedState.status === "failed") {
+    return normalizedState
+  }
+
+  return {
+    ...normalizedState,
+    status: "ready",
+    error: null,
+  }
+}
+
+function tryReadOutputText(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return null
+  }
+
+  const record = payload as Record<string, unknown>
+
+  if (typeof record.output_text === "string" && record.output_text.trim()) {
+    return record.output_text.trim()
+  }
+
+  const output = Array.isArray(record.output) ? record.output : []
+
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue
+    const content = Array.isArray((item as Record<string, unknown>).content)
+      ? ((item as Record<string, unknown>).content as unknown[])
+      : []
+
+    for (const contentItem of content) {
+      if (!contentItem || typeof contentItem !== "object") continue
+      const text = (contentItem as Record<string, unknown>).text
+      if (typeof text === "string" && text.trim()) {
+        return text.trim()
+      }
+    }
+  }
+
+  return null
+}
+
+function parseJsonObject<T>(value: string): T | null {
+  const trimmed = value.trim()
+
+  try {
+    return JSON.parse(trimmed) as T
+  } catch {
+    const firstBrace = trimmed.indexOf("{")
+    const lastBrace = trimmed.lastIndexOf("}")
+
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      try {
+        return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)) as T
+      } catch {
+        return null
+      }
+    }
+
+    return null
   }
 }
 
@@ -394,7 +649,15 @@ function ensureAnalysisSections({
   sections.tasks = nextStepItems.map((item) => createAnalysisItem(item))
   sections.pendingItems = [
     ...(metadata.cosShouldRecord ? [createAnalysisItem("Gravacao automatica solicitada, mas ainda nao conectada neste modulo.")] : []),
-    ...(metadata.cosShouldExtract ? [createAnalysisItem("Extracao automatica de informacoes importantes permanece pendente de integracao real.")] : []),
+    ...(metadata.cosShouldExtract
+      ? [
+          createAnalysisItem(
+            metadata.transcriptText.trim()
+              ? "Extracao de informacoes importantes disponivel para processamento manual nesta reuniao."
+              : "Extracao de informacoes importantes depende de uma transcricao disponivel.",
+          ),
+        ]
+      : []),
     ...(metadata.cosShouldReport ? [createAnalysisItem("Relatorio automatico continua dependente da futura integracao real do COS Meet.")] : []),
   ]
   sections.responsibles = metadata.participants.map((participant) => createAnalysisItem(participant))
@@ -495,6 +758,8 @@ function parseMeetingMetadata(value?: string | null): MeetingMetadata | null {
         timeline: Array.isArray(parsed.timeline) ? parsed.timeline : [],
         history: Array.isArray(parsed.history) ? parsed.history : [],
         transcriptionState: parsed.transcriptionState ?? { status: "not_available", note: TRANSCRIPTION_NOTE },
+        transcriptText: typeof parsed.transcriptText === "string" ? parsed.transcriptText.trim() : "",
+        insights: normalizeMeetingInsightsState(parsed.insights),
         joinRequests: normalizeJoinRequests(parsed.joinRequests),
         connectedParticipants: normalizeConnectedParticipants(parsed.connectedParticipants),
         sessionRecord: normalizeSessionRecord(parsed.sessionRecord),
@@ -510,6 +775,8 @@ function parseMeetingMetadata(value?: string | null): MeetingMetadata | null {
         timeline: [],
         history: [],
         transcriptionState: { status: "not_available", note: TRANSCRIPTION_NOTE },
+        transcriptText: "",
+        insights: createEmptyInsightsState(),
         joinRequests: [],
         connectedParticipants: [],
         sessionRecord: normalizeSessionRecord(),
@@ -525,6 +792,10 @@ function parseMeetingMetadata(value?: string | null): MeetingMetadata | null {
 function buildMeetingMetadata(payload: Partial<MeetingPayload>, currentRow?: MeetingRow): MeetingMetadata {
   const currentMetadata = parseMeetingMetadata(currentRow?.transcript)
   const legacyDescription = payload.summary?.trim() || currentRow?.summary?.trim() || currentMetadata?.description || ""
+  const transcriptText =
+    payload.transcriptText?.trim() ||
+    currentMetadata?.transcriptText ||
+    extractStoredTranscriptText(currentRow?.transcript)
   const baseMetadata: MeetingMetadata = {
     version: 2,
     scheduledAt: payload.scheduledAt?.trim() || currentMetadata?.scheduledAt || currentRow?.created_at || null,
@@ -545,6 +816,8 @@ function buildMeetingMetadata(payload: Partial<MeetingPayload>, currentRow?: Mee
     timeline: payload.timeline ?? currentMetadata?.timeline ?? [],
     history: currentMetadata?.history ?? [],
     transcriptionState: payload.transcriptionState ?? currentMetadata?.transcriptionState ?? { status: "not_available", note: TRANSCRIPTION_NOTE },
+    transcriptText,
+    insights: normalizeMeetingInsightsState(payload.insights ?? currentMetadata?.insights),
     joinRequests: normalizeJoinRequests(payload.joinRequests ?? currentMetadata?.joinRequests),
     connectedParticipants: normalizeConnectedParticipants(payload.connectedParticipants ?? currentMetadata?.connectedParticipants),
     sessionRecord: normalizeSessionRecord(payload.sessionRecord ?? currentMetadata?.sessionRecord),
@@ -552,6 +825,11 @@ function buildMeetingMetadata(payload: Partial<MeetingPayload>, currentRow?: Mee
 
   return {
     ...baseMetadata,
+    insights: syncMeetingInsightsState({
+      currentState: baseMetadata.insights,
+      cosShouldExtract: baseMetadata.cosShouldExtract,
+      transcriptText: baseMetadata.transcriptText,
+    }),
     analysisSections: ensureAnalysisSections({
       title: payload.title?.trim() || currentRow?.title || "Reuniao",
       metadata: baseMetadata,
@@ -594,6 +872,8 @@ function hydrateMeeting(meeting: MeetingRow) {
     timeline: metadata.timeline.sort((a, b) => (b.occurredAt ?? "").localeCompare(a.occurredAt ?? "")),
     history: metadata.history.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     transcriptionState: metadata.transcriptionState,
+    transcriptionTextAvailable: Boolean(metadata.transcriptText.trim()),
+    insights: metadata.insights,
     joinRequests: metadata.joinRequests.sort((a, b) => b.requestedAt.localeCompare(a.requestedAt)),
     connectedParticipants: metadata.connectedParticipants.sort((a, b) => b.connectedAt.localeCompare(a.connectedAt)),
     sessionRecord: metadata.sessionRecord,
@@ -677,6 +957,126 @@ function buildMeetingTranscriptUpdate(metadata: MeetingMetadata, history?: Meeti
   }
 }
 
+function buildMeetingInsightsPrompt({
+  title,
+  description,
+  participants,
+  transcriptText,
+}: {
+  title: string
+  description: string
+  participants: string[]
+  transcriptText: string
+}) {
+  return [
+    "Analise a transcricao de uma reuniao do COS Meet e gere somente JSON valido.",
+    "Nao use markdown.",
+    "Campos obrigatorios: executiveSummary, mainTopics, decisions, tasks, responsibles, risks, openQuestions, nextSteps.",
+    "tasks deve ser um array de objetos com text, responsible e deadline.",
+    "responsibles deve ser um array de objetos com name, context e deadline.",
+    "Quando nao houver um responsavel ou prazo claro, retorne null nesses campos.",
+    `Titulo da reuniao: ${title}`,
+    description ? `Descricao: ${description}` : "",
+    participants.length > 0 ? `Participantes informados: ${participants.join(", ")}` : "",
+    `Transcricao:\n${transcriptText.slice(0, meetTranscriptPromptLimit)}`,
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
+async function extractMeetingInsightsWithOpenAi({
+  title,
+  description,
+  participants,
+  transcriptText,
+}: {
+  title: string
+  description: string
+  participants: string[]
+  transcriptText: string
+}) {
+  if (!process.env.OPENAI_API_KEY) {
+    return { error: "OPENAI_API_KEY nao configurada. O COS Meet nao consegue extrair os insights agora." }
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), meetInsightsTimeoutMs)
+
+  try {
+    const response = await fetch(OPENAI_RESPONSES_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: meetInsightsModel,
+        input: [
+          {
+            role: "system",
+            content: [
+              {
+                type: "input_text",
+                text: "Voce trabalha no COS Meet. Responda somente JSON valido, sem markdown e sem texto adicional.",
+              },
+            ],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: buildMeetingInsightsPrompt({
+                  title,
+                  description,
+                  participants,
+                  transcriptText,
+                }),
+              },
+            ],
+          },
+        ],
+      }),
+    })
+
+    const payload = (await response.json()) as Record<string, unknown>
+
+    if (!response.ok) {
+      const providerMessage =
+        typeof payload.error === "object" &&
+        payload.error &&
+        typeof (payload.error as Record<string, unknown>).message === "string"
+          ? ((payload.error as Record<string, unknown>).message as string)
+          : `OpenAI request failed with status ${response.status}.`
+
+      return { error: `Nao foi possivel concluir a extracao dos insights. ${providerMessage}` }
+    }
+
+    const outputText = tryReadOutputText(payload)
+    if (!outputText) {
+      return { error: "A OpenAI nao retornou um conteudo valido para os insights da reuniao." }
+    }
+
+    const parsed = parseJsonObject<MeetingInsightsResult>(outputText)
+    const normalized = normalizeMeetingInsightsResult(parsed)
+
+    if (!normalized) {
+      return { error: "A OpenAI retornou um formato invalido para os insights da reuniao." }
+    }
+
+    return { result: normalized }
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return { error: "A extracao dos insights demorou demais. Tente novamente." }
+    }
+
+    return { error: error instanceof Error ? error.message : "Falha desconhecida ao extrair os insights da reuniao." }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export async function getMeetingsAction() {
   const actor = await getMeetingActor()
 
@@ -719,6 +1119,214 @@ export async function getMeetingByIdAction({ meetingId }: { meetingId: string })
     success: true,
     meeting: hydrateMeeting(resolved.meeting),
     canManage: actor.canManage || actor.isMaster,
+  }
+}
+
+export async function processMeetingInsightsAction({
+  meetingId,
+  force = false,
+}: {
+  meetingId: string
+  force?: boolean
+}) {
+  const actor = await getMeetingActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  if (!actor.canManage && !actor.isMaster) {
+    return { error: "Apenas owner, admin ou master podem processar os insights da reuniao." }
+  }
+
+  const resolved = await resolveMeetingForActor(actor, meetingId)
+  if ("error" in resolved) {
+    return { error: resolved.error }
+  }
+
+  const hydratedMeeting = hydrateMeeting(resolved.meeting)
+  const currentMetadata = buildMeetingMetadata({}, resolved.meeting)
+  const transcriptText = currentMetadata.transcriptText.trim()
+  const transcriptHash = transcriptText ? createHash("sha256").update(transcriptText).digest("hex") : null
+  const currentInsights = currentMetadata.insights
+
+  if (!hydratedMeeting.cosShouldExtract) {
+    return { error: "A extracao de informacoes importantes esta desativada nas preferencias desta reuniao." }
+  }
+
+  if (!transcriptText) {
+    return { error: "A extracao depende de uma transcricao disponivel para esta reuniao." }
+  }
+
+  if (currentInsights.status === "processing") {
+    return { error: "Os insights desta reuniao ja estao em processamento." }
+  }
+
+  if (!force && currentInsights.status === "completed" && currentInsights.result && currentInsights.transcriptHash === transcriptHash) {
+    return {
+      success: true,
+      reused: true,
+      meeting: hydratedMeeting,
+    }
+  }
+
+  const processingAt = new Date().toISOString()
+  const processingMetadata = buildMeetingMetadata(
+    {
+      title: hydratedMeeting.title,
+      scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+      participants: hydratedMeeting.participants,
+      meetingType: hydratedMeeting.meetingType,
+      meetingLink: hydratedMeeting.meetingLink,
+      meetingLocation: hydratedMeeting.meetingLocation,
+      description: hydratedMeeting.description,
+      cosShouldAttend: hydratedMeeting.cosShouldAttend,
+      cosShouldRecord: hydratedMeeting.cosShouldRecord,
+      cosShouldExtract: hydratedMeeting.cosShouldExtract,
+      cosShouldReport: hydratedMeeting.cosShouldReport,
+      analysisSections: hydratedMeeting.analysisSections,
+      attachments: hydratedMeeting.attachments,
+      timeline: hydratedMeeting.timeline,
+      transcriptionState: hydratedMeeting.transcriptionState,
+      joinRequests: hydratedMeeting.joinRequests,
+      connectedParticipants: hydratedMeeting.connectedParticipants,
+      sessionRecord: hydratedMeeting.sessionRecord,
+      transcriptText,
+      insights: {
+        ...currentInsights,
+        status: "processing",
+        error: null,
+        transcriptHash,
+      },
+    },
+    resolved.meeting,
+  )
+
+  const processingHistory = [
+    ...processingMetadata.history,
+    createHistoryEntry("meeting_insights_processing", "Extracao de informacoes importantes iniciada.", processingAt),
+  ]
+
+  const { error: processingError } = await actor.adminClient
+    .from("meetings")
+    .update(buildMeetingTranscriptUpdate(processingMetadata, processingHistory))
+    .eq("id", meetingId)
+
+  if (processingError) {
+    return { error: processingError.message }
+  }
+
+  const insightsResult = await extractMeetingInsightsWithOpenAi({
+    title: hydratedMeeting.title,
+    description: hydratedMeeting.description,
+    participants: hydratedMeeting.participants,
+    transcriptText,
+  })
+
+  if ("error" in insightsResult) {
+    const failedAt = new Date().toISOString()
+    const failedMetadata = buildMeetingMetadata(
+      {
+        title: hydratedMeeting.title,
+        scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+        participants: hydratedMeeting.participants,
+        meetingType: hydratedMeeting.meetingType,
+        meetingLink: hydratedMeeting.meetingLink,
+        meetingLocation: hydratedMeeting.meetingLocation,
+        description: hydratedMeeting.description,
+        cosShouldAttend: hydratedMeeting.cosShouldAttend,
+        cosShouldRecord: hydratedMeeting.cosShouldRecord,
+        cosShouldExtract: hydratedMeeting.cosShouldExtract,
+        cosShouldReport: hydratedMeeting.cosShouldReport,
+        analysisSections: hydratedMeeting.analysisSections,
+        attachments: hydratedMeeting.attachments,
+        timeline: hydratedMeeting.timeline,
+        transcriptionState: hydratedMeeting.transcriptionState,
+        joinRequests: hydratedMeeting.joinRequests,
+        connectedParticipants: hydratedMeeting.connectedParticipants,
+        sessionRecord: hydratedMeeting.sessionRecord,
+        transcriptText,
+        insights: {
+          ...currentInsights,
+          status: "failed",
+          processedAt: null,
+          error: insightsResult.error ?? "Nao foi possivel concluir a extracao dos insights desta reuniao.",
+          transcriptHash,
+          result: null,
+        },
+      },
+      resolved.meeting,
+    )
+
+    const failedHistory = [
+      ...failedMetadata.history,
+      createHistoryEntry("meeting_insights_failed", "A extracao de informacoes importantes falhou.", failedAt),
+    ]
+
+    await actor.adminClient
+      .from("meetings")
+      .update(buildMeetingTranscriptUpdate(failedMetadata, failedHistory))
+      .eq("id", meetingId)
+
+    return { error: insightsResult.error }
+  }
+
+  const completedAt = new Date().toISOString()
+  const completedMetadata = buildMeetingMetadata(
+    {
+      title: hydratedMeeting.title,
+      scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+      participants: hydratedMeeting.participants,
+      meetingType: hydratedMeeting.meetingType,
+      meetingLink: hydratedMeeting.meetingLink,
+      meetingLocation: hydratedMeeting.meetingLocation,
+      description: hydratedMeeting.description,
+      cosShouldAttend: hydratedMeeting.cosShouldAttend,
+      cosShouldRecord: hydratedMeeting.cosShouldRecord,
+      cosShouldExtract: hydratedMeeting.cosShouldExtract,
+      cosShouldReport: hydratedMeeting.cosShouldReport,
+      analysisSections: hydratedMeeting.analysisSections,
+      attachments: hydratedMeeting.attachments,
+      timeline: hydratedMeeting.timeline,
+      transcriptionState: hydratedMeeting.transcriptionState,
+      joinRequests: hydratedMeeting.joinRequests,
+      connectedParticipants: hydratedMeeting.connectedParticipants,
+      sessionRecord: hydratedMeeting.sessionRecord,
+      transcriptText,
+      insights: {
+        status: "completed",
+        processedAt: completedAt,
+        error: null,
+        transcriptHash,
+        result: insightsResult.result,
+      },
+    },
+    resolved.meeting,
+  )
+
+  const completedHistory = [
+    ...completedMetadata.history,
+    createHistoryEntry("meeting_insights_completed", "Insights da reuniao processados com sucesso.", completedAt),
+  ]
+
+  const { error: completedError } = await actor.adminClient
+    .from("meetings")
+    .update(buildMeetingTranscriptUpdate(completedMetadata, completedHistory))
+    .eq("id", meetingId)
+
+  if (completedError) {
+    return { error: completedError.message }
+  }
+
+  const refreshed = await resolveMeetingForActor(actor, meetingId)
+  if ("error" in refreshed) {
+    return { error: refreshed.error }
+  }
+
+  return {
+    success: true,
+    reused: false,
+    meeting: hydrateMeeting(refreshed.meeting),
   }
 }
 

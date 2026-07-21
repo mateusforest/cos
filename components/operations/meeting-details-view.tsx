@@ -21,6 +21,7 @@ import {
 import {
   decidePublicMeetingEntryAction,
   getMeetingByIdAction,
+  processMeetingInsightsAction,
   updateMeetingAction,
   type MeetingAnalysisItem,
   type MeetingAnalysisSectionKey,
@@ -34,6 +35,8 @@ import {
   type MeetingTimelineEvent,
   type MeetingTranscriptionState,
   type MeetingType,
+  type MeetingInsightsState,
+  type MeetingInsightsResult,
 } from "@/actions/meetings"
 import { useAuth } from "@/components/auth/auth-provider"
 import { COSLoading } from "@/components/cos/cos-loading"
@@ -63,6 +66,8 @@ type MeetingRecord = {
   timeline: MeetingTimelineEvent[]
   history: MeetingHistoryEntry[]
   transcriptionState: MeetingTranscriptionState
+  transcriptionTextAvailable: boolean
+  insights: MeetingInsightsState
   joinRequests: MeetingJoinRequest[]
   connectedParticipants: ConnectedMeetingParticipant[]
 }
@@ -176,6 +181,59 @@ function formatConnectedDuration(value: string) {
   return `${minutes}min`
 }
 
+function renderInsightsList(items: string[]) {
+  if (items.length === 0) {
+    return <p className="text-sm text-gray-500">Nenhum item identificado nesta secao.</p>
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <div key={item} className="rounded-2xl border border-white bg-white p-3 text-sm text-gray-700">
+          {item}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function renderInsightsTasks(tasks: MeetingInsightsResult["tasks"]) {
+  if (tasks.length === 0) {
+    return <p className="text-sm text-gray-500">Nenhuma tarefa identificada nesta extracao.</p>
+  }
+
+  return (
+    <div className="space-y-2">
+      {tasks.map((task) => (
+        <div key={task.id} className="rounded-2xl border border-white bg-white p-3 text-sm text-gray-700">
+          <p className="font-medium text-[#0a0a0a]">{task.text}</p>
+          <p className="mt-1 text-xs text-gray-500">
+            Responsavel: {task.responsible || "Nao identificado"} | Prazo: {task.deadline || "Nao identificado"}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function renderInsightsResponsibles(items: MeetingInsightsResult["responsibles"]) {
+  if (items.length === 0) {
+    return <p className="text-sm text-gray-500">Nenhum responsavel identificado nesta extracao.</p>
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <div key={item.id} className="rounded-2xl border border-white bg-white p-3 text-sm text-gray-700">
+          <p className="font-medium text-[#0a0a0a]">{item.name}</p>
+          <p className="mt-1 text-sm text-gray-600">{item.context || "Sem contexto adicional."}</p>
+          <p className="mt-1 text-xs text-gray-500">Prazo: {item.deadline || "Nao identificado"}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function MeetingDetailsView({
   meetingId,
   variant,
@@ -191,6 +249,7 @@ export function MeetingDetailsView({
   const [isSaving, setIsSaving] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [isAnalysisSaving, setIsAnalysisSaving] = useState(false)
+  const [isInsightsProcessing, setIsInsightsProcessing] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [analysisOpen, setAnalysisOpen] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
@@ -222,6 +281,7 @@ export function MeetingDetailsView({
     () => (meeting?.connectedParticipants ?? []).slice().sort((a, b) => b.connectedAt.localeCompare(a.connectedAt)),
     [meeting?.connectedParticipants],
   )
+  const insightsState = meeting?.insights ?? null
 
   const loadMeeting = async (options?: { openAnalysis?: boolean; silent?: boolean }) => {
     if (!options?.silent) {
@@ -557,6 +617,34 @@ export function MeetingDetailsView({
     await loadMeeting({ openAnalysis: analysisOpen })
   }
 
+  const processInsights = async (force = false) => {
+    if (!meeting) return
+
+    setIsInsightsProcessing(true)
+    setError(null)
+    setFeedback(null)
+
+    const result = await processMeetingInsightsAction({
+      meetingId: meeting.id,
+      force,
+    })
+
+    setIsInsightsProcessing(false)
+
+    if (result.error) {
+      setError(result.error)
+      await loadMeeting({ openAnalysis: analysisOpen })
+      return
+    }
+
+    setFeedback(
+      result.reused
+        ? "Os insights desta reuniao ja estavam concluidos para a transcricao atual."
+        : "Insights da reuniao processados com sucesso.",
+    )
+    await loadMeeting({ openAnalysis: analysisOpen })
+  }
+
   if (isLoading) {
     return (
       <div className="py-6">
@@ -619,7 +707,11 @@ export function MeetingDetailsView({
             label={meeting.meetingType === "video" ? "Link publico da sala" : "Local"}
             value={meeting.meetingType === "video" ? meeting.publicRoomLink || "Nenhum link publico gerado ainda." : meeting.meetingLocation || "Nenhum local informado ainda."}
           />
-          <InfoRow icon={Video} label="Transcricao em tempo real" value={meeting.transcriptionState.note} />
+          <InfoRow
+            icon={Video}
+            label="Transcricao"
+            value={meeting.transcriptionTextAvailable ? "Transcricao disponivel para extracao de insights." : meeting.transcriptionState.note}
+          />
         </div>
 
         <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
@@ -629,6 +721,106 @@ export function MeetingDetailsView({
             <PreferenceItem label="Gravar reuniao" enabled={meeting.cosShouldRecord} />
             <PreferenceItem label="Extrair informacoes importantes" enabled={meeting.cosShouldExtract} />
             <PreferenceItem label="Gerar relatorio automatico" enabled={meeting.cosShouldReport} />
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-100 bg-white p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-[#0a0a0a]">Insights</h2>
+              <p className="text-sm text-gray-500">
+                A extracao usa OpenAI no servidor somente quando existe uma transcricao real associada a esta reuniao.
+              </p>
+            </div>
+
+            {canManageWorkspace && meeting.status === "finished" && meeting.cosShouldExtract && (
+              <button
+                onClick={() => void processInsights(insightsState?.status === "completed")}
+                disabled={
+                  isInsightsProcessing ||
+                  insightsState?.status === "processing" ||
+                  insightsState?.status === "awaiting_transcription"
+                }
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isInsightsProcessing || insightsState?.status === "processing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                {insightsState?.status === "completed" ? "Extrair novamente" : "Processar insights"}
+              </button>
+            )}
+          </div>
+
+          <div className="mt-4 space-y-4">
+            {!meeting.cosShouldExtract ? (
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+                A extracao de informacoes importantes esta desativada nas preferencias desta reuniao.
+              </div>
+            ) : meeting.status !== "finished" ? (
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+                Os insights ficam disponiveis para processamento depois que a reuniao for finalizada.
+              </div>
+            ) : insightsState?.status === "awaiting_transcription" ? (
+              <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800">
+                A extracao depende de uma transcricao disponivel. Esta reuniao ainda nao possui texto de transcricao associado.
+              </div>
+            ) : insightsState?.status === "ready" ? (
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
+                Transcricao disponivel. A reuniao esta pronta para extrair os insights.
+              </div>
+            ) : insightsState?.status === "processing" ? (
+              <COSLoading
+                title="Processando insights"
+                description="Estamos analisando a transcricao da reuniao para estruturar os pontos mais importantes."
+                currentStep="Extraindo informacoes"
+              />
+            ) : insightsState?.status === "failed" ? (
+              <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+                {insightsState.error || "Nao foi possivel concluir a extracao dos insights desta reuniao."}
+              </div>
+            ) : insightsState?.status === "completed" && insightsState.result ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-[#0a0a0a]">Resumo</h3>
+                    <span className="text-xs text-gray-500">
+                      Processado em {formatDateTimeLabel(insightsState.processedAt)}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm text-gray-700">{insightsState.result.executiveSummary}</p>
+                </div>
+
+                <InsightSection title="Assuntos principais">
+                  {renderInsightsList(insightsState.result.mainTopics)}
+                </InsightSection>
+
+                <InsightSection title="Decisoes">
+                  {renderInsightsList(insightsState.result.decisions)}
+                </InsightSection>
+
+                <InsightSection title="Tarefas">
+                  {renderInsightsTasks(insightsState.result.tasks)}
+                </InsightSection>
+
+                <InsightSection title="Responsaveis e prazos">
+                  {renderInsightsResponsibles(insightsState.result.responsibles)}
+                </InsightSection>
+
+                <InsightSection title="Riscos">
+                  {renderInsightsList(insightsState.result.risks)}
+                </InsightSection>
+
+                <InsightSection title="Perguntas em aberto">
+                  {renderInsightsList(insightsState.result.openQuestions)}
+                </InsightSection>
+
+                <InsightSection title="Proximos passos">
+                  {renderInsightsList(insightsState.result.nextSteps)}
+                </InsightSection>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+                Nenhum insight processado ainda para esta reuniao.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1113,6 +1305,21 @@ function PreferenceItem({ label, enabled }: { label: string; enabled: boolean })
   return (
     <div>
       {label}: <strong>{enabled ? "Sim" : "Nao"}</strong>
+    </div>
+  )
+}
+
+function InsightSection({
+  title,
+  children,
+}: {
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+      <h3 className="mb-3 text-sm font-semibold text-[#0a0a0a]">{title}</h3>
+      {children}
     </div>
   )
 }
