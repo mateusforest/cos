@@ -1,5 +1,6 @@
 "use server"
 
+import { logAiUsage } from "@/lib/cos-engine/ai-usage"
 import { createSupabaseAdminClient } from "@/lib/supabase/server"
 import { validateOperationsActor } from "@/lib/cos-engine/operations-actor"
 import { formatOperationsConversationTime } from "@/lib/cos-engine/operations-conversations"
@@ -66,12 +67,175 @@ type StudioPersistedResult = StudioResult & {
   imageDataUrl?: never
 }
 
+type StudioImageChatFormat = "square" | "portrait" | "story" | "landscape"
+
+type StudioImageMessageMetadata = {
+  type: "image"
+  status: "preparing" | "generating" | "completed" | "failed"
+  prompt: string
+  format: StudioImageChatFormat
+  formatLabel: string
+  purpose: string
+  textOverlay: string
+  filePath: string | null
+  fileName: string | null
+  mimeType: string | null
+  generatedAt: string | null
+  error: string | null
+}
+
 function buildStudioConversationArea(section: StudioSection) {
   return `marketing/${section}`
 }
 
 function isStudioRootConversationArea(area: string | null | undefined) {
   return (area || "").trim() === studioConversationArea
+}
+
+function getStudioImageFormatConfig(format: StudioImageChatFormat) {
+  if (format === "portrait") {
+    return {
+      key: "portrait" as const,
+      label: "Vertical 4:5",
+      providerSize: "1024x1536" as const,
+    }
+  }
+
+  if (format === "story") {
+    return {
+      key: "portrait" as const,
+      label: "Stories 9:16",
+      providerSize: "1024x1536" as const,
+    }
+  }
+
+  if (format === "landscape") {
+    return {
+      key: "landscape" as const,
+      label: "Horizontal 16:9",
+      providerSize: "1536x1024" as const,
+    }
+  }
+
+  return {
+    key: "square" as const,
+    label: "Quadrado 1:1",
+    providerSize: "1024x1024" as const,
+  }
+}
+
+function normalizeStudioImageFormatFromText(value: string): StudioImageChatFormat {
+  const normalized = value.toLowerCase()
+
+  if (/\b(story|stories|reels|9:16)\b/.test(normalized)) {
+    return "story" as const
+  }
+
+  if (/\b(vertical|verticalmente|4:5|feed|instagram)\b/.test(normalized)) {
+    return "portrait" as const
+  }
+
+  if (/\b(horizontal|16:9|banner|youtube|landscape)\b/.test(normalized)) {
+    return "landscape" as const
+  }
+
+  return "square" as const
+}
+
+function extractStudioImageTextOverlay(message: string) {
+  const quoted = message.match(/["“](.+?)["”]/)
+  if (quoted?.[1]?.trim()) {
+    return quoted[1].trim().slice(0, 120)
+  }
+
+  const explicit = message.match(/texto(?: que deve aparecer| na imagem)?[: ]+(.+)$/i)
+  return explicit?.[1]?.trim().slice(0, 120) || ""
+}
+
+function inferStudioImagePurpose(message: string) {
+  const normalized = message.toLowerCase()
+  if (/\b(anuncio|ads?|campanha)\b/.test(normalized)) return "campanha"
+  if (/\b(story|stories|reels|instagram|post)\b/.test(normalized)) return "redes sociais"
+  if (/\b(site|landing page|pagina)\b/.test(normalized)) return "site"
+  if (/\b(apresentacao|slide)\b/.test(normalized)) return "apresentacao"
+  return "marketing"
+}
+
+function stripImageRequestLead(message: string) {
+  return message
+    .replace(/^(por favor[, ]*)?/i, "")
+    .replace(/^(crie|gere|faça|faca|monte|produza)\s+(uma|um)\s+(imagem|arte|ilustracao|ilustração|foto)\s*/i, "")
+    .replace(/^(preciso de|quero)\s+(uma|um)\s+(imagem|arte|ilustracao|ilustração|foto)\s*/i, "")
+    .trim()
+}
+
+function parseStudioImageRequest(message: string):
+  | { ask: string }
+  | {
+      prompt: string
+      format: StudioImageChatFormat
+      purpose: string
+      textOverlay: string
+    } {
+  const normalized = message.trim()
+  if (!normalized) {
+    return { ask: "Descreva a imagem que voce deseja criar e o formato desejado: quadrado, vertical, stories ou horizontal." }
+  }
+
+  const descriptionCandidate = stripImageRequestLead(normalized)
+  const format = normalizeStudioImageFormatFromText(normalized)
+  const purpose = inferStudioImagePurpose(normalized)
+  const textOverlay = extractStudioImageTextOverlay(normalized)
+
+  const hasMeaningfulDescription =
+    descriptionCandidate.length >= 12 &&
+    !/^(para|com|sem|em|de|da|do|no|na)\b/i.test(descriptionCandidate)
+
+  if (!hasMeaningfulDescription) {
+    return {
+      ask:
+        "Posso gerar. Me diga em uma frase o que precisa aparecer na imagem e o formato desejado: quadrado, vertical, stories ou horizontal.",
+    }
+  }
+
+  return {
+    prompt: descriptionCandidate,
+    format,
+    purpose,
+    textOverlay,
+  }
+}
+
+function buildStudioImagePrompt({
+  prompt,
+  format,
+  purpose,
+  textOverlay,
+}: {
+  prompt: string
+  format: StudioImageChatFormat
+  purpose: string
+  textOverlay: string
+}) {
+  const formatConfig = getStudioImageFormatConfig(format)
+  return [
+    `Crie uma imagem para ${purpose}.`,
+    `Descricao principal: ${prompt}`,
+    `Formato solicitado: ${formatConfig.label}`,
+    textOverlay ? `Texto que deve aparecer: ${textOverlay}` : "",
+    "Entregue uma composicao limpa, legivel e coerente com o pedido.",
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
+function buildStudioImageMetadata(input: StudioImageMessageMetadata) {
+  return {
+    engine: "studio",
+    conversation_area: studioConversationArea,
+    studio_mode: "conversation",
+    studio_image: input,
+  }
 }
 
 function ensureStudioSection(section: string): StudioSection | null {
@@ -676,11 +840,10 @@ async function maybeStoreGeneratedAsset({
       return { error: uploadError.message }
     }
 
-    const { data } = storage.getPublicUrl(filePath)
-
     return {
-      publicUrl: data.publicUrl,
       filePath,
+      fileName: safeFileName,
+      mimeType: contentType,
     }
   } catch {
     return { error: "Storage de documentos ainda nao configurado." }
@@ -829,19 +992,15 @@ async function generateOpenAiImage({
       fileName,
     })
 
-    if ("publicUrl" in stored) {
-      return {
-        imageUrl: stored.publicUrl,
-        fileName,
-        persistence: "stored" as const,
-      }
+    if ("error" in stored) {
+      return { error: stored.error }
     }
 
     return {
-      imageUrl: null,
-      imageDataUrl: `data:image/png;base64,${b64}`,
-      fileName,
-      persistence: "ephemeral" as const,
+      filePath: stored.filePath,
+      fileName: stored.fileName,
+      mimeType: stored.mimeType,
+      persistence: "stored" as const,
     }
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
@@ -1072,11 +1231,84 @@ function buildStudioMetadata({
   }
 }
 
-function mapStudioChatMessage(row: StudioMessageRow) {
+async function createStudioDocumentSignedUrl({
+  actor,
+  filePath,
+  download,
+  fileName,
+}: {
+  actor: Exclude<StudioActor, { error: string }>
+  filePath: string
+  download?: boolean
+  fileName?: string | null
+}) {
+  const options = download && fileName ? { download: fileName } : undefined
+  const { data, error } = await actor.adminClient.storage.from("documents").createSignedUrl(filePath, 600, options)
+
+  if (error || !data?.signedUrl) {
+    return { error: error?.message ?? "Nao foi possivel gerar o acesso temporario da imagem." }
+  }
+
+  return {
+    url: data.signedUrl,
+    expiresInSeconds: 600,
+  }
+}
+
+async function mapStudioChatMessage({
+  actor,
+  row,
+}: {
+  actor: Exclude<StudioActor, { error: string }>
+  row: StudioMessageRow
+}) {
   const role = row.role === "assistant" ? "cos" : row.role === "user" ? "user" : null
 
   if (!role || !row.content) {
     return null
+  }
+
+  const metadata = row.metadata ?? {}
+  const studioImage =
+    metadata && typeof metadata === "object" && "studio_image" in metadata && metadata.studio_image && typeof metadata.studio_image === "object"
+      ? (metadata.studio_image as Record<string, unknown>)
+      : null
+
+  let imageUrl: string | undefined
+  let imageAlt: string | undefined
+  let imageStatus: string | undefined
+  let imagePrompt: string | undefined
+
+  if (studioImage) {
+    const filePath = typeof studioImage.filePath === "string" ? studioImage.filePath : ""
+    const fileName = typeof studioImage.fileName === "string" ? studioImage.fileName : null
+    const status = typeof studioImage.status === "string" ? studioImage.status : ""
+    const prompt = typeof studioImage.prompt === "string" ? studioImage.prompt : ""
+
+    if (filePath && status === "completed") {
+      const signedUrl = await createStudioDocumentSignedUrl({
+        actor,
+        filePath,
+        fileName,
+      })
+
+      if ("url" in signedUrl) {
+        imageUrl = signedUrl.url
+      }
+    }
+
+    imageAlt = prompt || "Imagem gerada pelo Studio"
+    imagePrompt = prompt || undefined
+    imageStatus =
+      status === "preparing"
+        ? "Preparando imagem"
+        : status === "generating"
+          ? "Gerando imagem"
+          : status === "completed"
+            ? "Imagem concluida"
+            : status === "failed"
+              ? "Falha na geracao"
+              : undefined
   }
 
   return {
@@ -1084,6 +1316,10 @@ function mapStudioChatMessage(row: StudioMessageRow) {
     from: role,
     text: row.content,
     time: formatOperationsConversationTime(row.created_at),
+    imageUrl,
+    imageAlt,
+    imageStatus,
+    imagePrompt,
   }
 }
 
@@ -1118,6 +1354,45 @@ async function getRecentStudioConversationRows({
 
   return {
     rows: [...(query.data ?? [])].reverse(),
+  }
+}
+
+function readStudioImageMetadata(row: StudioMessageRow) {
+  const metadata = row.metadata ?? {}
+  if (!metadata || typeof metadata !== "object") {
+    return null
+  }
+
+  const studioImage =
+    "studio_image" in metadata && metadata.studio_image && typeof metadata.studio_image === "object"
+      ? (metadata.studio_image as Record<string, unknown>)
+      : null
+
+  if (!studioImage) {
+    return null
+  }
+
+  const format =
+    studioImage.format === "portrait" ||
+    studioImage.format === "story" ||
+    studioImage.format === "landscape" ||
+    studioImage.format === "square"
+      ? studioImage.format
+      : null
+
+  if (!format) {
+    return null
+  }
+
+  return {
+    format: format as StudioImageChatFormat,
+    prompt: typeof studioImage.prompt === "string" ? studioImage.prompt : "",
+    purpose: typeof studioImage.purpose === "string" ? studioImage.purpose : "marketing",
+    textOverlay: typeof studioImage.textOverlay === "string" ? studioImage.textOverlay : "",
+    filePath: typeof studioImage.filePath === "string" ? studioImage.filePath : null,
+    fileName: typeof studioImage.fileName === "string" ? studioImage.fileName : null,
+    mimeType: typeof studioImage.mimeType === "string" ? studioImage.mimeType : null,
+    status: typeof studioImage.status === "string" ? studioImage.status : "failed",
   }
 }
 
@@ -1166,14 +1441,32 @@ export async function getStudioConversationMessagesAction(input?: { conversation
     return { error: messages.error }
   }
 
+  const mappedMessages = (
+    await Promise.all(
+      messages.rows.map((row) =>
+        mapStudioChatMessage({
+          actor,
+          row,
+        }),
+      ),
+    )
+  ).filter((message) => Boolean(message)) as Array<{
+    id: string
+    from: "cos" | "user"
+    text: string
+    time: string
+    imageUrl?: string
+    imageAlt?: string
+    imageStatus?: string
+    imagePrompt?: string
+  }>
+
   return {
     success: true as const,
     conversationId: found.conversation.id,
     conversationArea: found.conversation.area,
     title: found.conversation.title?.trim() || studioDefaultConversationTitle,
-    messages: messages.rows
-      .map(mapStudioChatMessage)
-      .filter((message): message is { id: string; from: "cos" | "user"; text: string; time: string } => Boolean(message)),
+    messages: mappedMessages,
   }
 }
 
@@ -1218,7 +1511,12 @@ export async function getStudioConversationsAction() {
       }
 
       const lastRow = recent.rows[0] ?? null
-      const lastMessage = lastRow ? mapStudioChatMessage(lastRow) : null
+      const lastMessage = lastRow
+        ? await mapStudioChatMessage({
+            actor,
+            row: lastRow,
+          })
+        : null
 
       return {
         id: conversation.id,
@@ -1352,6 +1650,252 @@ export async function duplicateStudioConversationAction(input: { conversationId:
   }
 }
 
+export async function getStudioImageSignedUrlAction({
+  conversationId,
+  messageId,
+  download = false,
+}: {
+  conversationId: string
+  messageId: string
+  download?: boolean
+}) {
+  const actor = await getStudioActor()
+
+  if (!isStudioActorReady(actor)) {
+    return { error: actor.error }
+  }
+
+  const found = await findStudioRootConversation({
+    actor,
+    conversationId,
+  })
+
+  if ("error" in found) {
+    return { error: found.error }
+  }
+
+  const messages = await getStudioMessages({
+    actor,
+    conversationId: found.conversation.id,
+  })
+
+  if ("error" in messages) {
+    return { error: messages.error }
+  }
+
+  const row = messages.rows.find((item) => item.id === messageId)
+  if (!row) {
+    return { error: "Nao foi possivel localizar esta imagem no historico do Studio." }
+  }
+
+  const image = readStudioImageMetadata(row)
+  if (!image?.filePath || image.status !== "completed") {
+    return { error: "Esta imagem ainda nao esta disponivel para acesso." }
+  }
+
+  const signed = await createStudioDocumentSignedUrl({
+    actor,
+    filePath: image.filePath,
+    download,
+    fileName: image.fileName,
+  })
+
+  if ("error" in signed) {
+    return { error: signed.error }
+  }
+
+  return {
+    success: true as const,
+    url: signed.url,
+    expiresInSeconds: signed.expiresInSeconds,
+  }
+}
+
+export async function createStudioImageVariationAction({
+  conversationId,
+  messageId,
+  instructions,
+  regenerate = false,
+}: {
+  conversationId: string
+  messageId: string
+  instructions?: string
+  regenerate?: boolean
+}) {
+  const actor = await getStudioActor()
+
+  if (!isStudioActorReady(actor)) {
+    return { error: actor.error }
+  }
+
+  const found = await findStudioRootConversation({
+    actor,
+    conversationId,
+  })
+
+  if ("error" in found) {
+    return { error: found.error }
+  }
+
+  const messages = await getStudioMessages({
+    actor,
+    conversationId: found.conversation.id,
+  })
+
+  if ("error" in messages) {
+    return { error: messages.error }
+  }
+
+  const baseRow = messages.rows.find((item) => item.id === messageId)
+  if (!baseRow) {
+    return { error: "Nao foi possivel localizar a imagem original desta variacao." }
+  }
+
+  const baseImage = readStudioImageMetadata(baseRow)
+  if (!baseImage?.prompt) {
+    return { error: "Nao foi possivel recuperar o contexto desta imagem." }
+  }
+
+  const extraInstructions = optionalSafeText(instructions || "", 600)
+  const format = regenerate ? baseImage.format : normalizeStudioImageFormatFromText(extraInstructions || baseImage.format)
+  const formatConfig = getStudioImageFormatConfig(format)
+  const prompt = regenerate
+    ? baseImage.prompt
+    : [baseImage.prompt, extraInstructions ? `Ajuste adicional: ${extraInstructions}` : ""].filter(Boolean).join("\n")
+
+  const userMessage = regenerate
+    ? "Gerar novamente esta imagem mantendo o conceito."
+    : `Criar variacao da imagem anterior.${extraInstructions ? ` ${extraInstructions}` : ""}`
+
+  const userSaved = await insertStudioMessage({
+    actor,
+    conversationId: found.conversation.id,
+    role: "user",
+    content: userMessage,
+    metadata: {
+      engine: "studio",
+      conversation_area: studioConversationArea,
+      studio_mode: "conversation",
+    },
+  })
+
+  if ("error" in userSaved) {
+    return { error: userSaved.error }
+  }
+
+  const generated = await generateOpenAiImage({
+    actor,
+    prompt,
+    size: formatConfig.providerSize,
+    fileName: `studio-${format}-${Date.now()}.png`,
+  })
+
+  if ("error" in generated) {
+    await logAiUsage({
+      adminClient: actor.adminClient,
+      workspaceId: actor.workspaceId,
+      userId: actor.userId,
+      feature: "studio_image_generation",
+      provider: "openai",
+      model: "gpt-image-1",
+      source: "studio_variation",
+      success: false,
+      errorMessage: generated.error,
+      metadata: {
+        conversationId: found.conversation.id,
+        conversationArea: studioConversationArea,
+        format,
+        regenerate,
+      },
+    })
+
+    const failedSaved = await insertStudioMessage({
+      actor,
+      conversationId: found.conversation.id,
+      role: "assistant",
+      content: "Nao foi possivel concluir esta nova versao da imagem agora.",
+      metadata: buildStudioImageMetadata({
+        type: "image",
+        status: "failed",
+        prompt,
+        format,
+        formatLabel: formatConfig.label,
+        purpose: baseImage.purpose,
+        textOverlay: baseImage.textOverlay,
+        filePath: null,
+        fileName: null,
+        mimeType: null,
+        generatedAt: new Date().toISOString(),
+        error: generated.error ?? "Nao foi possivel concluir esta nova versao da imagem agora.",
+      }),
+    })
+
+    if ("error" in failedSaved) {
+      return { error: failedSaved.error }
+    }
+
+    return {
+      success: true as const,
+      conversationId: found.conversation.id,
+      message: await mapStudioChatMessage({
+        actor,
+        row: failedSaved.message,
+      }),
+    }
+  }
+
+  await logAiUsage({
+    adminClient: actor.adminClient,
+    workspaceId: actor.workspaceId,
+    userId: actor.userId,
+    feature: "studio_image_generation",
+    provider: "openai",
+    model: "gpt-image-1",
+    source: "studio_variation",
+    success: true,
+    metadata: {
+      conversationId: found.conversation.id,
+      conversationArea: studioConversationArea,
+      format,
+      regenerate,
+    },
+  })
+
+  const assistantSaved = await insertStudioMessage({
+    actor,
+    conversationId: found.conversation.id,
+    role: "assistant",
+    content: regenerate ? "Imagem gerada novamente." : "Variacao da imagem pronta.",
+    metadata: buildStudioImageMetadata({
+      type: "image",
+      status: "completed",
+      prompt,
+      format,
+      formatLabel: formatConfig.label,
+      purpose: baseImage.purpose,
+      textOverlay: baseImage.textOverlay,
+      filePath: generated.filePath,
+      fileName: generated.fileName ?? null,
+      mimeType: generated.mimeType ?? null,
+      generatedAt: new Date().toISOString(),
+      error: null,
+    }),
+  })
+
+  if ("error" in assistantSaved) {
+    return { error: assistantSaved.error }
+  }
+
+  return {
+    success: true as const,
+    conversationId: found.conversation.id,
+    message: await mapStudioChatMessage({
+      actor,
+      row: assistantSaved.message,
+    }),
+  }
+}
+
 export async function runStudioConversationAction(input: {
   conversationId?: string
   message: string
@@ -1439,6 +1983,200 @@ export async function runStudioConversationAction(input: {
     }))
     .filter((row) => row.content.trim())
 
+  const lowerMessage = message.toLowerCase()
+  const isVideoRequest = /\b(video|videos|vídeo|vídeos)\b/.test(lowerMessage)
+  const isImageRequest = !isVideoRequest && /\b(imagem|imagens|image|foto|fotos|arte visual|arte)\b/.test(lowerMessage)
+
+  if (isVideoRequest) {
+    const assistantSaved = await insertStudioMessage({
+      actor,
+      conversationId: conversation.id,
+      role: "assistant",
+      content: "Status\nA geracao de videos sera disponibilizada nesta area em breve.",
+      metadata: {
+        engine: "studio",
+        conversation_area: studioConversationArea,
+        studio_mode: "conversation",
+        title: deriveStudioConversationTitle(message),
+      },
+    })
+
+    if ("error" in assistantSaved) {
+      return { error: assistantSaved.error }
+    }
+
+    return {
+      success: true as const,
+      conversationId: conversation.id,
+      conversationArea: studioConversationArea,
+      message: await mapStudioChatMessage({
+        actor,
+        row: assistantSaved.message,
+      }),
+    }
+  }
+
+  if (isImageRequest) {
+    const parsedImageRequest = parseStudioImageRequest(message)
+
+    if ("ask" in parsedImageRequest) {
+      const assistantSaved = await insertStudioMessage({
+        actor,
+        conversationId: conversation.id,
+        role: "assistant",
+        content: parsedImageRequest.ask,
+        metadata: {
+          engine: "studio",
+          conversation_area: studioConversationArea,
+          studio_mode: "conversation",
+          title: deriveStudioConversationTitle(message),
+        },
+      })
+
+      if ("error" in assistantSaved) {
+        return { error: assistantSaved.error }
+      }
+
+      return {
+        success: true as const,
+        conversationId: conversation.id,
+        conversationArea: studioConversationArea,
+        message: await mapStudioChatMessage({
+          actor,
+          row: assistantSaved.message,
+        }),
+      }
+    }
+
+    const imageFormat = getStudioImageFormatConfig(parsedImageRequest.format)
+    const imagePrompt = buildStudioImagePrompt({
+      prompt: parsedImageRequest.prompt,
+      format: parsedImageRequest.format,
+      purpose: parsedImageRequest.purpose,
+      textOverlay: parsedImageRequest.textOverlay,
+    })
+
+    const generated = await generateOpenAiImage({
+      actor,
+      prompt: imagePrompt,
+      size: imageFormat.providerSize,
+      fileName: `studio-${parsedImageRequest.format}-${Date.now()}.png`,
+    })
+
+    if ("error" in generated) {
+      await logAiUsage({
+        adminClient: actor.adminClient,
+        workspaceId: actor.workspaceId,
+        userId: actor.userId,
+        feature: "studio_image_generation",
+        provider: "openai",
+        model: "gpt-image-1",
+        source: "studio",
+        success: false,
+        errorMessage: generated.error,
+        metadata: {
+          conversationId: conversation.id,
+          conversationArea: studioConversationArea,
+          format: parsedImageRequest.format,
+          purpose: parsedImageRequest.purpose,
+        },
+      })
+
+      const failedSaved = await insertStudioMessage({
+        actor,
+        conversationId: conversation.id,
+        role: "assistant",
+        content: "Nao foi possivel concluir a geracao desta imagem agora.",
+        metadata: buildStudioImageMetadata({
+          type: "image",
+          status: "failed",
+          prompt: imagePrompt,
+          format: parsedImageRequest.format,
+          formatLabel: imageFormat.label,
+          purpose: parsedImageRequest.purpose,
+          textOverlay: parsedImageRequest.textOverlay,
+          filePath: null,
+          fileName: null,
+          mimeType: null,
+          generatedAt: new Date().toISOString(),
+          error: generated.error ?? "Nao foi possivel concluir a geracao desta imagem agora.",
+        }),
+      })
+
+      if ("error" in failedSaved) {
+        return { error: failedSaved.error }
+      }
+
+      return {
+        success: true as const,
+        conversationId: conversation.id,
+        conversationArea: studioConversationArea,
+        message: await mapStudioChatMessage({
+          actor,
+          row: failedSaved.message,
+        }),
+      }
+    }
+
+    await logAiUsage({
+      adminClient: actor.adminClient,
+      workspaceId: actor.workspaceId,
+      userId: actor.userId,
+      feature: "studio_image_generation",
+      provider: "openai",
+      model: "gpt-image-1",
+      source: "studio",
+      success: true,
+      metadata: {
+        conversationId: conversation.id,
+        conversationArea: studioConversationArea,
+        format: parsedImageRequest.format,
+        purpose: parsedImageRequest.purpose,
+      },
+    })
+
+    const assistantSaved = await insertStudioMessage({
+      actor,
+      conversationId: conversation.id,
+      role: "assistant",
+      content: [
+        "Imagem pronta",
+        "",
+        `Formato\n${imageFormat.label}`,
+        "",
+        `Finalidade\n${parsedImageRequest.purpose}`,
+      ].join("\n"),
+      metadata: buildStudioImageMetadata({
+        type: "image",
+        status: "completed",
+        prompt: imagePrompt,
+        format: parsedImageRequest.format,
+        formatLabel: imageFormat.label,
+        purpose: parsedImageRequest.purpose,
+        textOverlay: parsedImageRequest.textOverlay,
+        filePath: generated.filePath,
+        fileName: generated.fileName ?? null,
+        mimeType: generated.mimeType ?? null,
+        generatedAt: new Date().toISOString(),
+        error: null,
+      }),
+    })
+
+    if ("error" in assistantSaved) {
+      return { error: assistantSaved.error }
+    }
+
+    return {
+      success: true as const,
+      conversationId: conversation.id,
+      conversationArea: studioConversationArea,
+      message: await mapStudioChatMessage({
+        actor,
+        row: assistantSaved.message,
+      }),
+    }
+  }
+
   const response =
     isStudioMediaRequest(message)
       ? {
@@ -1478,12 +2216,10 @@ export async function runStudioConversationAction(input: {
     success: true as const,
     conversationId: conversation.id,
     conversationArea: studioConversationArea,
-    message: mapStudioChatMessage(assistantSaved.message) as {
-      id: string
-      from: "cos" | "user"
-      text: string
-      time: string
-    } | null,
+    message: await mapStudioChatMessage({
+      actor,
+      row: assistantSaved.message,
+    }),
   }
 }
 
@@ -1662,6 +2398,12 @@ export async function generateStudioCreativeAction(input: StudioCreativeInput) {
       return { error: imageResult.error }
     }
 
+    const creativeSignedUrl = await createStudioDocumentSignedUrl({
+      actor,
+      filePath: imageResult.filePath,
+      fileName: imageResult.fileName,
+    })
+
     const result: StudioCreativeResult = {
       type: "creative",
       headline: baseCreative.headline,
@@ -1669,8 +2411,7 @@ export async function generateStudioCreativeAction(input: StudioCreativeInput) {
       cta: baseCreative.cta,
       caption: baseCreative.caption,
       visualPrompt: baseCreative.visualPrompt,
-      imageUrl: imageResult.imageUrl ?? null,
-      imageDataUrl: "imageDataUrl" in imageResult ? imageResult.imageDataUrl : undefined,
+      imageUrl: "url" in creativeSignedUrl ? creativeSignedUrl.url ?? null : null,
       imageFileName: imageResult.fileName ?? null,
       selectedFormatLabel: format.label,
       requestedWidth: format.requestedWidth,
@@ -1766,11 +2507,16 @@ export async function generateStudioImageAction(input: StudioImageInput) {
       return { error: imageResult.error }
     }
 
+    const generatedImageSignedUrl = await createStudioDocumentSignedUrl({
+      actor,
+      filePath: imageResult.filePath,
+      fileName: imageResult.fileName,
+    })
+
     const result: StudioImageResult = {
       type: "image",
       revisedPrompt: buildImagePrompt(normalizedInput),
-      imageUrl: imageResult.imageUrl ?? null,
-      imageDataUrl: "imageDataUrl" in imageResult ? imageResult.imageDataUrl : undefined,
+      imageUrl: "url" in generatedImageSignedUrl ? generatedImageSignedUrl.url ?? null : null,
       imageFileName: imageResult.fileName ?? null,
       requestedFormatLabel: format.label,
       requestedWidth: format.requestedWidth,
@@ -1987,8 +2733,14 @@ export async function refreshStudioVideoAction({
         fileName,
       })
 
-      if ("publicUrl" in stored) {
-        persistedUrl = stored.publicUrl ?? null
+      if (!("error" in stored)) {
+        const signedVideoUrl = await createStudioDocumentSignedUrl({
+          actor,
+          filePath: stored.filePath,
+          fileName: stored.fileName,
+        })
+
+        persistedUrl = "url" in signedVideoUrl ? signedVideoUrl.url ?? outputUrl ?? null : outputUrl || null
         persistence = "stored"
       } else {
         persistedUrl = outputUrl || null

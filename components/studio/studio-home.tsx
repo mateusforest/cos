@@ -3,13 +3,15 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Copy, MessageSquare, Pencil, Plus, Sparkles, Trash2, CopyPlus } from "lucide-react"
+import { Copy, MessageSquare, Pencil, Plus, Sparkles, Trash2, CopyPlus, Download, RefreshCcw, WandSparkles } from "lucide-react"
 import {
   createStudioConversationAction,
+  createStudioImageVariationAction,
   deleteStudioConversationAction,
   duplicateStudioConversationAction,
   getStudioConversationMessagesAction,
   getStudioConversationsAction,
+  getStudioImageSignedUrlAction,
   renameStudioConversationAction,
   runStudioConversationAction,
 } from "@/actions/studio"
@@ -59,6 +61,7 @@ export function StudioHome() {
   const [isLoadingConversations, setIsLoadingConversations] = useState(true)
   const [activeTitle, setActiveTitle] = useState("Studio IA")
   const [prefilledInput, setPrefilledInput] = useState(draft)
+  const [pendingImageMessageId, setPendingImageMessageId] = useState<string | null>(null)
 
   const loadConversations = async (nextConversationId?: string | null) => {
     setIsLoadingConversations(true)
@@ -126,9 +129,11 @@ export function StudioHome() {
         return
       }
 
+      const nextMessages = ((result.messages ?? []).filter(Boolean) as ChatMessage[])
+
       setMessages(
-        result.messages && result.messages.length > 0
-          ? result.messages
+        nextMessages.length > 0
+          ? nextMessages
           : [
               {
                 id: "studio-welcome",
@@ -269,6 +274,73 @@ export function StudioHome() {
       title: "Conversa duplicada",
       description: "A copia foi criada no historico do Studio.",
     })
+  }
+
+  const handleDownloadImage = async (messageId: string) => {
+    if (!conversationId) return
+
+    const result = await getStudioImageSignedUrlAction({
+      conversationId,
+      messageId,
+      download: true,
+    })
+
+    if (result.error || !result.url) {
+      toast({
+        title: "Nao foi possivel baixar",
+        description: result.error || "A imagem ainda nao esta disponivel.",
+      })
+      return
+    }
+
+    window.open(result.url, "_blank", "noopener,noreferrer")
+  }
+
+  const handleImageVariation = async (messageId: string, regenerate = false) => {
+    if (!conversationId) return
+
+    const instructions = regenerate ? "" : window.prompt("Como voce quer ajustar a nova versao?", "mais clean")
+
+    if (!regenerate && instructions === null) {
+      return
+    }
+
+    setPendingImageMessageId(messageId)
+
+    const result = await createStudioImageVariationAction({
+      conversationId,
+      messageId,
+      instructions: instructions || "",
+      regenerate,
+    })
+
+    setPendingImageMessageId(null)
+
+    if (result.error || !result.message) {
+      toast({
+        title: regenerate ? "Nao foi possivel gerar novamente" : "Nao foi possivel criar a variacao",
+        description: result.error || "Tente novamente em instantes.",
+      })
+      return
+    }
+
+    const nextMessage = result.message
+
+    setMessages((current) => [
+      ...current,
+      {
+        id: nextMessage.id,
+        from: nextMessage.from as "cos" | "user",
+        text: nextMessage.text,
+        time: nextMessage.time,
+        imageUrl: nextMessage.imageUrl,
+        imageAlt: nextMessage.imageAlt,
+        imageStatus: nextMessage.imageStatus,
+        imagePrompt: nextMessage.imagePrompt,
+      },
+    ])
+
+    await loadConversations()
   }
 
   return (
@@ -438,6 +510,50 @@ export function StudioHome() {
                     <Copy className="h-3 w-3" />
                     Copiar
                   </button>
+                  {message.imagePrompt ? (
+                    <button
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(message.imagePrompt || "")
+                        toast({
+                          title: "Prompt copiado",
+                          description: "O prompt final da imagem foi copiado.",
+                        })
+                      }}
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                    >
+                      <Copy className="h-3 w-3" />
+                      Copiar prompt
+                    </button>
+                  ) : null}
+                  {message.imageUrl && message.id ? (
+                    <button
+                      onClick={() => void handleDownloadImage(message.id!)}
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                    >
+                      <Download className="h-3 w-3" />
+                      Baixar
+                    </button>
+                  ) : null}
+                  {message.imagePrompt && message.id ? (
+                    <button
+                      onClick={() => void handleImageVariation(message.id!, false)}
+                      disabled={pendingImageMessageId === message.id}
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <WandSparkles className="h-3 w-3" />
+                      Criar variacao
+                    </button>
+                  ) : null}
+                  {message.imagePrompt && message.id ? (
+                    <button
+                      onClick={() => void handleImageVariation(message.id!, true)}
+                      disabled={pendingImageMessageId === message.id}
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <RefreshCcw className="h-3 w-3" />
+                      Gerar novamente
+                    </button>
+                  ) : null}
                   <button
                     onClick={() => setPrefilledInput("Continue esta criacao considerando a ultima resposta.")}
                     className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
@@ -502,6 +618,10 @@ export function StudioHome() {
                     from: result.message.from as "cos" | "user",
                     text: result.message.text,
                     time: result.message.time || now,
+                    imageUrl: result.message.imageUrl,
+                    imageAlt: result.message.imageAlt,
+                    imageStatus: result.message.imageStatus,
+                    imagePrompt: result.message.imagePrompt,
                   },
                 ],
               }

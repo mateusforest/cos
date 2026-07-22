@@ -15,6 +15,10 @@ export type ChatMessage = {
   time: string
   ctaLabel?: string
   ctaHref?: string
+  imageUrl?: string
+  imageAlt?: string
+  imageStatus?: string
+  imagePrompt?: string
 }
 
 export type QuickAction = {
@@ -184,6 +188,12 @@ export function AreaChat({
                   </span>
                 )}
                 <p className="text-sm leading-snug">{m.text}</p>
+                {m.imageUrl ? (
+                  <div className="mt-2 overflow-hidden rounded-2xl border border-gray-100 bg-gray-50">
+                    <img src={m.imageUrl} alt={m.imageAlt || "Imagem gerada pelo Studio"} className="h-auto w-full object-cover" />
+                  </div>
+                ) : null}
+                {m.imageStatus ? <p className="mt-2 text-[11px] text-gray-400">{m.imageStatus}</p> : null}
                 {m.ctaLabel && m.ctaHref && (
                   <Link
                     href={m.ctaHref}
