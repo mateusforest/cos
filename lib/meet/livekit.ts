@@ -1,4 +1,4 @@
-import { AccessToken, RoomServiceClient } from "livekit-server-sdk"
+import { AccessToken, EgressClient, RoomServiceClient } from "livekit-server-sdk"
 
 type LiveKitParticipantRole = "organizer" | "guest"
 
@@ -67,4 +67,9 @@ export async function createLiveKitToken({
 export function createLiveKitRoomServiceClient() {
   const { url, apiKey, apiSecret } = requireLiveKitEnv()
   return new RoomServiceClient(toLiveKitHttpUrl(url), apiKey, apiSecret)
+}
+
+export function createLiveKitEgressClient() {
+  const { url, apiKey, apiSecret } = requireLiveKitEnv()
+  return new EgressClient(toLiveKitHttpUrl(url), apiKey, apiSecret)
 }

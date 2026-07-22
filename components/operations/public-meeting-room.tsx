@@ -1,6 +1,6 @@
 "use client"
 
-import { getPublicMeetingBySlugAction, requestPublicMeetingEntryAction, type MeetingFollowAlongState } from "@/actions/meetings"
+import { getPublicMeetingBySlugAction, requestPublicMeetingEntryAction, type MeetingFollowAlongState, type MeetingRecordingState } from "@/actions/meetings"
 import { useEffect, useRef, useState } from "react"
 import { Loader2, Maximize2, Minimize2 } from "lucide-react"
 import { LiveKitMeetingRoom } from "@/components/operations/livekit-meeting-room"
@@ -28,7 +28,9 @@ type PublicMeetingRecord = {
   meetingLink: string
   publicRoomLink: string
   cosShouldAttend: boolean
+  cosShouldRecord: boolean
   followAlong: MeetingFollowAlongState
+  recording: MeetingRecordingState
   joinRequests: MeetingJoinRequest[]
   connectedParticipants: ConnectedMeetingParticipant[]
 }
@@ -47,6 +49,7 @@ function formatDateTimeLabel(value: string | null) {
 }
 
 export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRecord; slug: string }) {
+  const [currentMeeting, setCurrentMeeting] = useState(meeting)
   const [guestName, setGuestName] = useState("")
   const [joined, setJoined] = useState(false)
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false)
@@ -65,6 +68,8 @@ export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRec
       void (async () => {
         const result = await getPublicMeetingBySlugAction({ slug })
         if (result.error || !result.meeting) return
+
+        setCurrentMeeting(result.meeting as PublicMeetingRecord)
 
         const nextRequest = result.meeting.joinRequests.find((item) => item.id === requestId)
         if (!nextRequest) return
@@ -89,6 +94,29 @@ export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRec
 
     return () => window.clearInterval(interval)
   }, [requestId, requestStatus, slug])
+
+  useEffect(() => {
+    if (!joined) return
+
+    const shouldPollRecording =
+      currentMeeting.cosShouldRecord &&
+      (currentMeeting.recording.status === "preparing" ||
+        currentMeeting.recording.status === "recording" ||
+        currentMeeting.recording.status === "finalizing" ||
+        currentMeeting.recording.status === "processing")
+
+    if (!shouldPollRecording) return
+
+    const interval = window.setInterval(() => {
+      void getPublicMeetingBySlugAction({ slug }).then((result) => {
+        if (result.meeting) {
+          setCurrentMeeting(result.meeting as PublicMeetingRecord)
+        }
+      })
+    }, 6000)
+
+    return () => window.clearInterval(interval)
+  }, [currentMeeting.cosShouldRecord, currentMeeting.recording.status, joined, slug])
 
   useEffect(() => {
     const syncFullscreenState = () => {
@@ -163,8 +191,8 @@ export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRec
       <div className="mx-auto max-w-4xl space-y-6">
         <section className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
           <span className="inline-flex rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-600">COS Meet</span>
-          <h1 className="mt-4 text-3xl font-semibold text-[#0a0a0a]">{meeting.title}</h1>
-          <p className="mt-2 text-sm text-gray-500">{meeting.description || `Reuniao agendada para ${formatDateTimeLabel(meeting.scheduledAt)}.`}</p>
+          <h1 className="mt-4 text-3xl font-semibold text-[#0a0a0a]">{currentMeeting.title}</h1>
+          <p className="mt-2 text-sm text-gray-500">{currentMeeting.description || `Reuniao agendada para ${formatDateTimeLabel(currentMeeting.scheduledAt)}.`}</p>
         </section>
 
         {!joined ? (
@@ -246,13 +274,15 @@ export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRec
 
                   <div className="mt-4 min-h-0 flex-1 overflow-hidden">
                     <LiveKitMeetingRoom
-                      meetingId={meeting.id}
+                      meetingId={currentMeeting.id}
+                      cosShouldRecord={currentMeeting.cosShouldRecord}
                       slug={slug}
                       participantName={guestName.trim()}
                       role="guest"
                       requestId={requestId ?? undefined}
-                      cosShouldAttend={meeting.cosShouldAttend}
-                      initialFollowAlong={meeting.followAlong}
+                      cosShouldAttend={currentMeeting.cosShouldAttend}
+                      initialFollowAlong={currentMeeting.followAlong}
+                      initialRecording={currentMeeting.recording}
                       className="h-full overflow-hidden"
                     />
                   </div>

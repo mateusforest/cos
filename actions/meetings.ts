@@ -2,7 +2,8 @@
 
 import { createHash } from "crypto"
 import { canManageWorkspace, getUserAccessForUser } from "@/lib/auth"
-import { buildLiveKitRoomName, createLiveKitRoomServiceClient, createLiveKitToken, getLiveKitUrl } from "@/lib/meet/livekit"
+import { AzureBlobUpload, EncodedFileOutput, EncodedFileType, EgressStatus, S3Upload } from "livekit-server-sdk"
+import { buildLiveKitRoomName, createLiveKitEgressClient, createLiveKitRoomServiceClient, createLiveKitToken, getLiveKitUrl } from "@/lib/meet/livekit"
 import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server"
 
 type DatabaseMeetingStatus = "draft" | "recorded" | "transcribed" | "archived"
@@ -121,6 +122,32 @@ export type MeetingFollowAlongState = {
   result: MeetingFollowAlongResult | null
 }
 
+export type MeetingRecordingStatus =
+  | "not_requested"
+  | "preparing"
+  | "recording"
+  | "finalizing"
+  | "processing"
+  | "available"
+  | "unavailable"
+  | "failed"
+
+export type MeetingRecordingState = {
+  enabled: boolean
+  recordingId: string | null
+  egressId: string | null
+  status: MeetingRecordingStatus
+  storagePath: string | null
+  mimeType: string | null
+  fileName: string | null
+  startedAt: string | null
+  endedAt: string | null
+  durationSeconds: number | null
+  sizeBytes: number | null
+  updatedAt: string | null
+  error: string | null
+}
+
 export type MeetingJoinRequest = {
   id: string
   participantName: string
@@ -191,6 +218,7 @@ type MeetingMetadata = {
   transcriptText: string
   insights: MeetingInsightsState
   followAlong: MeetingFollowAlongState
+  recording: MeetingRecordingState
   joinRequests: MeetingJoinRequest[]
   connectedParticipants: ConnectedMeetingParticipant[]
   sessionRecord: MeetingSessionRecord
@@ -244,6 +272,7 @@ type MeetingPayload = {
   transcriptText?: string
   insights?: MeetingInsightsState
   followAlong?: MeetingFollowAlongState
+  recording?: MeetingRecordingState
   joinRequests?: MeetingJoinRequest[]
   connectedParticipants?: ConnectedMeetingParticipant[]
   sessionRecord?: Partial<MeetingSessionRecord>
@@ -328,6 +357,24 @@ function createEmptyFollowAlongState(status: MeetingFollowAlongStatus = "awaitin
     sourceHash: null,
     lastMessageCount: 0,
     result: null,
+  }
+}
+
+function createEmptyRecordingState(enabled = false): MeetingRecordingState {
+  return {
+    enabled,
+    recordingId: null,
+    egressId: null,
+    status: enabled ? "unavailable" : "not_requested",
+    storagePath: null,
+    mimeType: null,
+    fileName: null,
+    startedAt: null,
+    endedAt: null,
+    durationSeconds: null,
+    sizeBytes: null,
+    updatedAt: null,
+    error: null,
   }
 }
 
@@ -471,6 +518,41 @@ function normalizeMeetingFollowAlongState(value?: Partial<MeetingFollowAlongStat
   }
 }
 
+function normalizeMeetingRecordingState(value?: Partial<MeetingRecordingState> | null, enabled = false) {
+  const defaultState = createEmptyRecordingState(enabled)
+  if (!value || typeof value !== "object") {
+    return defaultState
+  }
+
+  const status: MeetingRecordingStatus =
+    value.status === "not_requested" ||
+    value.status === "preparing" ||
+    value.status === "recording" ||
+    value.status === "finalizing" ||
+    value.status === "processing" ||
+    value.status === "available" ||
+    value.status === "unavailable" ||
+    value.status === "failed"
+      ? value.status
+      : defaultState.status
+
+  return {
+    enabled: value.enabled ?? enabled,
+    recordingId: typeof value.recordingId === "string" && value.recordingId.trim() ? value.recordingId.trim() : null,
+    egressId: typeof value.egressId === "string" && value.egressId.trim() ? value.egressId.trim() : null,
+    status,
+    storagePath: typeof value.storagePath === "string" && value.storagePath.trim() ? value.storagePath.trim() : null,
+    mimeType: typeof value.mimeType === "string" && value.mimeType.trim() ? value.mimeType.trim() : null,
+    fileName: typeof value.fileName === "string" && value.fileName.trim() ? value.fileName.trim() : null,
+    startedAt: typeof value.startedAt === "string" && value.startedAt.trim() ? value.startedAt.trim() : null,
+    endedAt: typeof value.endedAt === "string" && value.endedAt.trim() ? value.endedAt.trim() : null,
+    durationSeconds: typeof value.durationSeconds === "number" && Number.isFinite(value.durationSeconds) ? value.durationSeconds : null,
+    sizeBytes: typeof value.sizeBytes === "number" && Number.isFinite(value.sizeBytes) ? value.sizeBytes : null,
+    updatedAt: typeof value.updatedAt === "string" && value.updatedAt.trim() ? value.updatedAt.trim() : null,
+    error: typeof value.error === "string" && value.error.trim() ? value.error.trim() : null,
+  }
+}
+
 function extractStoredTranscriptText(value?: string | null) {
   if (!value || value.startsWith(MEETING_METADATA_PREFIX)) {
     return ""
@@ -581,6 +663,88 @@ function syncMeetingFollowAlongState({
     ...normalizedState,
     status: "active",
     error: null,
+  }
+}
+
+function syncMeetingRecordingState({
+  currentState,
+  enabled,
+}: {
+  currentState?: MeetingRecordingState | null
+  enabled: boolean
+}): MeetingRecordingState {
+  const normalizedState = normalizeMeetingRecordingState(currentState, enabled)
+
+  if (!enabled) {
+    return createEmptyRecordingState(false)
+  }
+
+  if (normalizedState.status === "not_requested") {
+    return {
+      ...normalizedState,
+      enabled: true,
+      status: "unavailable",
+    }
+  }
+
+  return {
+    ...normalizedState,
+    enabled: true,
+  }
+}
+
+function bigintToIsoString(value: bigint) {
+  if (!value || value <= BigInt(0)) return null
+  return new Date(Number(value)).toISOString()
+}
+
+function bigintToSeconds(value: bigint) {
+  if (!value || value <= BigInt(0)) return null
+  return Number(value)
+}
+
+function bigintToNumber(value: bigint) {
+  if (!value || value <= BigInt(0)) return null
+  return Number(value)
+}
+
+function sanitizeRecordingFileSegment(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "reuniao"
+}
+
+function buildRecordingFileName(title: string, startedAt: string | null) {
+  const baseTitle = sanitizeRecordingFileSegment(title)
+  const date = startedAt ? new Date(startedAt) : new Date()
+  const normalizedDate = Number.isNaN(date.getTime()) ? new Date() : date
+  const datePart = normalizedDate.toISOString().slice(0, 10)
+  return `${baseTitle}-${datePart}.mp4`
+}
+
+function requireMeetingRecordingStorageEnv() {
+  const endpoint = process.env.SUPABASE_STORAGE_S3_ENDPOINT?.trim()
+  const region = process.env.SUPABASE_STORAGE_S3_REGION?.trim()
+  const accessKey = process.env.SUPABASE_STORAGE_S3_ACCESS_KEY_ID?.trim()
+  const secret = process.env.SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY?.trim()
+  const bucket = process.env.SUPABASE_MEETING_RECORDINGS_BUCKET?.trim() || "meeting-recordings"
+
+  if (!endpoint || !region || !accessKey || !secret || !bucket) {
+    throw new Error(
+      "Gravacao server-side nao configurada. Defina SUPABASE_STORAGE_S3_ENDPOINT, SUPABASE_STORAGE_S3_REGION, SUPABASE_STORAGE_S3_ACCESS_KEY_ID, SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY e SUPABASE_MEETING_RECORDINGS_BUCKET.",
+    )
+  }
+
+  return {
+    endpoint,
+    region,
+    accessKey,
+    secret,
+    bucket,
   }
 }
 
@@ -974,6 +1138,7 @@ function parseMeetingMetadata(value?: string | null): MeetingMetadata | null {
         transcriptText: typeof parsed.transcriptText === "string" ? parsed.transcriptText.trim() : "",
         insights: normalizeMeetingInsightsState(parsed.insights),
         followAlong: normalizeMeetingFollowAlongState(parsed.followAlong),
+        recording: normalizeMeetingRecordingState(parsed.recording, parsed.cosShouldRecord),
         joinRequests: normalizeJoinRequests(parsed.joinRequests),
         connectedParticipants: normalizeConnectedParticipants(parsed.connectedParticipants),
         sessionRecord: normalizeSessionRecord(parsed.sessionRecord),
@@ -992,6 +1157,7 @@ function parseMeetingMetadata(value?: string | null): MeetingMetadata | null {
         transcriptText: "",
         insights: createEmptyInsightsState(),
         followAlong: createEmptyFollowAlongState(),
+        recording: createEmptyRecordingState(parsed.cosShouldRecord),
         joinRequests: [],
         connectedParticipants: [],
         sessionRecord: normalizeSessionRecord(),
@@ -1034,6 +1200,7 @@ function buildMeetingMetadata(payload: Partial<MeetingPayload>, currentRow?: Mee
     transcriptText,
     insights: normalizeMeetingInsightsState(payload.insights ?? currentMetadata?.insights),
     followAlong: normalizeMeetingFollowAlongState(payload.followAlong ?? currentMetadata?.followAlong),
+    recording: normalizeMeetingRecordingState(payload.recording ?? currentMetadata?.recording, payload.cosShouldRecord ?? currentMetadata?.cosShouldRecord ?? false),
     joinRequests: normalizeJoinRequests(payload.joinRequests ?? currentMetadata?.joinRequests),
     connectedParticipants: normalizeConnectedParticipants(payload.connectedParticipants ?? currentMetadata?.connectedParticipants),
     sessionRecord: normalizeSessionRecord(payload.sessionRecord ?? currentMetadata?.sessionRecord),
@@ -1051,6 +1218,10 @@ function buildMeetingMetadata(payload: Partial<MeetingPayload>, currentRow?: Mee
       cosShouldAttend: baseMetadata.cosShouldAttend,
       hasContent: hasFollowAlongContent(baseMetadata.followAlong.result),
       isFinished: mapDatabaseStatusToMeetingStatus(currentRow?.status ?? payload.status ?? "scheduled") === "finished",
+    }),
+    recording: syncMeetingRecordingState({
+      currentState: baseMetadata.recording,
+      enabled: baseMetadata.cosShouldRecord,
     }),
     analysisSections: ensureAnalysisSections({
       title: payload.title?.trim() || currentRow?.title || "Reuniao",
@@ -1097,6 +1268,7 @@ function hydrateMeeting(meeting: MeetingRow) {
     transcriptionTextAvailable: Boolean(metadata.transcriptText.trim()),
     insights: metadata.insights,
     followAlong: metadata.followAlong,
+    recording: metadata.recording,
     joinRequests: metadata.joinRequests.sort((a, b) => b.requestedAt.localeCompare(a.requestedAt)),
     connectedParticipants: metadata.connectedParticipants.sort((a, b) => b.connectedAt.localeCompare(a.connectedAt)),
     sessionRecord: metadata.sessionRecord,
@@ -1177,6 +1349,248 @@ function buildMeetingTranscriptUpdate(metadata: MeetingMetadata, history?: Meeti
       ...metadata,
       history: history ?? metadata.history,
     }),
+  }
+}
+
+function mapEgressStatusToRecordingStatus(status: EgressStatus): MeetingRecordingStatus {
+  if (status === EgressStatus.EGRESS_STARTING) return "preparing"
+  if (status === EgressStatus.EGRESS_ACTIVE) return "recording"
+  if (status === EgressStatus.EGRESS_ENDING) return "finalizing"
+  if (status === EgressStatus.EGRESS_COMPLETE) return "available"
+  if (status === EgressStatus.EGRESS_FAILED) return "failed"
+  if (status === EgressStatus.EGRESS_ABORTED) return "failed"
+  return "processing"
+}
+
+function buildRecordingStateFromEgressInfo({
+  currentState,
+  egressInfo,
+}: {
+  currentState: MeetingRecordingState
+  egressInfo: {
+    egressId: string
+    status: EgressStatus
+    startedAt: bigint
+    endedAt: bigint
+    updatedAt: bigint
+    error: string
+    fileResults: Array<{
+      filename: string
+      location: string
+      startedAt: bigint
+      endedAt: bigint
+      duration: bigint
+      size: bigint
+    }>
+  }
+}): MeetingRecordingState {
+  const fileResult = egressInfo.fileResults[0]
+  const storagePath = fileResult?.filename?.trim() || currentState.storagePath
+  const startedAt = bigintToIsoString(fileResult?.startedAt ?? egressInfo.startedAt) ?? currentState.startedAt
+  const endedAt = bigintToIsoString(fileResult?.endedAt ?? egressInfo.endedAt) ?? currentState.endedAt
+  const durationSeconds = bigintToSeconds(fileResult?.duration ?? BigInt(0)) ?? currentState.durationSeconds
+  const sizeBytes = bigintToNumber(fileResult?.size ?? BigInt(0)) ?? currentState.sizeBytes
+  const fileName = storagePath ? storagePath.split("/").pop() ?? currentState.fileName : currentState.fileName
+
+  return {
+    ...currentState,
+    enabled: true,
+    egressId: egressInfo.egressId || currentState.egressId,
+    status: mapEgressStatusToRecordingStatus(egressInfo.status),
+    storagePath,
+    mimeType: "video/mp4",
+    fileName,
+    startedAt,
+    endedAt,
+    durationSeconds,
+    sizeBytes,
+    updatedAt: bigintToIsoString(egressInfo.updatedAt) ?? new Date().toISOString(),
+    error: egressInfo.error?.trim() || null,
+  }
+}
+
+async function syncMeetingRecordingStateFromEgress({
+  actor,
+  meeting,
+}: {
+  actor: MeetingActor
+  meeting: MeetingRow
+}) {
+  const hydratedMeeting = hydrateMeeting(meeting)
+  const metadata = buildMeetingMetadata({}, meeting)
+  const currentRecording = metadata.recording
+
+  if (!hydratedMeeting.cosShouldRecord || !currentRecording.egressId) {
+    return {
+      meeting,
+      hydratedMeeting,
+      metadata,
+      changed: false,
+    }
+  }
+
+  try {
+    const egressClient = createLiveKitEgressClient()
+    const results = await egressClient.listEgress({ egressId: currentRecording.egressId })
+    const egressInfo = results[0]
+
+    if (!egressInfo) {
+      if (currentRecording.status === "available" || currentRecording.status === "failed") {
+        return { meeting, hydratedMeeting, metadata, changed: false }
+      }
+
+      const nextMetadata = buildMeetingMetadata(
+        {
+          title: hydratedMeeting.title,
+          scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+          participants: hydratedMeeting.participants,
+          meetingType: hydratedMeeting.meetingType,
+          meetingLink: hydratedMeeting.meetingLink,
+          meetingLocation: hydratedMeeting.meetingLocation,
+          description: hydratedMeeting.description,
+          cosShouldAttend: hydratedMeeting.cosShouldAttend,
+          cosShouldRecord: hydratedMeeting.cosShouldRecord,
+          cosShouldExtract: hydratedMeeting.cosShouldExtract,
+          cosShouldReport: hydratedMeeting.cosShouldReport,
+          analysisSections: hydratedMeeting.analysisSections,
+          attachments: hydratedMeeting.attachments,
+          timeline: hydratedMeeting.timeline,
+          transcriptionState: hydratedMeeting.transcriptionState,
+          followAlong: hydratedMeeting.followAlong,
+          insights: hydratedMeeting.insights,
+          joinRequests: hydratedMeeting.joinRequests,
+          connectedParticipants: hydratedMeeting.connectedParticipants,
+          sessionRecord: hydratedMeeting.sessionRecord,
+          recording: {
+            ...currentRecording,
+            status: currentRecording.storagePath ? "available" : "processing",
+            updatedAt: new Date().toISOString(),
+          },
+        },
+        meeting,
+      )
+
+      await actor.adminClient.from("meetings").update(buildMeetingTranscriptUpdate(nextMetadata)).eq("id", meeting.id)
+      const refreshed = await resolveMeetingForActor(actor, meeting.id)
+      if ("error" in refreshed) {
+        return { meeting, hydratedMeeting, metadata, changed: false }
+      }
+
+      return {
+        meeting: refreshed.meeting,
+        hydratedMeeting: hydrateMeeting(refreshed.meeting),
+        metadata: buildMeetingMetadata({}, refreshed.meeting),
+        changed: true,
+      }
+    }
+
+    const nextRecording = buildRecordingStateFromEgressInfo({
+      currentState: currentRecording,
+      egressInfo,
+    })
+
+    const didChange =
+      JSON.stringify(currentRecording) !== JSON.stringify(nextRecording)
+
+    if (!didChange) {
+      return {
+        meeting,
+        hydratedMeeting,
+        metadata,
+        changed: false,
+      }
+    }
+
+    const nextMetadata = buildMeetingMetadata(
+      {
+        title: hydratedMeeting.title,
+        scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+        participants: hydratedMeeting.participants,
+        meetingType: hydratedMeeting.meetingType,
+        meetingLink: hydratedMeeting.meetingLink,
+        meetingLocation: hydratedMeeting.meetingLocation,
+        description: hydratedMeeting.description,
+        cosShouldAttend: hydratedMeeting.cosShouldAttend,
+        cosShouldRecord: hydratedMeeting.cosShouldRecord,
+        cosShouldExtract: hydratedMeeting.cosShouldExtract,
+        cosShouldReport: hydratedMeeting.cosShouldReport,
+        analysisSections: hydratedMeeting.analysisSections,
+        attachments: hydratedMeeting.attachments,
+        timeline: hydratedMeeting.timeline,
+        transcriptionState: hydratedMeeting.transcriptionState,
+        followAlong: hydratedMeeting.followAlong,
+        insights: hydratedMeeting.insights,
+        joinRequests: hydratedMeeting.joinRequests,
+        connectedParticipants: hydratedMeeting.connectedParticipants,
+        sessionRecord: hydratedMeeting.sessionRecord,
+        recording: nextRecording,
+      },
+      meeting,
+    )
+
+    await actor.adminClient.from("meetings").update(buildMeetingTranscriptUpdate(nextMetadata)).eq("id", meeting.id)
+    const refreshed = await resolveMeetingForActor(actor, meeting.id)
+    if ("error" in refreshed) {
+      return { meeting, hydratedMeeting, metadata, changed: false }
+    }
+
+    return {
+      meeting: refreshed.meeting,
+      hydratedMeeting: hydrateMeeting(refreshed.meeting),
+      metadata: buildMeetingMetadata({}, refreshed.meeting),
+      changed: true,
+    }
+  } catch (error) {
+    const failedMetadata = buildMeetingMetadata(
+      {
+        title: hydratedMeeting.title,
+        scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+        participants: hydratedMeeting.participants,
+        meetingType: hydratedMeeting.meetingType,
+        meetingLink: hydratedMeeting.meetingLink,
+        meetingLocation: hydratedMeeting.meetingLocation,
+        description: hydratedMeeting.description,
+        cosShouldAttend: hydratedMeeting.cosShouldAttend,
+        cosShouldRecord: hydratedMeeting.cosShouldRecord,
+        cosShouldExtract: hydratedMeeting.cosShouldExtract,
+        cosShouldReport: hydratedMeeting.cosShouldReport,
+        analysisSections: hydratedMeeting.analysisSections,
+        attachments: hydratedMeeting.attachments,
+        timeline: hydratedMeeting.timeline,
+        transcriptionState: hydratedMeeting.transcriptionState,
+        followAlong: hydratedMeeting.followAlong,
+        insights: hydratedMeeting.insights,
+        joinRequests: hydratedMeeting.joinRequests,
+        connectedParticipants: hydratedMeeting.connectedParticipants,
+        sessionRecord: hydratedMeeting.sessionRecord,
+        recording: {
+          ...currentRecording,
+          status: "failed",
+          updatedAt: new Date().toISOString(),
+          error: error instanceof Error ? error.message : "Nao foi possivel consultar a gravacao agora.",
+        },
+      },
+      meeting,
+    )
+
+    await actor.adminClient.from("meetings").update(buildMeetingTranscriptUpdate(failedMetadata)).eq("id", meeting.id)
+
+    const refreshed = await resolveMeetingForActor(actor, meeting.id)
+    if ("error" in refreshed) {
+      return {
+        meeting,
+        hydratedMeeting,
+        metadata,
+        changed: false,
+      }
+    }
+
+    return {
+      meeting: refreshed.meeting,
+      hydratedMeeting: hydrateMeeting(refreshed.meeting),
+      metadata: buildMeetingMetadata({}, refreshed.meeting),
+      changed: true,
+    }
   }
 }
 
@@ -1464,10 +1878,278 @@ export async function getMeetingByIdAction({ meetingId }: { meetingId: string })
     return { error: resolved.error }
   }
 
+  const synced = await syncMeetingRecordingStateFromEgress({
+    actor,
+    meeting: resolved.meeting,
+  })
+
   return {
     success: true,
-    meeting: hydrateMeeting(resolved.meeting),
+    meeting: synced.hydratedMeeting,
     canManage: actor.canManage || actor.isMaster,
+  }
+}
+
+export async function startMeetingRecordingAction({ meetingId }: { meetingId: string }) {
+  const actor = await getMeetingActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  if (!actor.canManage && !actor.isMaster) {
+    return { error: "Apenas owner, admin ou master podem iniciar a gravacao da reuniao." }
+  }
+
+  const resolved = await resolveMeetingForActor(actor, meetingId)
+  if ("error" in resolved) {
+    return { error: resolved.error }
+  }
+
+  const hydratedMeeting = hydrateMeeting(resolved.meeting)
+  const currentMetadata = buildMeetingMetadata({}, resolved.meeting)
+  const currentRecording = currentMetadata.recording
+
+  if (!hydratedMeeting.cosShouldRecord) {
+    return { error: "A gravacao desta reuniao nao foi habilitada nas preferencias." }
+  }
+
+  const synced = await syncMeetingRecordingStateFromEgress({
+    actor,
+    meeting: resolved.meeting,
+  })
+
+  const effectiveMeeting = synced.hydratedMeeting
+  const effectiveMetadata = synced.metadata
+  const effectiveRecording = effectiveMetadata.recording
+
+  if (
+    effectiveRecording.status === "preparing" ||
+    effectiveRecording.status === "recording" ||
+    effectiveRecording.status === "finalizing" ||
+    effectiveRecording.status === "processing" ||
+    effectiveRecording.status === "available"
+  ) {
+    return {
+      success: true,
+      reused: true,
+      meeting: effectiveMeeting,
+    }
+  }
+
+  let recordingConfig: ReturnType<typeof requireMeetingRecordingStorageEnv>
+  try {
+    recordingConfig = requireMeetingRecordingStorageEnv()
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Gravacao server-side nao configurada.",
+    }
+  }
+
+  const recordingId = effectiveRecording.recordingId ?? createId("recording")
+  const fileName = buildRecordingFileName(hydratedMeeting.title, hydratedMeeting.scheduledAt ?? new Date().toISOString())
+  const storagePath = `${actor.workspaceId}/${hydratedMeeting.id}/${recordingId}/${fileName}`
+
+  try {
+    const egressClient = createLiveKitEgressClient()
+    const output = new EncodedFileOutput({
+      filepath: storagePath,
+      fileType: EncodedFileType.MP4,
+      output: {
+        case: "s3",
+        value: new S3Upload({
+          accessKey: recordingConfig.accessKey,
+          secret: recordingConfig.secret,
+          bucket: recordingConfig.bucket,
+          region: recordingConfig.region,
+          endpoint: recordingConfig.endpoint,
+          forcePathStyle: true,
+          contentDisposition: `attachment; filename="${fileName}"`,
+        }),
+      },
+    })
+
+    const egressInfo = await egressClient.startRoomCompositeEgress(buildLiveKitRoomName(hydratedMeeting.id), {
+      file: output,
+    })
+
+    const nextRecording = buildRecordingStateFromEgressInfo({
+      currentState: {
+        ...currentRecording,
+        enabled: true,
+        recordingId,
+        storagePath,
+        fileName,
+        mimeType: "video/mp4",
+      },
+      egressInfo,
+    })
+
+    const metadata = buildMeetingMetadata(
+      {
+        title: hydratedMeeting.title,
+        scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+        participants: hydratedMeeting.participants,
+        meetingType: hydratedMeeting.meetingType,
+        meetingLink: hydratedMeeting.meetingLink,
+        meetingLocation: hydratedMeeting.meetingLocation,
+        description: hydratedMeeting.description,
+        cosShouldAttend: hydratedMeeting.cosShouldAttend,
+        cosShouldRecord: hydratedMeeting.cosShouldRecord,
+        cosShouldExtract: hydratedMeeting.cosShouldExtract,
+        cosShouldReport: hydratedMeeting.cosShouldReport,
+        analysisSections: hydratedMeeting.analysisSections,
+        attachments: hydratedMeeting.attachments,
+        timeline: [
+          ...hydratedMeeting.timeline,
+          createTimelineEvent("meeting_recording_started", "Gravacao da reuniao iniciada"),
+        ],
+        transcriptionState: hydratedMeeting.transcriptionState,
+        followAlong: hydratedMeeting.followAlong,
+        insights: hydratedMeeting.insights,
+        joinRequests: hydratedMeeting.joinRequests,
+        connectedParticipants: hydratedMeeting.connectedParticipants,
+        sessionRecord: hydratedMeeting.sessionRecord,
+        recording: nextRecording,
+      },
+      synced.meeting,
+    )
+
+    const history = [
+      ...metadata.history,
+      createHistoryEntry("meeting_recording_started", "Gravacao server-side iniciada para esta reuniao."),
+    ]
+
+    const { error } = await actor.adminClient
+      .from("meetings")
+      .update(buildMeetingTranscriptUpdate(metadata, history))
+      .eq("id", meetingId)
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    const refreshed = await resolveMeetingForActor(actor, meetingId)
+    if ("error" in refreshed) {
+      return { error: refreshed.error }
+    }
+
+    return {
+      success: true,
+      reused: false,
+      meeting: hydrateMeeting(refreshed.meeting),
+    }
+  } catch (error) {
+    const failedMetadata = buildMeetingMetadata(
+      {
+        title: hydratedMeeting.title,
+        scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+        participants: hydratedMeeting.participants,
+        meetingType: hydratedMeeting.meetingType,
+        meetingLink: hydratedMeeting.meetingLink,
+        meetingLocation: hydratedMeeting.meetingLocation,
+        description: hydratedMeeting.description,
+        cosShouldAttend: hydratedMeeting.cosShouldAttend,
+        cosShouldRecord: hydratedMeeting.cosShouldRecord,
+        cosShouldExtract: hydratedMeeting.cosShouldExtract,
+        cosShouldReport: hydratedMeeting.cosShouldReport,
+        analysisSections: hydratedMeeting.analysisSections,
+        attachments: hydratedMeeting.attachments,
+        timeline: hydratedMeeting.timeline,
+        transcriptionState: hydratedMeeting.transcriptionState,
+        followAlong: hydratedMeeting.followAlong,
+        insights: hydratedMeeting.insights,
+        joinRequests: hydratedMeeting.joinRequests,
+        connectedParticipants: hydratedMeeting.connectedParticipants,
+        sessionRecord: hydratedMeeting.sessionRecord,
+        recording: {
+          ...currentRecording,
+          enabled: true,
+          recordingId,
+          storagePath,
+          fileName,
+          mimeType: "video/mp4",
+          status: "failed",
+          updatedAt: new Date().toISOString(),
+          error: error instanceof Error ? error.message : "Nao foi possivel iniciar a gravacao da reuniao.",
+        },
+      },
+      synced.meeting,
+    )
+
+    await actor.adminClient.from("meetings").update(buildMeetingTranscriptUpdate(failedMetadata)).eq("id", meetingId)
+
+    return {
+      error: error instanceof Error ? error.message : "Nao foi possivel iniciar a gravacao da reuniao.",
+    }
+  }
+}
+
+export async function refreshMeetingRecordingStatusAction({ meetingId }: { meetingId: string }) {
+  const actor = await getMeetingActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  const resolved = await resolveMeetingForActor(actor, meetingId)
+  if ("error" in resolved) {
+    return { error: resolved.error }
+  }
+
+  const synced = await syncMeetingRecordingStateFromEgress({
+    actor,
+    meeting: resolved.meeting,
+  })
+
+  return {
+    success: true,
+    meeting: synced.hydratedMeeting,
+  }
+}
+
+export async function getMeetingRecordingSignedUrlAction({
+  meetingId,
+  download = false,
+}: {
+  meetingId: string
+  download?: boolean
+}) {
+  const actor = await getMeetingActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  const resolved = await resolveMeetingForActor(actor, meetingId)
+  if ("error" in resolved) {
+    return { error: resolved.error }
+  }
+
+  const synced = await syncMeetingRecordingStateFromEgress({
+    actor,
+    meeting: resolved.meeting,
+  })
+
+  const recording = synced.metadata.recording
+  if (recording.status !== "available" || !recording.storagePath) {
+    return { error: "A gravacao desta reuniao ainda nao esta disponivel." }
+  }
+
+  const bucket = process.env.SUPABASE_MEETING_RECORDINGS_BUCKET?.trim() || "meeting-recordings"
+  const fileName = recording.fileName || buildRecordingFileName(synced.hydratedMeeting.title, recording.startedAt)
+  const { data, error } = await actor.adminClient.storage
+    .from(bucket)
+    .createSignedUrl(recording.storagePath, 600, download ? { download: fileName } : undefined)
+
+  if (error || !data?.signedUrl) {
+    return { error: error?.message ?? "Nao foi possivel gerar o acesso temporario da gravacao." }
+  }
+
+  return {
+    success: true,
+    url: data.signedUrl,
+    expiresInSeconds: 600,
   }
 }
 
@@ -1948,9 +2630,23 @@ export async function getPublicMeetingBySlugAction({ slug }: { slug: string }) {
     return { error: "Sala publica nao encontrada." }
   }
 
+  const actor = {
+    actorId: "public",
+    actorName: "Publico",
+    workspaceId: resolved.meeting.workspace_id,
+    canManage: false,
+    isMaster: false,
+    adminClient,
+  } satisfies MeetingActor
+
+  const synced = await syncMeetingRecordingStateFromEgress({
+    actor,
+    meeting: resolved.meeting,
+  })
+
   return {
     success: true,
-    meeting: hydratedMeeting,
+    meeting: synced.hydratedMeeting,
   }
 }
 
@@ -2537,6 +3233,7 @@ export async function endMeetingLiveRoomAction({ meetingId }: { meetingId: strin
   }
 
   const hydratedMeeting = hydrateMeeting(resolved.meeting)
+  const currentMetadata = buildMeetingMetadata({}, resolved.meeting)
   const endedAt = new Date().toISOString()
   const startedAt =
     hydratedMeeting.sessionRecord.startedAt ??
@@ -2576,6 +3273,39 @@ export async function endMeetingLiveRoomAction({ meetingId }: { meetingId: strin
   } catch {
   }
 
+  let nextRecording = currentMetadata.recording
+  if (hydratedMeeting.cosShouldRecord && currentMetadata.recording.egressId) {
+    try {
+      const egressClient = createLiveKitEgressClient()
+      const egressInfo = await egressClient.stopEgress(currentMetadata.recording.egressId)
+      nextRecording = {
+        ...buildRecordingStateFromEgressInfo({
+          currentState: currentMetadata.recording,
+          egressInfo,
+        }),
+        status:
+          egressInfo.status === EgressStatus.EGRESS_COMPLETE
+            ? "available"
+            : egressInfo.status === EgressStatus.EGRESS_ENDING
+              ? "finalizing"
+              : "processing",
+      }
+    } catch (error) {
+      nextRecording = {
+        ...currentMetadata.recording,
+        status:
+          currentMetadata.recording.status === "available"
+            ? "available"
+            : currentMetadata.recording.storagePath
+              ? "processing"
+              : "failed",
+        endedAt: endedAt,
+        updatedAt: endedAt,
+        error: error instanceof Error ? error.message : "Nao foi possivel finalizar a gravacao da reuniao.",
+      }
+    }
+  }
+
   const metadata = buildMeetingMetadata(
     {
       title: hydratedMeeting.title,
@@ -2601,9 +3331,12 @@ export async function endMeetingLiveRoomAction({ meetingId }: { meetingId: strin
         ),
       ],
       transcriptionState: hydratedMeeting.transcriptionState,
+      insights: hydratedMeeting.insights,
+      followAlong: hydratedMeeting.followAlong,
       joinRequests: hydratedMeeting.joinRequests,
       connectedParticipants: [],
       sessionRecord: nextSessionRecord,
+      recording: nextRecording,
     },
     resolved.meeting,
   )

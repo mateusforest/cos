@@ -15,11 +15,14 @@ import {
   endMeetingLiveRoomAction,
   getMeetingLiveKitTokenAction,
   processMeetingFollowAlongAction,
+  refreshMeetingRecordingStatusAction,
   removeMeetingParticipantAction,
+  startMeetingRecordingAction,
   syncMeetingParticipantConnectionAction,
   type MeetingFollowAlongResult,
   type MeetingFollowAlongState,
   type MeetingParticipantRole,
+  type MeetingRecordingState,
 } from "@/actions/meetings"
 
 type RoomParticipantSnapshot = {
@@ -110,6 +113,26 @@ function followAlongStatusClass(status: MeetingFollowAlongState["status"]) {
   return "bg-gray-100 text-gray-700"
 }
 
+function recordingStatusLabel(status: MeetingRecordingState["status"]) {
+  if (status === "preparing") return "Preparando gravacao"
+  if (status === "recording") return "Gravando"
+  if (status === "finalizing") return "Finalizando gravacao"
+  if (status === "processing") return "Processando"
+  if (status === "available") return "Disponivel"
+  if (status === "failed") return "Falha na gravacao"
+  if (status === "unavailable") return "Indisponivel"
+  return "Gravacao nao solicitada"
+}
+
+function recordingStatusClass(status: MeetingRecordingState["status"]) {
+  if (status === "preparing") return "bg-amber-50 text-amber-700"
+  if (status === "recording") return "bg-red-50 text-red-700"
+  if (status === "finalizing" || status === "processing") return "bg-blue-50 text-blue-700"
+  if (status === "available") return "bg-emerald-50 text-emerald-700"
+  if (status === "failed") return "bg-red-50 text-red-700"
+  return "bg-gray-100 text-gray-700"
+}
+
 function getParticipantTracks(participant: LocalParticipant | RemoteParticipant) {
   const publications = Array.from(participant.trackPublications.values() as Iterable<TrackPublication>)
   const videoTrack = publications.find((publication) => publication.source === Track.Source.Camera && publication.track)?.track ?? null
@@ -176,7 +199,9 @@ export function LiveKitMeetingRoom({
   requestId,
   canManage,
   cosShouldAttend = false,
+  cosShouldRecord = false,
   initialFollowAlong,
+  initialRecording,
   onEnded,
   className,
 }: {
@@ -187,7 +212,9 @@ export function LiveKitMeetingRoom({
   requestId?: string
   canManage?: boolean
   cosShouldAttend?: boolean
+  cosShouldRecord?: boolean
   initialFollowAlong?: MeetingFollowAlongState | null
+  initialRecording?: MeetingRecordingState | null
   onEnded?: () => void
   className?: string
 }) {
@@ -205,7 +232,9 @@ export function LiveKitMeetingRoom({
   const [desiredCameraEnabled, setDesiredCameraEnabled] = useState(true)
   const [desiredMicrophoneEnabled, setDesiredMicrophoneEnabled] = useState(true)
   const [followAlong, setFollowAlong] = useState<MeetingFollowAlongState | null>(initialFollowAlong ?? null)
+  const [recording, setRecording] = useState<MeetingRecordingState | null>(initialRecording ?? null)
   const [isFollowAlongProcessing, setIsFollowAlongProcessing] = useState(false)
+  const [isRecordingStarting, setIsRecordingStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const roomRef = useRef<Room | null>(null)
@@ -236,6 +265,10 @@ export function LiveKitMeetingRoom({
   useEffect(() => {
     setFollowAlong(initialFollowAlong ?? null)
   }, [initialFollowAlong])
+
+  useEffect(() => {
+    setRecording(initialRecording ?? null)
+  }, [initialRecording])
 
   const syncParticipants = (nextRoom: Room) => {
     setParticipants(buildRoomParticipants(nextRoom))
@@ -334,6 +367,74 @@ export function LiveKitMeetingRoom({
     return () => window.clearTimeout(timeout)
   }, [cosShouldAttend, isConnected, isFollowAlongProcessing, meetingId, normalizedMeetingMessages, role])
 
+  useEffect(() => {
+    if (!cosShouldRecord || role !== "organizer" || !canManage || !isConnected || isRecordingStarting) return
+
+    if (
+      recording?.status === "preparing" ||
+      recording?.status === "recording" ||
+      recording?.status === "finalizing" ||
+      recording?.status === "processing" ||
+      recording?.status === "available"
+    ) {
+      return
+    }
+
+    void (async () => {
+      setIsRecordingStarting(true)
+      const result = await startMeetingRecordingAction({ meetingId })
+      setIsRecordingStarting(false)
+
+        if (result.error) {
+          setRecording((current) => ({
+            enabled: true,
+            recordingId: current?.recordingId ?? null,
+            egressId: current?.egressId ?? null,
+          status: "failed",
+          storagePath: current?.storagePath ?? null,
+          mimeType: current?.mimeType ?? null,
+          fileName: current?.fileName ?? null,
+          startedAt: current?.startedAt ?? null,
+            endedAt: current?.endedAt ?? null,
+            durationSeconds: current?.durationSeconds ?? null,
+            sizeBytes: current?.sizeBytes ?? null,
+            updatedAt: new Date().toISOString(),
+            error: result.error ?? "Nao foi possivel iniciar a gravacao da reuniao.",
+          }))
+          return
+        }
+
+      if (result.meeting?.recording) {
+        setRecording(result.meeting.recording)
+      }
+    })()
+  }, [canManage, cosShouldRecord, isConnected, isRecordingStarting, meetingId, recording?.status, role])
+
+  useEffect(() => {
+    if (!cosShouldRecord) return
+    if (!recording) return
+
+    const shouldPoll =
+      recording.status === "preparing" ||
+      recording.status === "recording" ||
+      recording.status === "finalizing" ||
+      recording.status === "processing"
+
+    if (!shouldPoll) return
+
+    if (role !== "organizer") return
+
+    const interval = window.setInterval(() => {
+      void refreshMeetingRecordingStatusAction({ meetingId }).then((result) => {
+        if (result.meeting?.recording) {
+          setRecording(result.meeting.recording)
+        }
+      })
+    }, 6000)
+
+    return () => window.clearInterval(interval)
+  }, [cosShouldRecord, meetingId, recording, role])
+
   const displayedFollowAlong =
     followAlong ??
     (cosShouldAttend
@@ -344,6 +445,25 @@ export function LiveKitMeetingRoom({
           sourceHash: null,
           lastMessageCount: 0,
           result: null,
+        }
+      : null)
+  const displayedRecording =
+    recording ??
+    (cosShouldRecord
+      ? {
+          enabled: true,
+          recordingId: null,
+          egressId: null,
+          status: "unavailable" as const,
+          storagePath: null,
+          mimeType: null,
+          fileName: null,
+          startedAt: null,
+          endedAt: null,
+          durationSeconds: null,
+          sizeBytes: null,
+          updatedAt: null,
+          error: null,
         }
       : null)
 
@@ -592,6 +712,17 @@ export function LiveKitMeetingRoom({
     <div className={`space-y-4 ${className ?? ""}`}>
       {error && <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
       {feedback && <div className="rounded-2xl border border-green-100 bg-green-50 p-4 text-sm text-green-700">{feedback}</div>}
+
+      {displayedRecording && displayedRecording.status !== "not_requested" && displayedRecording.status !== "unavailable" && (
+        <div className={`rounded-2xl border p-4 text-sm ${recordingStatusClass(displayedRecording.status)}`}>
+          <strong>{recordingStatusLabel(displayedRecording.status)}</strong>
+          {displayedRecording.status === "recording" && " A reuniao esta sendo gravada com seguranca no COS Meet."}
+          {displayedRecording.status === "preparing" && " Estamos preparando a gravacao da reuniao."}
+          {displayedRecording.status === "finalizing" && " A gravacao esta sendo finalizada."}
+          {displayedRecording.status === "processing" && " O arquivo da reuniao ainda esta sendo processado."}
+          {displayedRecording.status === "failed" && displayedRecording.error ? ` ${displayedRecording.error}` : ""}
+        </div>
+      )}
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.55fr)_320px]">
         <div className={`mx-auto grid w-full max-w-[1600px] gap-4 ${gridClass}`}>

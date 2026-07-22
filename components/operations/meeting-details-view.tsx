@@ -20,7 +20,9 @@ import {
 } from "lucide-react"
 import {
   decidePublicMeetingEntryAction,
+  getMeetingRecordingSignedUrlAction,
   getMeetingByIdAction,
+  refreshMeetingRecordingStatusAction,
   processMeetingInsightsAction,
   updateMeetingAction,
   type MeetingAnalysisItem,
@@ -38,6 +40,7 @@ import {
   type MeetingInsightsState,
   type MeetingInsightsResult,
   type MeetingFollowAlongState,
+  type MeetingRecordingState,
 } from "@/actions/meetings"
 import { useAuth } from "@/components/auth/auth-provider"
 import { COSLoading } from "@/components/cos/cos-loading"
@@ -70,6 +73,7 @@ type MeetingRecord = {
   transcriptionTextAvailable: boolean
   insights: MeetingInsightsState
   followAlong: MeetingFollowAlongState
+  recording: MeetingRecordingState
   joinRequests: MeetingJoinRequest[]
   connectedParticipants: ConnectedMeetingParticipant[]
 }
@@ -183,6 +187,26 @@ function formatConnectedDuration(value: string) {
   return `${minutes}min`
 }
 
+function recordingStatusLabel(status: MeetingRecordingState["status"]) {
+  if (status === "preparing") return "Preparando gravação"
+  if (status === "recording") return "Gravando"
+  if (status === "finalizing") return "Finalizando"
+  if (status === "processing") return "Processando"
+  if (status === "available") return "Disponível"
+  if (status === "failed") return "Falha"
+  if (status === "unavailable") return "Indisponível"
+  return "Não solicitada"
+}
+
+function recordingStatusClass(status: MeetingRecordingState["status"]) {
+  if (status === "preparing") return "bg-amber-50 text-amber-700"
+  if (status === "recording") return "bg-red-50 text-red-700"
+  if (status === "finalizing" || status === "processing") return "bg-blue-50 text-blue-700"
+  if (status === "available") return "bg-emerald-50 text-emerald-700"
+  if (status === "failed") return "bg-red-50 text-red-700"
+  return "bg-gray-100 text-gray-700"
+}
+
 function renderInsightsList(items: string[]) {
   if (items.length === 0) {
     return <p className="text-sm text-gray-500">Nenhum item identificado nesta secao.</p>
@@ -252,6 +276,9 @@ export function MeetingDetailsView({
   const [isEditing, setIsEditing] = useState(false)
   const [isAnalysisSaving, setIsAnalysisSaving] = useState(false)
   const [isInsightsProcessing, setIsInsightsProcessing] = useState(false)
+  const [isRecordingRefreshing, setIsRecordingRefreshing] = useState(false)
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null)
+  const [isRecordingUrlLoading, setIsRecordingUrlLoading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [analysisOpen, setAnalysisOpen] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
@@ -284,6 +311,7 @@ export function MeetingDetailsView({
     [meeting?.connectedParticipants],
   )
   const insightsState = meeting?.insights ?? null
+  const recordingState = meeting?.recording ?? null
 
   const loadMeeting = async (options?: { openAnalysis?: boolean; silent?: boolean }) => {
     if (!options?.silent) {
@@ -353,6 +381,10 @@ export function MeetingDetailsView({
       document.body.style.overflow = previousOverflow
     }
   }, [isVideoModalOpen])
+
+  useEffect(() => {
+    setRecordingUrl(null)
+  }, [meeting?.id, meeting?.recording?.updatedAt])
 
   const openVideoModal = () => {
     setIsVideoModalOpen(true)
@@ -645,6 +677,50 @@ export function MeetingDetailsView({
         : "Insights da reuniao processados com sucesso.",
     )
     await loadMeeting({ openAnalysis: analysisOpen })
+  }
+
+  const refreshRecordingStatus = async () => {
+    if (!meeting) return
+
+    setIsRecordingRefreshing(true)
+    setError(null)
+
+    const result = await refreshMeetingRecordingStatusAction({ meetingId: meeting.id })
+    setIsRecordingRefreshing(false)
+
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+
+    if (result.meeting) {
+      setMeeting(result.meeting as MeetingRecord)
+    }
+  }
+
+  const loadRecordingUrl = async (download = false) => {
+    if (!meeting) return null
+
+    setIsRecordingUrlLoading(true)
+    setError(null)
+
+    const result = await getMeetingRecordingSignedUrlAction({
+      meetingId: meeting.id,
+      download,
+    })
+
+    setIsRecordingUrlLoading(false)
+
+    if (result.error || !result.url) {
+      setError(result.error ?? "Nao foi possivel carregar a gravacao.")
+      return null
+    }
+
+    if (!download) {
+      setRecordingUrl(result.url)
+    }
+
+    return result.url
   }
 
   if (isLoading) {
@@ -968,7 +1044,9 @@ export function MeetingDetailsView({
                     role="organizer"
                     canManage={canManageWorkspace}
                     cosShouldAttend={meeting.cosShouldAttend}
+                    cosShouldRecord={meeting.cosShouldRecord}
                     initialFollowAlong={meeting.followAlong}
+                    initialRecording={meeting.recording}
                     className="h-full overflow-hidden"
                     onEnded={async () => {
                       setIsVideoModalOpen(false)
@@ -1091,6 +1169,97 @@ export function MeetingDetailsView({
           )}
         </div>
       )}
+
+      <div className="rounded-2xl border border-gray-100 bg-white p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-[#0a0a0a]">Gravação</h2>
+            <p className="text-sm text-gray-500">A reprodução e o download usam acesso temporário e protegido por permissão do workspace.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${recordingStatusClass(recordingState?.status ?? "not_requested")}`}>
+              {recordingStatusLabel(recordingState?.status ?? "not_requested")}
+            </span>
+            <button
+              onClick={() => void refreshRecordingStatus()}
+              disabled={isRecordingRefreshing}
+              className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isRecordingRefreshing ? "Atualizando..." : "Atualizar status"}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-4">
+          {!meeting.cosShouldRecord ? (
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+              A gravação não foi solicitada para esta reunião.
+            </div>
+          ) : recordingState?.status === "failed" ? (
+            <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+              {recordingState.error || "Não foi possível concluir a gravação desta reunião."}
+            </div>
+          ) : recordingState?.status === "preparing" || recordingState?.status === "recording" || recordingState?.status === "finalizing" || recordingState?.status === "processing" ? (
+            <COSLoading
+              title={recordingStatusLabel(recordingState.status)}
+              description="Estamos acompanhando o ciclo seguro da gravação desta reunião."
+              currentStep="Atualizando gravação"
+            />
+          ) : recordingState?.status === "available" ? (
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-3">
+                <InfoRow icon={CalendarDays} label="Iniciada em" value={formatDateTimeLabel(recordingState.startedAt)} />
+                <InfoRow icon={CalendarDays} label="Finalizada em" value={formatDateTimeLabel(recordingState.endedAt)} />
+                <InfoRow
+                  icon={Video}
+                  label="Duração"
+                  value={recordingState.durationSeconds !== null ? `${recordingState.durationSeconds}s` : "Não informada"}
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => void loadRecordingUrl(false)}
+                  disabled={isRecordingUrlLoading}
+                  className="rounded-xl bg-[#0a0a0a] px-4 py-2 text-sm text-white hover:bg-[#1a1a1a] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isRecordingUrlLoading ? "Carregando..." : "Reproduzir gravação"}
+                </button>
+                <button
+                  onClick={() =>
+                    void (async () => {
+                      const url = await loadRecordingUrl(true)
+                      if (url) {
+                        window.open(url, "_blank", "noopener,noreferrer")
+                      }
+                    })()
+                  }
+                  disabled={isRecordingUrlLoading}
+                  className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Baixar gravação
+                </button>
+              </div>
+
+              {recordingUrl ? (
+                <video
+                  controls
+                  src={recordingUrl}
+                  className="w-full overflow-hidden rounded-2xl border border-gray-100 bg-black"
+                />
+              ) : (
+                <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-sm text-gray-500">
+                  Carregue a URL temporária para reproduzir a gravação protegida.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+              A gravação ainda não está disponível para esta reunião.
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="rounded-2xl border border-gray-100 bg-white p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
