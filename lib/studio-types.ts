@@ -138,3 +138,11 @@ export type StudioSessionState = {
   openAiConfigured: boolean
   lumaConfigured: boolean
 }
+
+export type StudioConversationSummary = {
+  id: string
+  title: string
+  preview: string
+  time: string
+  updatedAt: string | null
+}

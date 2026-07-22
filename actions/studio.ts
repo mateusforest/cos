@@ -7,6 +7,7 @@ import { getCreativeFormatConfig, getImageFormatConfig, getStudioSectionConfig }
 import type {
   StudioCampaignInput,
   StudioCampaignResult,
+  StudioConversationSummary,
   StudioCreativeInput,
   StudioCreativeResult,
   StudioHistoryEntry,
@@ -29,6 +30,8 @@ const studioImageTimeoutMs = 180000
 const studioVideoTimeoutMs = 45000
 const studioPromptLimit = 6000
 const maxDownloadedAssetSize = 30 * 1024 * 1024
+const studioConversationArea = "marketing"
+const studioDefaultConversationTitle = "Nova criacao"
 
 type QueryError = { message: string } | null
 
@@ -65,6 +68,10 @@ type StudioPersistedResult = StudioResult & {
 
 function buildStudioConversationArea(section: StudioSection) {
   return `marketing/${section}`
+}
+
+function isStudioRootConversationArea(area: string | null | undefined) {
+  return (area || "").trim() === studioConversationArea
 }
 
 function ensureStudioSection(section: string): StudioSection | null {
@@ -409,6 +416,240 @@ async function getStudioMessages({
   }
 
   return { rows: query.data ?? [] }
+}
+
+async function createStudioRootConversation({
+  actor,
+  title,
+}: {
+  actor: Exclude<StudioActor, { error: string }>
+  title?: string
+}) {
+  const conversationsTable = actor.adminClient.from("ai_conversations") as unknown as {
+    insert: (value: Record<string, unknown>) => {
+      select: (columns: string) => {
+        single: () => Promise<unknown>
+      }
+    }
+  }
+
+  const insertQuery = (await conversationsTable
+    .insert({
+      workspace_id: actor.workspaceId,
+      user_id: actor.userId,
+      area: studioConversationArea,
+      title: (title || studioDefaultConversationTitle).trim(),
+    })
+    .select("id, workspace_id, user_id, area, title")
+    .single()) as { data: StudioConversationRow | null; error: QueryError }
+
+  if (insertQuery.error || !insertQuery.data) {
+    return { error: insertQuery.error?.message ?? "Nao foi possivel criar a conversa do Studio." }
+  }
+
+  return { conversation: insertQuery.data }
+}
+
+async function findStudioRootConversation({
+  actor,
+  conversationId,
+}: {
+  actor: Exclude<StudioActor, { error: string }>
+  conversationId: string
+}) {
+  const conversationsTable = actor.adminClient.from("ai_conversations") as unknown as {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => {
+        eq: (column: string, value: string) => {
+          eq: (column: string, value: string) => {
+            maybeSingle: () => Promise<unknown>
+          }
+        }
+      }
+    }
+  }
+
+  const query = (await conversationsTable
+    .select("id, workspace_id, user_id, area, title")
+    .eq("workspace_id", actor.workspaceId)
+    .eq("user_id", actor.userId)
+    .eq("id", conversationId)
+    .maybeSingle()) as { data: StudioConversationRow | null; error: QueryError }
+
+  if (query.error) {
+    return { error: query.error.message }
+  }
+
+  if (!query.data || !isStudioRootConversationArea(query.data.area)) {
+    return { error: "A conversa solicitada nao pertence ao Studio IA." }
+  }
+
+  return { conversation: query.data }
+}
+
+async function updateStudioConversationTitle({
+  actor,
+  conversationId,
+  title,
+}: {
+  actor: Exclude<StudioActor, { error: string }>
+  conversationId: string
+  title: string
+}) {
+  const conversationsTable = actor.adminClient.from("ai_conversations") as unknown as {
+    update: (value: Record<string, unknown>) => {
+      eq: (column: string, value: string) => Promise<unknown>
+    }
+  }
+
+  const query = (await conversationsTable.update({ title }).eq("id", conversationId)) as { error: QueryError }
+
+  if (query.error) {
+    return { error: query.error.message }
+  }
+
+  return { success: true as const }
+}
+
+async function deleteStudioConversation({
+  actor,
+  conversationId,
+}: {
+  actor: Exclude<StudioActor, { error: string }>
+  conversationId: string
+}) {
+  const messagesTable = actor.adminClient.from("ai_messages") as unknown as {
+    delete: () => {
+      eq: (column: string, value: string) => Promise<unknown>
+    }
+  }
+  const conversationsTable = actor.adminClient.from("ai_conversations") as unknown as {
+    delete: () => {
+      eq: (column: string, value: string) => Promise<unknown>
+    }
+  }
+
+  const messagesQuery = (await messagesTable.delete().eq("conversation_id", conversationId)) as { error: QueryError }
+
+  if (messagesQuery.error) {
+    return { error: messagesQuery.error.message }
+  }
+
+  const conversationQuery = (await conversationsTable.delete().eq("id", conversationId)) as { error: QueryError }
+
+  if (conversationQuery.error) {
+    return { error: conversationQuery.error.message }
+  }
+
+  return { success: true as const }
+}
+
+function deriveStudioConversationTitle(message: string) {
+  const trimmed = message.trim().replace(/\s+/g, " ")
+  if (!trimmed) return studioDefaultConversationTitle
+  return trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed
+}
+
+function normalizeStudioBlocks(value: unknown) {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null
+      }
+
+      const record = item as Record<string, unknown>
+      const label = typeof record.label === "string" ? record.label.trim() : ""
+      const content = typeof record.content === "string" ? record.content.trim() : ""
+
+      if (!label || !content) {
+        return null
+      }
+
+      return { label, content }
+    })
+    .filter((item): item is { label: string; content: string } => Boolean(item))
+}
+
+function formatStudioBlocks(blocks: Array<{ label: string; content: string }>) {
+  return blocks.map((block) => `${block.label}\n${block.content}`).join("\n\n")
+}
+
+function isStudioMediaRequest(message: string) {
+  const normalized = message.toLowerCase()
+  return (
+    /\b(imagem|imagens|image|foto|fotos)\b/.test(normalized) ||
+    /\b(video|videos|vídeo|vídeos)\b/.test(normalized)
+  )
+}
+
+async function fetchStudioConversationResponse({
+  history,
+  message,
+}: {
+  history: Array<{ role: "user" | "assistant"; content: string }>
+  message: string
+}): Promise<
+  | {
+      title: string
+      blocks: Array<{ label: string; content: string }>
+      text: string
+    }
+  | { error: string }
+> {
+  if (!process.env.OPENAI_API_KEY) {
+    return { error: "OPENAI_API_KEY nao configurada. O Studio IA nao consegue responder agora." }
+  }
+
+  const conversationHistory = history
+    .slice(-12)
+    .map((entry) => `${entry.role === "assistant" ? "COS" : "Usuario"}: ${entry.content}`)
+    .join("\n\n")
+
+  const prompt = [
+    "Voce trabalha no Studio IA do COS.",
+    "Responda somente com JSON valido.",
+    'Estrutura obrigatoria: {"title":"string","blocks":[{"label":"string","content":"string"}]}.',
+    "A resposta deve ser textual, clara e operacional.",
+    "Nunca prometa gerar imagem ou video nesta etapa.",
+    "Quando fizer sentido, organize em blocos como Titulo, Texto, CTA, Hashtags, Headline, Subheadline, Estrutura, Roteiro, Proximos passos.",
+    "Nao use markdown.",
+    conversationHistory ? `Historico recente:\n${conversationHistory}` : "",
+    `Mensagem atual:\n${message}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+
+  const structured = await fetchOpenAiStructuredJson<{
+    title?: string
+    blocks?: Array<{ label?: string; content?: string }>
+  }>({
+    prompt,
+  })
+
+  if ("error" in structured && typeof structured.error === "string") {
+    return { error: structured.error }
+  }
+
+  const blocks = normalizeStudioBlocks(structured.data.blocks)
+
+  if (blocks.length === 0) {
+    return { error: "A OpenAI nao retornou blocos validos para esta criacao." }
+  }
+
+  const title =
+    typeof structured.data.title === "string" && structured.data.title.trim()
+      ? structured.data.title.trim()
+      : deriveStudioConversationTitle(message)
+
+  return {
+    title,
+    blocks,
+    text: formatStudioBlocks(blocks),
+  }
 }
 
 async function maybeStoreGeneratedAsset({
@@ -828,6 +1069,421 @@ function buildStudioMetadata({
       input,
       result,
     },
+  }
+}
+
+function mapStudioChatMessage(row: StudioMessageRow) {
+  const role = row.role === "assistant" ? "cos" : row.role === "user" ? "user" : null
+
+  if (!role || !row.content) {
+    return null
+  }
+
+  return {
+    id: row.id,
+    from: role,
+    text: row.content,
+    time: formatOperationsConversationTime(row.created_at),
+  }
+}
+
+async function getRecentStudioConversationRows({
+  actor,
+  conversationId,
+  limit = 1,
+}: {
+  actor: Exclude<StudioActor, { error: string }>
+  conversationId: string
+  limit?: number
+}) {
+  const messagesTable = actor.adminClient.from("ai_messages") as unknown as {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => {
+        order: (column: string, options: { ascending: boolean }) => {
+          limit: (value: number) => Promise<unknown>
+        }
+      }
+    }
+  }
+
+  const query = (await messagesTable
+    .select("id, conversation_id, role, content, metadata, created_at")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(limit)) as { data: StudioMessageRow[] | null; error: QueryError }
+
+  if (query.error) {
+    return { error: query.error.message }
+  }
+
+  return {
+    rows: [...(query.data ?? [])].reverse(),
+  }
+}
+
+export async function createStudioConversationAction() {
+  const actor = await getStudioActor()
+
+  if (!isStudioActorReady(actor)) {
+    return { error: actor.error }
+  }
+
+  return createStudioRootConversation({ actor })
+}
+
+export async function getStudioConversationMessagesAction(input?: { conversationId?: string }) {
+  const actor = await getStudioActor()
+
+  if (!isStudioActorReady(actor)) {
+    return { error: actor.error }
+  }
+
+  if (!input?.conversationId) {
+    return {
+      success: true as const,
+      conversationId: null,
+      conversationArea: studioConversationArea,
+      title: studioDefaultConversationTitle,
+      messages: [] as Array<{ id: string; from: "cos" | "user"; text: string; time: string }>,
+    }
+  }
+
+  const found = await findStudioRootConversation({
+    actor,
+    conversationId: input.conversationId,
+  })
+
+  if ("error" in found) {
+    return { error: found.error }
+  }
+
+  const messages = await getStudioMessages({
+    actor,
+    conversationId: found.conversation.id,
+  })
+
+  if ("error" in messages) {
+    return { error: messages.error }
+  }
+
+  return {
+    success: true as const,
+    conversationId: found.conversation.id,
+    conversationArea: found.conversation.area,
+    title: found.conversation.title?.trim() || studioDefaultConversationTitle,
+    messages: messages.rows
+      .map(mapStudioChatMessage)
+      .filter((message): message is { id: string; from: "cos" | "user"; text: string; time: string } => Boolean(message)),
+  }
+}
+
+export async function getStudioConversationsAction() {
+  const actor = await getStudioActor()
+
+  if (!isStudioActorReady(actor)) {
+    return { error: actor.error }
+  }
+
+  const conversationsTable = actor.adminClient.from("ai_conversations") as unknown as {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => {
+        eq: (column: string, value: string) => {
+          order: (column: string, options: { ascending: boolean }) => Promise<unknown>
+        }
+      }
+    }
+  }
+
+  const query = (await conversationsTable
+    .select("id, workspace_id, user_id, area, title")
+    .eq("workspace_id", actor.workspaceId)
+    .eq("user_id", actor.userId)
+    .order("id", { ascending: false })) as { data: StudioConversationRow[] | null; error: QueryError }
+
+  if (query.error) {
+    return { error: "Nao foi possivel carregar as conversas do Studio agora." }
+  }
+
+  const studioConversations = (query.data ?? []).filter((conversation) => isStudioRootConversationArea(conversation.area))
+
+  const conversations = await Promise.all(
+    studioConversations.map(async (conversation) => {
+      const recent = await getRecentStudioConversationRows({
+        actor,
+        conversationId: conversation.id,
+      })
+
+      if ("error" in recent) {
+        return null
+      }
+
+      const lastRow = recent.rows[0] ?? null
+      const lastMessage = lastRow ? mapStudioChatMessage(lastRow) : null
+
+      return {
+        id: conversation.id,
+        title: conversation.title?.trim() || studioDefaultConversationTitle,
+        preview: lastMessage?.text || "Nenhuma mensagem registrada ainda.",
+        time: formatOperationsConversationTime(lastRow?.created_at ?? null),
+        updatedAt: lastRow?.created_at ?? null,
+      } satisfies StudioConversationSummary
+    }),
+  )
+
+  const validConversations = conversations.filter((conversation): conversation is StudioConversationSummary => Boolean(conversation))
+
+  return {
+    success: true as const,
+    conversations: validConversations.sort((left, right) => {
+      const leftTime = left.updatedAt ? new Date(left.updatedAt).getTime() : 0
+      const rightTime = right.updatedAt ? new Date(right.updatedAt).getTime() : 0
+      return rightTime - leftTime
+    }),
+  }
+}
+
+export async function renameStudioConversationAction(input: {
+  conversationId: string
+  title: string
+}) {
+  const actor = await getStudioActor()
+
+  if (!isStudioActorReady(actor)) {
+    return { error: actor.error }
+  }
+
+  const found = await findStudioRootConversation({
+    actor,
+    conversationId: input.conversationId,
+  })
+
+  if ("error" in found) {
+    return { error: found.error }
+  }
+
+  const title = safeText(input.title, "um titulo", 100)
+  return updateStudioConversationTitle({
+    actor,
+    conversationId: found.conversation.id,
+    title,
+  })
+}
+
+export async function deleteStudioConversationAction(input: { conversationId: string }) {
+  const actor = await getStudioActor()
+
+  if (!isStudioActorReady(actor)) {
+    return { error: actor.error }
+  }
+
+  const found = await findStudioRootConversation({
+    actor,
+    conversationId: input.conversationId,
+  })
+
+  if ("error" in found) {
+    return { error: found.error }
+  }
+
+  return deleteStudioConversation({
+    actor,
+    conversationId: found.conversation.id,
+  })
+}
+
+export async function duplicateStudioConversationAction(input: { conversationId: string }) {
+  const actor = await getStudioActor()
+
+  if (!isStudioActorReady(actor)) {
+    return { error: actor.error }
+  }
+
+  const found = await findStudioRootConversation({
+    actor,
+    conversationId: input.conversationId,
+  })
+
+  if ("error" in found) {
+    return { error: found.error }
+  }
+
+  const created = await createStudioRootConversation({
+    actor,
+    title: `${found.conversation.title?.trim() || studioDefaultConversationTitle} (copia)`,
+  })
+
+  if ("error" in created) {
+    return { error: created.error }
+  }
+
+  const messages = await getStudioMessages({
+    actor,
+    conversationId: found.conversation.id,
+  })
+
+  if ("error" in messages) {
+    return { error: messages.error }
+  }
+
+  for (const message of messages.rows) {
+    if (!message.content || (message.role !== "user" && message.role !== "assistant")) {
+      continue
+    }
+
+    const saved = await insertStudioMessage({
+      actor,
+      conversationId: created.conversation.id,
+      role: message.role,
+      content: message.content,
+      metadata: message.metadata ?? {
+        engine: "studio",
+        conversation_area: studioConversationArea,
+      },
+    })
+
+    if ("error" in saved) {
+      return { error: saved.error }
+    }
+  }
+
+  return {
+    success: true as const,
+    conversationId: created.conversation.id,
+  }
+}
+
+export async function runStudioConversationAction(input: {
+  conversationId?: string
+  message: string
+}) {
+  const actor = await getStudioActor()
+
+  if (!isStudioActorReady(actor)) {
+    return { error: actor.error }
+  }
+
+  const message = safeText(input.message, "sua mensagem", 3000)
+  const existingConversation =
+    input.conversationId?.trim()
+      ? await findStudioRootConversation({
+          actor,
+          conversationId: input.conversationId.trim(),
+        })
+      : null
+
+  if (existingConversation && "error" in existingConversation) {
+    return { error: existingConversation.error }
+  }
+
+  const createdConversation =
+    !existingConversation || !("conversation" in existingConversation)
+      ? await createStudioRootConversation({
+          actor,
+          title: deriveStudioConversationTitle(message),
+        })
+      : null
+
+  if (createdConversation && "error" in createdConversation) {
+    return { error: createdConversation.error }
+  }
+
+  const conversation =
+    existingConversation && "conversation" in existingConversation
+      ? existingConversation.conversation
+      : createdConversation?.conversation ?? null
+
+  if (!conversation) {
+    return { error: "Nao foi possivel preparar a conversa do Studio agora." }
+  }
+
+  const normalizedTitle = conversation.title?.trim() || ""
+
+  if (!normalizedTitle || normalizedTitle === studioDefaultConversationTitle) {
+    await updateStudioConversationTitle({
+      actor,
+      conversationId: conversation.id,
+      title: deriveStudioConversationTitle(message),
+    })
+  }
+
+  const userSaved = await insertStudioMessage({
+    actor,
+    conversationId: conversation.id,
+    role: "user",
+    content: message,
+    metadata: {
+      engine: "studio",
+      conversation_area: studioConversationArea,
+      studio_mode: "conversation",
+    },
+  })
+
+  if ("error" in userSaved) {
+    return { error: userSaved.error }
+  }
+
+  const priorMessages = await getStudioMessages({
+    actor,
+    conversationId: conversation.id,
+  })
+
+  if ("error" in priorMessages) {
+    return { error: priorMessages.error }
+  }
+
+  const history = priorMessages.rows
+    .filter((row) => row.id !== userSaved.message.id)
+    .map((row) => ({
+      role: (row.role === "assistant" ? "assistant" : "user") as "assistant" | "user",
+      content: row.content || "",
+    }))
+    .filter((row) => row.content.trim())
+
+  const response =
+    isStudioMediaRequest(message)
+      ? {
+          title: deriveStudioConversationTitle(message),
+          text:
+            /\b(video|videos|vídeo|vídeos)\b/.test(message.toLowerCase())
+              ? "Status\nA geracao de videos sera disponibilizada nesta area em breve."
+              : "Status\nA geracao de imagens sera disponibilizada nesta area em breve.",
+        }
+      : await fetchStudioConversationResponse({
+          history,
+          message,
+        })
+
+  if ("error" in response) {
+    return { error: response.error }
+  }
+
+  const assistantSaved = await insertStudioMessage({
+    actor,
+    conversationId: conversation.id,
+    role: "assistant",
+    content: response.text,
+    metadata: {
+      engine: "studio",
+      conversation_area: studioConversationArea,
+      studio_mode: "conversation",
+      title: response.title,
+    },
+  })
+
+  if ("error" in assistantSaved) {
+    return { error: assistantSaved.error }
+  }
+
+  return {
+    success: true as const,
+    conversationId: conversation.id,
+    conversationArea: studioConversationArea,
+    message: mapStudioChatMessage(assistantSaved.message) as {
+      id: string
+      from: "cos" | "user"
+      text: string
+      time: string
+    } | null,
   }
 }
 

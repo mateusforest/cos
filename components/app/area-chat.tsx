@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { ChevronLeft, Send, Mic, Plus, Sparkles, type LucideIcon } from "lucide-react"
@@ -47,6 +47,8 @@ export function AreaChat({
   placeholder = "Escreva uma mensagem...",
   onSendMessage,
   isLoadingHistory = false,
+  prefilledInput,
+  renderMessageActions,
 }: {
   title: string
   subtitle?: string
@@ -60,6 +62,8 @@ export function AreaChat({
   placeholder?: string
   onSendMessage?: (input: string, now: string) => SendMessageResult
   isLoadingHistory?: boolean
+  prefilledInput?: string
+  renderMessageActions?: (message: ChatMessage) => ReactNode
 }) {
   const router = useRouter()
   const [input, setInput] = useState("")
@@ -93,6 +97,12 @@ export function AreaChat({
 
     return () => window.cancelAnimationFrame(frame)
   }, [chat, isSending, isLoadingHistory])
+
+  useEffect(() => {
+    if (typeof prefilledInput === "string") {
+      setInput(prefilledInput)
+    }
+  }, [prefilledInput, conversationKey])
 
   const send = async () => {
     if (!input.trim() || isSending) return
@@ -182,6 +192,7 @@ export function AreaChat({
                     {m.ctaLabel}
                   </Link>
                 )}
+                {renderMessageActions ? <div className="mt-2">{renderMessageActions(m)}</div> : null}
                 <span className={`block text-[10px] mt-1 ${m.from === "user" ? "text-gray-300" : "text-gray-400"}`}>{m.time}</span>
               </div>
             </motion.div>
