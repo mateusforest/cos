@@ -5,6 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/server"
 import { validateOperationsActor } from "@/lib/cos-engine/operations-actor"
 import { formatOperationsConversationTime } from "@/lib/cos-engine/operations-conversations"
 import { getCreativeFormatConfig, getImageFormatConfig, getStudioSectionConfig } from "@/lib/studio-config"
+import { debitWorkspaceCredits, refundWorkspaceCredits } from "@/lib/workspace-credit-ledger"
 import type {
   StudioCampaignInput,
   StudioCampaignResult,
@@ -33,6 +34,7 @@ const studioPromptLimit = 6000
 const maxDownloadedAssetSize = 30 * 1024 * 1024
 const studioConversationArea = "marketing"
 const studioDefaultConversationTitle = "Nova criacao"
+const studioImageGenerationCreditCost = 1
 
 type QueryError = { message: string } | null
 
@@ -2055,6 +2057,62 @@ export async function runStudioConversationAction(input: {
       purpose: parsedImageRequest.purpose,
       textOverlay: parsedImageRequest.textOverlay,
     })
+    const debitKey = `studio-image:${conversation.id}:${userSaved.message.id}`
+    const debitResult = await debitWorkspaceCredits({
+      amount: studioImageGenerationCreditCost,
+      feature: "studio_image_generation",
+      provider: "openai",
+      reason: "Geracao de imagem no Studio IA",
+      idempotencyKey: debitKey,
+      metadata: {
+        conversationId: conversation.id,
+        messageId: userSaved.message.id,
+        conversationArea: studioConversationArea,
+        format: parsedImageRequest.format,
+        purpose: parsedImageRequest.purpose,
+      },
+    })
+
+    if (debitResult.status === "insufficient_credits") {
+      const insufficientSaved = await insertStudioMessage({
+        actor,
+        conversationId: conversation.id,
+        role: "assistant",
+        content: "Saldo insuficiente para gerar esta imagem agora.",
+        metadata: buildStudioImageMetadata({
+          type: "image",
+          status: "failed",
+          prompt: imagePrompt,
+          format: parsedImageRequest.format,
+          formatLabel: imageFormat.label,
+          purpose: parsedImageRequest.purpose,
+          textOverlay: parsedImageRequest.textOverlay,
+          filePath: null,
+          fileName: null,
+          mimeType: null,
+          generatedAt: new Date().toISOString(),
+          error: "Saldo insuficiente para gerar esta imagem agora.",
+        }),
+      })
+
+      if ("error" in insufficientSaved) {
+        return { error: insufficientSaved.error }
+      }
+
+      return {
+        success: true as const,
+        conversationId: conversation.id,
+        conversationArea: studioConversationArea,
+        message: await mapStudioChatMessage({
+          actor,
+          row: insufficientSaved.message,
+        }),
+      }
+    }
+
+    if (debitResult.status === "failed" || !debitResult.transactionId) {
+      return { error: "Nao foi possivel validar os creditos do Studio agora." }
+    }
 
     const generated = await generateOpenAiImage({
       actor,
@@ -2064,6 +2122,20 @@ export async function runStudioConversationAction(input: {
     })
 
     if ("error" in generated) {
+      await refundWorkspaceCredits({
+        originalTransactionId: debitResult.transactionId,
+        reason: "Falha na geracao de imagem do Studio IA",
+        idempotencyKey: `studio-image-refund:${debitResult.transactionId}`,
+        metadata: {
+          conversationId: conversation.id,
+          messageId: userSaved.message.id,
+          conversationArea: studioConversationArea,
+          format: parsedImageRequest.format,
+          purpose: parsedImageRequest.purpose,
+          error: generated.error,
+        },
+      })
+
       await logAiUsage({
         adminClient: actor.adminClient,
         workspaceId: actor.workspaceId,
