@@ -1,6 +1,6 @@
 "use client"
 
-import { getPublicMeetingBySlugAction, requestPublicMeetingEntryAction } from "@/actions/meetings"
+import { getPublicMeetingBySlugAction, requestPublicMeetingEntryAction, type MeetingFollowAlongState } from "@/actions/meetings"
 import { useEffect, useRef, useState } from "react"
 import { Loader2, Maximize2, Minimize2 } from "lucide-react"
 import { LiveKitMeetingRoom } from "@/components/operations/livekit-meeting-room"
@@ -27,6 +27,8 @@ type PublicMeetingRecord = {
   description: string
   meetingLink: string
   publicRoomLink: string
+  cosShouldAttend: boolean
+  followAlong: MeetingFollowAlongState
   joinRequests: MeetingJoinRequest[]
   connectedParticipants: ConnectedMeetingParticipant[]
 }
@@ -249,6 +251,8 @@ export function PublicMeetingRoom({ meeting, slug }: { meeting: PublicMeetingRec
                       participantName={guestName.trim()}
                       role="guest"
                       requestId={requestId ?? undefined}
+                      cosShouldAttend={meeting.cosShouldAttend}
+                      initialFollowAlong={meeting.followAlong}
                       className="h-full overflow-hidden"
                     />
                   </div>

@@ -14,8 +14,11 @@ import {
 import {
   endMeetingLiveRoomAction,
   getMeetingLiveKitTokenAction,
+  processMeetingFollowAlongAction,
   removeMeetingParticipantAction,
   syncMeetingParticipantConnectionAction,
+  type MeetingFollowAlongResult,
+  type MeetingFollowAlongState,
   type MeetingParticipantRole,
 } from "@/actions/meetings"
 
@@ -37,6 +40,75 @@ type ChatMessage = {
 }
 
 const CHAT_TOPIC = "cos-meet-chat"
+
+function renderFollowAlongList(items: string[], emptyLabel: string) {
+  if (items.length === 0) {
+    return <p className="text-sm text-gray-500">{emptyLabel}</p>
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <div key={item} className="rounded-2xl border border-white bg-white p-3 text-sm text-gray-700">
+          {item}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function renderFollowAlongTasks(tasks: MeetingFollowAlongResult["tasks"]) {
+  if (tasks.length === 0) {
+    return <p className="text-sm text-gray-500">Nenhuma tarefa nova identificada.</p>
+  }
+
+  return (
+    <div className="space-y-2">
+      {tasks.map((task) => (
+        <div key={task.id} className="rounded-2xl border border-white bg-white p-3 text-sm text-gray-700">
+          <p className="font-medium text-[#0a0a0a]">{task.text}</p>
+          <p className="mt-1 text-xs text-gray-500">
+            Responsavel: {task.responsible || "Nao identificado"} | Prazo: {task.deadline || "Nao identificado"}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function renderFollowAlongResponsibles(items: MeetingFollowAlongResult["responsibles"]) {
+  if (items.length === 0) {
+    return <p className="text-sm text-gray-500">Nenhum responsavel novo identificado.</p>
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <div key={item.id} className="rounded-2xl border border-white bg-white p-3 text-sm text-gray-700">
+          <p className="font-medium text-[#0a0a0a]">{item.name}</p>
+          <p className="mt-1 text-sm text-gray-600">{item.context || "Sem contexto adicional."}</p>
+          <p className="mt-1 text-xs text-gray-500">Prazo: {item.deadline || "Nao identificado"}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function followAlongStatusLabel(status: MeetingFollowAlongState["status"]) {
+  if (status === "active") return "Acompanhando"
+  if (status === "paused") return "Pausa"
+  if (status === "finished") return "Finalizado"
+  if (status === "error") return "Erro"
+  return "Aguardando conteudo"
+}
+
+function followAlongStatusClass(status: MeetingFollowAlongState["status"]) {
+  if (status === "active") return "bg-blue-50 text-blue-700"
+  if (status === "paused") return "bg-amber-50 text-amber-700"
+  if (status === "finished") return "bg-emerald-50 text-emerald-700"
+  if (status === "error") return "bg-red-50 text-red-700"
+  return "bg-gray-100 text-gray-700"
+}
 
 function getParticipantTracks(participant: LocalParticipant | RemoteParticipant) {
   const publications = Array.from(participant.trackPublications.values() as Iterable<TrackPublication>)
@@ -103,6 +175,8 @@ export function LiveKitMeetingRoom({
   role,
   requestId,
   canManage,
+  cosShouldAttend = false,
+  initialFollowAlong,
   onEnded,
   className,
 }: {
@@ -112,6 +186,8 @@ export function LiveKitMeetingRoom({
   role: MeetingParticipantRole
   requestId?: string
   canManage?: boolean
+  cosShouldAttend?: boolean
+  initialFollowAlong?: MeetingFollowAlongState | null
   onEnded?: () => void
   className?: string
 }) {
@@ -128,6 +204,8 @@ export function LiveKitMeetingRoom({
   const [isScreenShareEnabled, setIsScreenShareEnabled] = useState(false)
   const [desiredCameraEnabled, setDesiredCameraEnabled] = useState(true)
   const [desiredMicrophoneEnabled, setDesiredMicrophoneEnabled] = useState(true)
+  const [followAlong, setFollowAlong] = useState<MeetingFollowAlongState | null>(initialFollowAlong ?? null)
+  const [isFollowAlongProcessing, setIsFollowAlongProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const roomRef = useRef<Room | null>(null)
@@ -135,6 +213,7 @@ export function LiveKitMeetingRoom({
   const hasSyncedPresenceRef = useRef(false)
   const isLeavingRef = useRef(false)
   const syncedMessageIdsRef = useRef<Set<string>>(new Set())
+  const lastProcessedContentKeyRef = useRef<string | null>(null)
 
   const remoteParticipants = useMemo(() => participants.filter((participant) => !participant.isLocal), [participants])
   const screenShareParticipant = useMemo(
@@ -145,6 +224,18 @@ export function LiveKitMeetingRoom({
     () => participants.filter((participant) => participant.identity !== screenShareParticipant?.identity),
     [participants, screenShareParticipant?.identity],
   )
+  const normalizedMeetingMessages = useMemo(
+    () =>
+      messages.map((message) => {
+        const time = formatChatTime(message.createdAt)
+        return `[${time || "--:--"}] ${message.authorName}: ${message.text.trim()}`
+      }),
+    [messages],
+  )
+
+  useEffect(() => {
+    setFollowAlong(initialFollowAlong ?? null)
+  }, [initialFollowAlong])
 
   const syncParticipants = (nextRoom: Room) => {
     setParticipants(buildRoomParticipants(nextRoom))
@@ -199,6 +290,62 @@ export function LiveKitMeetingRoom({
       cleanupRoom()
     }
   }, [])
+
+  useEffect(() => {
+    if (!cosShouldAttend || role !== "organizer" || !isConnected) return
+
+    const combinedText = normalizedMeetingMessages.join("\n").trim()
+    const nextHash = combinedText || `messages:${normalizedMeetingMessages.length}`
+
+    if (lastProcessedContentKeyRef.current === nextHash || isFollowAlongProcessing) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        setIsFollowAlongProcessing(true)
+
+        const result = await processMeetingFollowAlongAction({
+          meetingId,
+          messages: normalizedMeetingMessages,
+        })
+
+        setIsFollowAlongProcessing(false)
+
+        if (result.error) {
+          setFollowAlong((current) => ({
+            status: "error",
+            processedAt: current?.processedAt ?? null,
+            error: result.error ?? "Nao foi possivel acompanhar esta reuniao.",
+            sourceHash: current?.sourceHash ?? null,
+            lastMessageCount: current?.lastMessageCount ?? normalizedMeetingMessages.length,
+            result: current?.result ?? null,
+          }))
+          return
+        }
+
+        if (result.meeting?.followAlong) {
+          setFollowAlong(result.meeting.followAlong)
+          lastProcessedContentKeyRef.current = nextHash
+        }
+      })()
+    }, 1200)
+
+    return () => window.clearTimeout(timeout)
+  }, [cosShouldAttend, isConnected, isFollowAlongProcessing, meetingId, normalizedMeetingMessages, role])
+
+  const displayedFollowAlong =
+    followAlong ??
+    (cosShouldAttend
+      ? {
+          status: "awaiting_content",
+          processedAt: null,
+          error: null,
+          sourceHash: null,
+          lastMessageCount: 0,
+          result: null,
+        }
+      : null)
 
   const safelyEnableTracks = async (nextRoom: Room) => {
     if (desiredCameraEnabled) {
@@ -586,6 +733,71 @@ export function LiveKitMeetingRoom({
               </div>
             </div>
           </div>
+
+          {cosShouldAttend && displayedFollowAlong && (
+            <div className="rounded-2xl border border-gray-100 bg-white p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-[#0a0a0a]">COS</h3>
+                  <p className="mt-1 text-xs text-gray-500">Acompanhamento inteligente com base no conteudo textual real da reuniao.</p>
+                </div>
+                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${followAlongStatusClass(displayedFollowAlong.status)}`}>
+                  {followAlongStatusLabel(displayedFollowAlong.status)}
+                </span>
+              </div>
+
+              {isFollowAlongProcessing && (
+                <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-700">
+                  O COS esta acompanhando o novo conteudo da reuniao.
+                </div>
+              )}
+
+              {displayedFollowAlong.error && (
+                <div className="mt-3 rounded-2xl border border-red-100 bg-red-50 p-3 text-sm text-red-700">
+                  {displayedFollowAlong.error}
+                </div>
+              )}
+
+              {displayedFollowAlong.status === "awaiting_content" && (
+                <div className="mt-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 text-sm text-gray-600">
+                  O COS esta aguardando mensagens reais da reuniao para identificar decisoes, tarefas e proximos passos.
+                </div>
+              )}
+
+              {displayedFollowAlong.result && (
+                <div className="mt-3 space-y-3">
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                    <h4 className="text-sm font-medium text-[#0a0a0a]">Decisoes</h4>
+                    <div className="mt-2">{renderFollowAlongList(displayedFollowAlong.result.decisions, "Nenhuma decisao nova identificada.")}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                    <h4 className="text-sm font-medium text-[#0a0a0a]">Tarefas</h4>
+                    <div className="mt-2">{renderFollowAlongTasks(displayedFollowAlong.result.tasks)}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                    <h4 className="text-sm font-medium text-[#0a0a0a]">Responsaveis</h4>
+                    <div className="mt-2">{renderFollowAlongResponsibles(displayedFollowAlong.result.responsibles)}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                    <h4 className="text-sm font-medium text-[#0a0a0a]">Prazos</h4>
+                    <div className="mt-2">{renderFollowAlongList(displayedFollowAlong.result.deadlines, "Nenhum prazo novo identificado.")}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                    <h4 className="text-sm font-medium text-[#0a0a0a]">Riscos</h4>
+                    <div className="mt-2">{renderFollowAlongList(displayedFollowAlong.result.risks, "Nenhum risco novo identificado.")}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                    <h4 className="text-sm font-medium text-[#0a0a0a]">Perguntas abertas</h4>
+                    <div className="mt-2">{renderFollowAlongList(displayedFollowAlong.result.openQuestions, "Nenhuma pergunta aberta nova identificada.")}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                    <h4 className="text-sm font-medium text-[#0a0a0a]">Proximos passos</h4>
+                    <div className="mt-2">{renderFollowAlongList(displayedFollowAlong.result.nextSteps, "Nenhum proximo passo novo identificado.")}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

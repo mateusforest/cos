@@ -100,6 +100,27 @@ export type MeetingInsightsState = {
   result: MeetingInsightsResult | null
 }
 
+export type MeetingFollowAlongResult = {
+  decisions: string[]
+  tasks: MeetingInsightTask[]
+  responsibles: MeetingInsightResponsible[]
+  deadlines: string[]
+  risks: string[]
+  openQuestions: string[]
+  nextSteps: string[]
+}
+
+export type MeetingFollowAlongStatus = "awaiting_content" | "active" | "paused" | "finished" | "error"
+
+export type MeetingFollowAlongState = {
+  status: MeetingFollowAlongStatus
+  processedAt: string | null
+  error: string | null
+  sourceHash: string | null
+  lastMessageCount: number
+  result: MeetingFollowAlongResult | null
+}
+
 export type MeetingJoinRequest = {
   id: string
   participantName: string
@@ -169,6 +190,7 @@ type MeetingMetadata = {
   transcriptionState: MeetingTranscriptionState
   transcriptText: string
   insights: MeetingInsightsState
+  followAlong: MeetingFollowAlongState
   joinRequests: MeetingJoinRequest[]
   connectedParticipants: ConnectedMeetingParticipant[]
   sessionRecord: MeetingSessionRecord
@@ -221,6 +243,7 @@ type MeetingPayload = {
   transcriptionState?: MeetingTranscriptionState
   transcriptText?: string
   insights?: MeetingInsightsState
+  followAlong?: MeetingFollowAlongState
   joinRequests?: MeetingJoinRequest[]
   connectedParticipants?: ConnectedMeetingParticipant[]
   sessionRecord?: Partial<MeetingSessionRecord>
@@ -293,6 +316,17 @@ function createEmptyInsightsState(status: MeetingInsightsStatus = "awaiting_tran
     processedAt: null,
     error: null,
     transcriptHash: null,
+    result: null,
+  }
+}
+
+function createEmptyFollowAlongState(status: MeetingFollowAlongStatus = "awaiting_content"): MeetingFollowAlongState {
+  return {
+    status,
+    processedAt: null,
+    error: null,
+    sourceHash: null,
+    lastMessageCount: 0,
     result: null,
   }
 }
@@ -393,6 +427,50 @@ function normalizeMeetingInsightsState(value?: Partial<MeetingInsightsState> | n
   }
 }
 
+function normalizeMeetingFollowAlongResult(value: unknown): MeetingFollowAlongResult | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+
+  return {
+    decisions: normalizeInsightTextList(record.decisions),
+    tasks: normalizeMeetingInsightTasks(record.tasks),
+    responsibles: normalizeMeetingInsightResponsibles(record.responsibles),
+    deadlines: normalizeInsightTextList(record.deadlines),
+    risks: normalizeInsightTextList(record.risks),
+    openQuestions: normalizeInsightTextList(record.openQuestions),
+    nextSteps: normalizeInsightTextList(record.nextSteps),
+  }
+}
+
+function normalizeMeetingFollowAlongState(value?: Partial<MeetingFollowAlongState> | null) {
+  const defaultState = createEmptyFollowAlongState()
+  if (!value || typeof value !== "object") {
+    return defaultState
+  }
+
+  const result = normalizeMeetingFollowAlongResult(value.result)
+  const status: MeetingFollowAlongStatus =
+    value.status === "awaiting_content" ||
+    value.status === "active" ||
+    value.status === "paused" ||
+    value.status === "finished" ||
+    value.status === "error"
+      ? value.status
+      : defaultState.status
+
+  return {
+    status,
+    processedAt: typeof value.processedAt === "string" && value.processedAt.trim() ? value.processedAt : null,
+    error: typeof value.error === "string" && value.error.trim() ? value.error.trim() : null,
+    sourceHash: typeof value.sourceHash === "string" && value.sourceHash.trim() ? value.sourceHash : null,
+    lastMessageCount: typeof value.lastMessageCount === "number" && Number.isFinite(value.lastMessageCount) ? value.lastMessageCount : 0,
+    result,
+  }
+}
+
 function extractStoredTranscriptText(value?: string | null) {
   if (!value || value.startsWith(MEETING_METADATA_PREFIX)) {
     return ""
@@ -444,6 +522,141 @@ function syncMeetingInsightsState({
     ...normalizedState,
     status: "ready",
     error: null,
+  }
+}
+
+function syncMeetingFollowAlongState({
+  currentState,
+  cosShouldAttend,
+  hasContent,
+  isFinished,
+}: {
+  currentState?: MeetingFollowAlongState | null
+  cosShouldAttend: boolean
+  hasContent: boolean
+  isFinished: boolean
+}): MeetingFollowAlongState {
+  const normalizedState = normalizeMeetingFollowAlongState(currentState)
+
+  if (!cosShouldAttend) {
+    return createEmptyFollowAlongState()
+  }
+
+  if (normalizedState.status === "active") {
+    return {
+      ...normalizedState,
+      error: null,
+    }
+  }
+
+  if (normalizedState.status === "error") {
+    return normalizedState
+  }
+
+  if (isFinished) {
+    return {
+      ...normalizedState,
+      status: "finished",
+      error: null,
+    }
+  }
+
+  if (!hasContent) {
+    return {
+      ...normalizedState,
+      status: "awaiting_content",
+      error: null,
+    }
+  }
+
+  if (normalizedState.processedAt) {
+    return {
+      ...normalizedState,
+      status: "paused",
+      error: null,
+    }
+  }
+
+  return {
+    ...normalizedState,
+    status: "active",
+    error: null,
+  }
+}
+
+function hasFollowAlongContent(result: MeetingFollowAlongResult | null) {
+  if (!result) return false
+
+  return (
+    result.decisions.length > 0 ||
+    result.tasks.length > 0 ||
+    result.responsibles.length > 0 ||
+    result.deadlines.length > 0 ||
+    result.risks.length > 0 ||
+    result.openQuestions.length > 0 ||
+    result.nextSteps.length > 0
+  )
+}
+
+function mergeUniqueTextItems(current: string[], incoming: string[]) {
+  const seen = new Set<string>()
+  const merged: string[] = []
+
+  for (const item of [...current, ...incoming]) {
+    const normalized = item.trim()
+    const key = normalized.toLocaleLowerCase("pt-BR")
+    if (!normalized || seen.has(key)) continue
+    seen.add(key)
+    merged.push(normalized)
+  }
+
+  return merged
+}
+
+function mergeUniqueInsightTasks(current: MeetingInsightTask[], incoming: MeetingInsightTask[]) {
+  const seen = new Set<string>()
+  const merged: MeetingInsightTask[] = []
+
+  for (const task of [...current, ...incoming]) {
+    const key = `${task.text.trim().toLocaleLowerCase("pt-BR")}::${task.responsible?.trim().toLocaleLowerCase("pt-BR") ?? ""}::${task.deadline?.trim().toLocaleLowerCase("pt-BR") ?? ""}`
+    if (!task.text.trim() || seen.has(key)) continue
+    seen.add(key)
+    merged.push(task)
+  }
+
+  return merged
+}
+
+function mergeUniqueInsightResponsibles(current: MeetingInsightResponsible[], incoming: MeetingInsightResponsible[]) {
+  const seen = new Set<string>()
+  const merged: MeetingInsightResponsible[] = []
+
+  for (const item of [...current, ...incoming]) {
+    const key = `${item.name.trim().toLocaleLowerCase("pt-BR")}::${item.context.trim().toLocaleLowerCase("pt-BR")}::${item.deadline?.trim().toLocaleLowerCase("pt-BR") ?? ""}`
+    if (!item.name.trim() || seen.has(key)) continue
+    seen.add(key)
+    merged.push(item)
+  }
+
+  return merged
+}
+
+function mergeMeetingFollowAlongResult(
+  current: MeetingFollowAlongResult | null,
+  incoming: MeetingFollowAlongResult | null,
+): MeetingFollowAlongResult | null {
+  if (!current && !incoming) return null
+  if (!current) return incoming
+  if (!incoming) return current
+
+  return {
+    decisions: mergeUniqueTextItems(current.decisions, incoming.decisions),
+    tasks: mergeUniqueInsightTasks(current.tasks, incoming.tasks),
+    responsibles: mergeUniqueInsightResponsibles(current.responsibles, incoming.responsibles),
+    deadlines: mergeUniqueTextItems(current.deadlines, incoming.deadlines),
+    risks: mergeUniqueTextItems(current.risks, incoming.risks),
+    openQuestions: mergeUniqueTextItems(current.openQuestions, incoming.openQuestions),
+    nextSteps: mergeUniqueTextItems(current.nextSteps, incoming.nextSteps),
   }
 }
 
@@ -760,6 +973,7 @@ function parseMeetingMetadata(value?: string | null): MeetingMetadata | null {
         transcriptionState: parsed.transcriptionState ?? { status: "not_available", note: TRANSCRIPTION_NOTE },
         transcriptText: typeof parsed.transcriptText === "string" ? parsed.transcriptText.trim() : "",
         insights: normalizeMeetingInsightsState(parsed.insights),
+        followAlong: normalizeMeetingFollowAlongState(parsed.followAlong),
         joinRequests: normalizeJoinRequests(parsed.joinRequests),
         connectedParticipants: normalizeConnectedParticipants(parsed.connectedParticipants),
         sessionRecord: normalizeSessionRecord(parsed.sessionRecord),
@@ -777,6 +991,7 @@ function parseMeetingMetadata(value?: string | null): MeetingMetadata | null {
         transcriptionState: { status: "not_available", note: TRANSCRIPTION_NOTE },
         transcriptText: "",
         insights: createEmptyInsightsState(),
+        followAlong: createEmptyFollowAlongState(),
         joinRequests: [],
         connectedParticipants: [],
         sessionRecord: normalizeSessionRecord(),
@@ -818,6 +1033,7 @@ function buildMeetingMetadata(payload: Partial<MeetingPayload>, currentRow?: Mee
     transcriptionState: payload.transcriptionState ?? currentMetadata?.transcriptionState ?? { status: "not_available", note: TRANSCRIPTION_NOTE },
     transcriptText,
     insights: normalizeMeetingInsightsState(payload.insights ?? currentMetadata?.insights),
+    followAlong: normalizeMeetingFollowAlongState(payload.followAlong ?? currentMetadata?.followAlong),
     joinRequests: normalizeJoinRequests(payload.joinRequests ?? currentMetadata?.joinRequests),
     connectedParticipants: normalizeConnectedParticipants(payload.connectedParticipants ?? currentMetadata?.connectedParticipants),
     sessionRecord: normalizeSessionRecord(payload.sessionRecord ?? currentMetadata?.sessionRecord),
@@ -829,6 +1045,12 @@ function buildMeetingMetadata(payload: Partial<MeetingPayload>, currentRow?: Mee
       currentState: baseMetadata.insights,
       cosShouldExtract: baseMetadata.cosShouldExtract,
       transcriptText: baseMetadata.transcriptText,
+    }),
+    followAlong: syncMeetingFollowAlongState({
+      currentState: baseMetadata.followAlong,
+      cosShouldAttend: baseMetadata.cosShouldAttend,
+      hasContent: hasFollowAlongContent(baseMetadata.followAlong.result),
+      isFinished: mapDatabaseStatusToMeetingStatus(currentRow?.status ?? payload.status ?? "scheduled") === "finished",
     }),
     analysisSections: ensureAnalysisSections({
       title: payload.title?.trim() || currentRow?.title || "Reuniao",
@@ -874,6 +1096,7 @@ function hydrateMeeting(meeting: MeetingRow) {
     transcriptionState: metadata.transcriptionState,
     transcriptionTextAvailable: Boolean(metadata.transcriptText.trim()),
     insights: metadata.insights,
+    followAlong: metadata.followAlong,
     joinRequests: metadata.joinRequests.sort((a, b) => b.requestedAt.localeCompare(a.requestedAt)),
     connectedParticipants: metadata.connectedParticipants.sort((a, b) => b.connectedAt.localeCompare(a.connectedAt)),
     sessionRecord: metadata.sessionRecord,
@@ -984,6 +1207,34 @@ function buildMeetingInsightsPrompt({
     .join("\n")
 }
 
+function buildMeetingFollowAlongPrompt({
+  title,
+  description,
+  participants,
+  transcriptText,
+}: {
+  title: string
+  description: string
+  participants: string[]
+  transcriptText: string
+}) {
+  return [
+    "Analise somente o conteudo textual parcial de uma reuniao em andamento do COS Meet e gere apenas JSON valido.",
+    "Nao use markdown.",
+    "Nao invente informacoes ausentes no texto.",
+    "Retorne apenas itens realmente novos e claramente sustentados pelo conteudo recebido.",
+    "Campos obrigatorios: decisions, tasks, responsibles, deadlines, risks, openQuestions, nextSteps.",
+    "tasks deve ser um array de objetos com text, responsible e deadline.",
+    "responsibles deve ser um array de objetos com name, context e deadline.",
+    `Titulo da reuniao: ${title}`,
+    description ? `Descricao: ${description}` : "",
+    participants.length > 0 ? `Participantes informados: ${participants.join(", ")}` : "",
+    `Conteudo textual parcial da reuniao:\n${transcriptText.slice(0, meetTranscriptPromptLimit)}`,
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
 async function extractMeetingInsightsWithOpenAi({
   title,
   description,
@@ -1077,6 +1328,104 @@ async function extractMeetingInsightsWithOpenAi({
   }
 }
 
+async function extractMeetingFollowAlongWithOpenAi({
+  title,
+  description,
+  participants,
+  transcriptText,
+}: {
+  title: string
+  description: string
+  participants: string[]
+  transcriptText: string
+}) {
+  if (!process.env.OPENAI_API_KEY) {
+    return { error: "OPENAI_API_KEY nao configurada. O COS Meet nao consegue acompanhar esta reuniao agora." }
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), meetInsightsTimeoutMs)
+
+  try {
+    const response = await fetch(OPENAI_RESPONSES_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: meetInsightsModel,
+        input: [
+          {
+            role: "system",
+            content: [
+              {
+                type: "input_text",
+                text: "Voce trabalha no COS Meet. Responda somente JSON valido, sem markdown e sem texto adicional.",
+              },
+            ],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: buildMeetingFollowAlongPrompt({
+                  title,
+                  description,
+                  participants,
+                  transcriptText,
+                }),
+              },
+            ],
+          },
+        ],
+      }),
+    })
+
+    const payload = (await response.json()) as Record<string, unknown>
+
+    if (!response.ok) {
+      const providerMessage =
+        typeof payload.error === "object" &&
+        payload.error &&
+        typeof (payload.error as Record<string, unknown>).message === "string"
+          ? ((payload.error as Record<string, unknown>).message as string)
+          : null
+
+      return {
+        error: providerMessage || "Nao foi possivel acompanhar a reuniao com a OpenAI agora.",
+      }
+    }
+
+    const outputText = tryReadOutputText(payload)
+    if (!outputText) {
+      return { error: "A OpenAI nao retornou um conteudo valido para o acompanhamento desta reuniao." }
+    }
+
+    const parsed = parseJsonObject<MeetingFollowAlongResult>(outputText)
+    const result = normalizeMeetingFollowAlongResult(parsed)
+
+    if (!result) {
+      return { error: "A OpenAI retornou um formato invalido para o acompanhamento desta reuniao." }
+    }
+
+    return { result }
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error && error.name === "AbortError"
+          ? "O acompanhamento excedeu o tempo limite do provedor."
+          : error instanceof Error
+            ? error.message
+            : "Nao foi possivel acompanhar esta reuniao agora.",
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export async function getMeetingsAction() {
   const actor = await getMeetingActor()
 
@@ -1119,6 +1468,255 @@ export async function getMeetingByIdAction({ meetingId }: { meetingId: string })
     success: true,
     meeting: hydrateMeeting(resolved.meeting),
     canManage: actor.canManage || actor.isMaster,
+  }
+}
+
+export async function processMeetingFollowAlongAction({
+  meetingId,
+  messages,
+}: {
+  meetingId: string
+  messages: string[]
+}) {
+  const actor = await getMeetingActor()
+
+  if ("error" in actor) {
+    return { error: actor.error }
+  }
+
+  const resolved = await resolveMeetingForActor(actor, meetingId)
+  if ("error" in resolved) {
+    return { error: resolved.error }
+  }
+
+  const hydratedMeeting = hydrateMeeting(resolved.meeting)
+  const currentMetadata = buildMeetingMetadata({}, resolved.meeting)
+
+  if (!hydratedMeeting.cosShouldAttend) {
+    return { error: "O acompanhamento inteligente nao esta ativo nesta reuniao." }
+  }
+
+  const normalizedMessages = Array.isArray(messages)
+    ? messages.map((message) => message.trim()).filter(Boolean).slice(-80)
+    : []
+  const transcriptText = normalizedMessages.join("\n")
+  const sourceHash = transcriptText ? createHash("sha256").update(transcriptText).digest("hex") : null
+  const currentFollowAlong = normalizeMeetingFollowAlongState(currentMetadata.followAlong)
+  const isFinished = hydratedMeeting.status === "finished"
+
+  if (!transcriptText) {
+    const emptyState = syncMeetingFollowAlongState({
+      currentState: createEmptyFollowAlongState(isFinished ? "finished" : "awaiting_content"),
+      cosShouldAttend: true,
+      hasContent: false,
+      isFinished,
+    })
+
+    if (
+      currentFollowAlong.status === emptyState.status &&
+      currentFollowAlong.lastMessageCount === 0 &&
+      !currentFollowAlong.result &&
+      !currentFollowAlong.error
+    ) {
+      return {
+        success: true,
+        reused: true,
+        meeting: hydratedMeeting,
+      }
+    }
+
+    const metadata = buildMeetingMetadata(
+      {
+        title: hydratedMeeting.title,
+        scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+        participants: hydratedMeeting.participants,
+        meetingType: hydratedMeeting.meetingType,
+        meetingLink: hydratedMeeting.meetingLink,
+        meetingLocation: hydratedMeeting.meetingLocation,
+        description: hydratedMeeting.description,
+        cosShouldAttend: hydratedMeeting.cosShouldAttend,
+        cosShouldRecord: hydratedMeeting.cosShouldRecord,
+        cosShouldExtract: hydratedMeeting.cosShouldExtract,
+        cosShouldReport: hydratedMeeting.cosShouldReport,
+        analysisSections: hydratedMeeting.analysisSections,
+        attachments: hydratedMeeting.attachments,
+        timeline: hydratedMeeting.timeline,
+        transcriptionState: hydratedMeeting.transcriptionState,
+        joinRequests: hydratedMeeting.joinRequests,
+        connectedParticipants: hydratedMeeting.connectedParticipants,
+        sessionRecord: hydratedMeeting.sessionRecord,
+        followAlong: emptyState,
+      },
+      resolved.meeting,
+    )
+
+    const { error } = await actor.adminClient
+      .from("meetings")
+      .update(buildMeetingTranscriptUpdate(metadata))
+      .eq("id", meetingId)
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    const refreshed = await resolveMeetingForActor(actor, meetingId)
+    if ("error" in refreshed) {
+      return { error: refreshed.error }
+    }
+
+    return {
+      success: true,
+      reused: false,
+      meeting: hydrateMeeting(refreshed.meeting),
+    }
+  }
+
+  if (
+    currentFollowAlong.sourceHash === sourceHash &&
+    currentFollowAlong.lastMessageCount === normalizedMessages.length &&
+    currentFollowAlong.result
+  ) {
+    return {
+      success: true,
+      reused: true,
+      meeting: hydratedMeeting,
+    }
+  }
+
+  const processingMetadata = buildMeetingMetadata(
+    {
+      title: hydratedMeeting.title,
+      scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+      participants: hydratedMeeting.participants,
+      meetingType: hydratedMeeting.meetingType,
+      meetingLink: hydratedMeeting.meetingLink,
+      meetingLocation: hydratedMeeting.meetingLocation,
+      description: hydratedMeeting.description,
+      cosShouldAttend: hydratedMeeting.cosShouldAttend,
+      cosShouldRecord: hydratedMeeting.cosShouldRecord,
+      cosShouldExtract: hydratedMeeting.cosShouldExtract,
+      cosShouldReport: hydratedMeeting.cosShouldReport,
+      analysisSections: hydratedMeeting.analysisSections,
+      attachments: hydratedMeeting.attachments,
+      timeline: hydratedMeeting.timeline,
+      transcriptionState: hydratedMeeting.transcriptionState,
+      joinRequests: hydratedMeeting.joinRequests,
+      connectedParticipants: hydratedMeeting.connectedParticipants,
+      sessionRecord: hydratedMeeting.sessionRecord,
+      followAlong: {
+        ...currentFollowAlong,
+        status: isFinished ? "finished" : "active",
+        error: null,
+      },
+    },
+    resolved.meeting,
+  )
+
+  const { error: processingError } = await actor.adminClient
+    .from("meetings")
+    .update(buildMeetingTranscriptUpdate(processingMetadata))
+    .eq("id", meetingId)
+
+  if (processingError) {
+    return { error: processingError.message }
+  }
+
+  const extracted = await extractMeetingFollowAlongWithOpenAi({
+    title: hydratedMeeting.title,
+    description: hydratedMeeting.description,
+    participants: hydratedMeeting.participants,
+    transcriptText,
+  })
+
+  if (extracted.error) {
+    const failedMetadata = buildMeetingMetadata(
+      {
+        title: hydratedMeeting.title,
+        scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+        participants: hydratedMeeting.participants,
+        meetingType: hydratedMeeting.meetingType,
+        meetingLink: hydratedMeeting.meetingLink,
+        meetingLocation: hydratedMeeting.meetingLocation,
+        description: hydratedMeeting.description,
+        cosShouldAttend: hydratedMeeting.cosShouldAttend,
+        cosShouldRecord: hydratedMeeting.cosShouldRecord,
+        cosShouldExtract: hydratedMeeting.cosShouldExtract,
+        cosShouldReport: hydratedMeeting.cosShouldReport,
+        analysisSections: hydratedMeeting.analysisSections,
+        attachments: hydratedMeeting.attachments,
+        timeline: hydratedMeeting.timeline,
+        transcriptionState: hydratedMeeting.transcriptionState,
+        joinRequests: hydratedMeeting.joinRequests,
+        connectedParticipants: hydratedMeeting.connectedParticipants,
+        sessionRecord: hydratedMeeting.sessionRecord,
+        followAlong: {
+          ...currentFollowAlong,
+          status: "error",
+          error: extracted.error,
+          sourceHash,
+          lastMessageCount: normalizedMessages.length,
+        },
+      },
+      resolved.meeting,
+    )
+
+    await actor.adminClient.from("meetings").update(buildMeetingTranscriptUpdate(failedMetadata)).eq("id", meetingId)
+
+    return { error: extracted.error }
+  }
+
+  const mergedResult = mergeMeetingFollowAlongResult(currentFollowAlong.result, extracted.result ?? null)
+  const nextStatus: MeetingFollowAlongStatus = isFinished ? "finished" : "paused"
+  const completedMetadata = buildMeetingMetadata(
+    {
+      title: hydratedMeeting.title,
+      scheduledAt: hydratedMeeting.scheduledAt ?? undefined,
+      participants: hydratedMeeting.participants,
+      meetingType: hydratedMeeting.meetingType,
+      meetingLink: hydratedMeeting.meetingLink,
+      meetingLocation: hydratedMeeting.meetingLocation,
+      description: hydratedMeeting.description,
+      cosShouldAttend: hydratedMeeting.cosShouldAttend,
+      cosShouldRecord: hydratedMeeting.cosShouldRecord,
+      cosShouldExtract: hydratedMeeting.cosShouldExtract,
+      cosShouldReport: hydratedMeeting.cosShouldReport,
+      analysisSections: hydratedMeeting.analysisSections,
+      attachments: hydratedMeeting.attachments,
+      timeline: hydratedMeeting.timeline,
+      transcriptionState: hydratedMeeting.transcriptionState,
+      joinRequests: hydratedMeeting.joinRequests,
+      connectedParticipants: hydratedMeeting.connectedParticipants,
+      sessionRecord: hydratedMeeting.sessionRecord,
+      followAlong: {
+        status: nextStatus,
+        processedAt: new Date().toISOString(),
+        error: null,
+        sourceHash,
+        lastMessageCount: normalizedMessages.length,
+        result: mergedResult,
+      },
+    },
+    resolved.meeting,
+  )
+
+  const { error: completedError } = await actor.adminClient
+    .from("meetings")
+    .update(buildMeetingTranscriptUpdate(completedMetadata))
+    .eq("id", meetingId)
+
+  if (completedError) {
+    return { error: completedError.message }
+  }
+
+  const refreshed = await resolveMeetingForActor(actor, meetingId)
+  if ("error" in refreshed) {
+    return { error: refreshed.error }
+  }
+
+  return {
+    success: true,
+    reused: false,
+    meeting: hydrateMeeting(refreshed.meeting),
   }
 }
 

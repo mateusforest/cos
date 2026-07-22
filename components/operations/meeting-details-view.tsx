@@ -37,6 +37,7 @@ import {
   type MeetingType,
   type MeetingInsightsState,
   type MeetingInsightsResult,
+  type MeetingFollowAlongState,
 } from "@/actions/meetings"
 import { useAuth } from "@/components/auth/auth-provider"
 import { COSLoading } from "@/components/cos/cos-loading"
@@ -68,6 +69,7 @@ type MeetingRecord = {
   transcriptionState: MeetingTranscriptionState
   transcriptionTextAvailable: boolean
   insights: MeetingInsightsState
+  followAlong: MeetingFollowAlongState
   joinRequests: MeetingJoinRequest[]
   connectedParticipants: ConnectedMeetingParticipant[]
 }
@@ -965,6 +967,8 @@ export function MeetingDetailsView({
                     participantName={profile?.full_name?.trim() || user?.email?.trim() || workspace?.name?.trim() || "Organizador"}
                     role="organizer"
                     canManage={canManageWorkspace}
+                    cosShouldAttend={meeting.cosShouldAttend}
+                    initialFollowAlong={meeting.followAlong}
                     className="h-full overflow-hidden"
                     onEnded={async () => {
                       setIsVideoModalOpen(false)
