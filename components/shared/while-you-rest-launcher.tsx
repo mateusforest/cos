@@ -72,6 +72,30 @@ function WhileYouRestIcon({
   )
 }
 
+function WhileYouRestLauncherIcon({ active = false }: { active?: boolean }) {
+  return (
+    <div className="relative flex h-[72px] w-[72px] items-center justify-center rounded-full bg-[radial-gradient(circle_at_30%_25%,#c987ff_0%,#8c3dff_38%,#5b20da_70%,#4415bc_100%)] shadow-[0_18px_40px_rgba(150,78,255,0.45)]">
+      <div className="absolute inset-[-10px] rounded-full border border-white/70 bg-white/20 blur-[1px]" />
+      <div className={`absolute inset-[-18px] rounded-full bg-[radial-gradient(circle,rgba(195,126,255,0.38)_0%,rgba(195,126,255,0.16)_42%,rgba(195,126,255,0)_78%)] ${active ? "animate-pulse" : "opacity-80"}`} />
+      <svg
+        viewBox="0 0 64 64"
+        aria-hidden="true"
+        className="relative h-11 w-11 text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.32)]"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M32 10c1.8 9.8 2.6 10.6 12.4 12.4C34.6 24.2 33.8 25 32 34.8 30.2 25 29.4 24.2 19.6 22.4 29.4 20.6 30.2 19.8 32 10Z" />
+        <path d="M50 8v10" />
+        <path d="M45 13h10" />
+        <circle cx="18" cy="40" r="4.4" />
+      </svg>
+    </div>
+  )
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return "Agora"
   const date = new Date(value)
@@ -484,17 +508,27 @@ export function WhileYouRestLauncher({ variant }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`fixed z-40 flex items-center gap-3 rounded-full border px-3.5 py-3 text-sm font-medium shadow-[0_18px_50px_rgba(10,10,10,0.18)] backdrop-blur transition-all ${launcherTone} ${
-          variant === "app" ? "bottom-24 right-4 lg:bottom-6" : "bottom-6 right-4"
-        }`}
+        className={`fixed z-40 flex items-center gap-5 rounded-full border border-[rgba(192,144,255,0.78)] bg-white/92 px-[18px] py-[12px] text-left shadow-[0_24px_60px_rgba(167,117,255,0.22),0_0_0_1px_rgba(255,255,255,0.72)_inset] backdrop-blur-xl transition-all ${
+          launcherActive ? "scale-[1.01]" : "scale-100"
+        } ${variant === "app" ? "bottom-24 right-4 lg:bottom-6" : "bottom-6 right-4"}`}
+        style={{
+          minWidth: "min(92vw, 420px)",
+          backgroundImage:
+            "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(252,247,255,0.92) 100%)",
+          boxShadow:
+            "0 26px 64px rgba(176, 123, 255, 0.20), 0 0 0 1px rgba(198, 152, 255, 0.55), inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -10px 24px rgba(209, 168, 255, 0.08)",
+        }}
       >
-        <div className="relative">
-          <WhileYouRestIcon active={launcherActive} className="h-10 w-10" />
-          {launcherActive && <span className="absolute inset-[-4px] rounded-[20px] bg-emerald-400/10 blur-md" />}
+        <span className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_78%_92%,rgba(255,132,232,0.34)_0%,rgba(255,132,232,0.12)_8%,rgba(255,255,255,0)_20%)]" />
+        <span className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_18%_110%,rgba(171,108,255,0.22)_0%,rgba(171,108,255,0.10)_14%,rgba(255,255,255,0)_34%)]" />
+        <span className="pointer-events-none absolute inset-0 rounded-full border border-white/70" />
+        <div className="relative shrink-0">
+          <WhileYouRestLauncherIcon active={launcherActive} />
         </div>
-        <div className="flex min-w-0 flex-col items-start">
-          <span className="truncate text-sm font-semibold">{launcherLabel}</span>
-          <span className="text-xs text-white/70">Recurso especial do COS</span>
+        <div className="relative min-w-0 pr-3">
+          <span className="block truncate text-[clamp(18px,2.4vw,26px)] font-semibold leading-none tracking-[-0.04em] text-[#2f1794]">
+            {launcherLabel}
+          </span>
         </div>
       </button>
 
