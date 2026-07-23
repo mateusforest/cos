@@ -189,15 +189,44 @@ function mapRuntimeStatus({
 }
 
 function buildStateAndSummary(items: PlanItemView[], controlState: WhileYouRestControlState) {
-  const counts = {
-    completed: items.filter((item) => item.runtimeStatus === "concluido").length,
-    running: items.filter((item) => item.runtimeStatus === "em_execucao").length,
-    pending: items.filter((item) => item.runtimeStatus === "aguardando").length,
-    failed: items.filter((item) => item.runtimeStatus === "falhou").length,
-    waitingConfirmation: items.filter((item) => item.runtimeStatus === "aguardando_confirmacao").length,
-    cancelled: items.filter((item) => item.runtimeStatus === "cancelado").length,
-    unsupported: items.filter((item) => item.runtimeStatus === "nao_suportado").length,
-  }
+  const counts = items.reduce(
+    (acc, item) => {
+      switch (item.runtimeStatus) {
+        case "concluido":
+          acc.completed += 1
+          break
+        case "em_execucao":
+          acc.running += 1
+          break
+        case "aguardando":
+          acc.pending += 1
+          break
+        case "falhou":
+          acc.failed += 1
+          break
+        case "aguardando_confirmacao":
+          acc.waitingConfirmation += 1
+          break
+        case "cancelado":
+          acc.cancelled += 1
+          break
+        case "nao_suportado":
+          // Unsupported items still depend on the user to move forward.
+          acc.waitingConfirmation += 1
+          break
+      }
+
+      return acc
+    },
+    {
+      completed: 0,
+      running: 0,
+      pending: 0,
+      failed: 0,
+      waitingConfirmation: 0,
+      cancelled: 0,
+    },
+  )
 
   const total = items.length
   const hasPendingOrRunning = counts.pending > 0 || counts.running > 0
@@ -205,8 +234,7 @@ function buildStateAndSummary(items: PlanItemView[], controlState: WhileYouRestC
   const hasIssues =
     counts.failed > 0 ||
     counts.waitingConfirmation > 0 ||
-    counts.cancelled > 0 ||
-    counts.unsupported > 0
+    counts.cancelled > 0
 
   let status: WhileYouRestExecutionState = "draft"
 
@@ -232,7 +260,7 @@ function buildStateAndSummary(items: PlanItemView[], controlState: WhileYouRestC
     counts.completed +
     counts.failed +
     counts.cancelled +
-    ((status === "waiting_confirmation" || status === "completed_with_issues" || status === "cancelled") ? counts.waitingConfirmation + counts.unsupported : 0)
+    ((status === "waiting_confirmation" || status === "completed_with_issues" || status === "cancelled") ? counts.waitingConfirmation : 0)
   const progressPercent = total > 0 ? Math.round((finalForProgress / total) * 100) : 0
 
   return {
@@ -244,7 +272,6 @@ function buildStateAndSummary(items: PlanItemView[], controlState: WhileYouRestC
       failedCount: counts.failed,
       waitingConfirmationCount: counts.waitingConfirmation,
       cancelledCount: counts.cancelled,
-      unsupportedCount: counts.unsupported,
       totalCount: total,
       finalizedCount: finalForProgress,
       progressPercent,

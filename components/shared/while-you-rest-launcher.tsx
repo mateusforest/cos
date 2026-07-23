@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import {
   CheckCircle2,
@@ -8,7 +8,6 @@ import {
   CircleAlert,
   FileText,
   Loader2,
-  MoonStar,
   PauseCircle,
   PlayCircle,
   Plus,
@@ -36,32 +35,16 @@ type Props = {
   variant: "app" | "portal"
 }
 
-type ExecutionSection = {
-  key: "in_progress" | "paused" | "waiting_confirmation" | "completed" | "error" | "cancelled"
-  title: string
-  statuses: WhileYouRestHydratedPlan["status"][]
-}
+type Phase = "request" | "review" | "tracking"
 
-const sections: ExecutionSection[] = [
-  { key: "in_progress", title: "Em andamento", statuses: ["queued", "running"] },
-  { key: "paused", title: "Pausadas", statuses: ["paused"] },
-  { key: "waiting_confirmation", title: "Aguardando você", statuses: ["waiting_confirmation"] },
-  { key: "completed", title: "Concluídas", statuses: ["completed", "completed_with_issues"] },
-  { key: "error", title: "Com erro", statuses: ["failed"] },
-  { key: "cancelled", title: "Encerradas", statuses: ["cancelled"] },
+const sections = [
+  { key: "in_progress", title: "Em andamento", statuses: ["queued", "running"] as const },
+  { key: "paused", title: "Pausadas", statuses: ["paused"] as const },
+  { key: "waiting_confirmation", title: "Aguardando você", statuses: ["waiting_confirmation"] as const },
+  { key: "completed", title: "Concluídas", statuses: ["completed", "completed_with_issues"] as const },
+  { key: "error", title: "Com erro", statuses: ["failed"] as const },
+  { key: "cancelled", title: "Encerradas", statuses: ["cancelled"] as const },
 ]
-
-const statusText: Record<WhileYouRestHydratedPlan["status"], string> = {
-  draft: "Tudo pronto para revisar.",
-  queued: "Tudo pronto para começar.",
-  running: "Estou trabalhando nisso.",
-  paused: "Execução pausada.",
-  waiting_confirmation: "Aguardando sua confirmação.",
-  completed: "Tudo pronto.",
-  completed_with_issues: "Concluí o que foi possível.",
-  failed: "Não consegui concluir esta execução.",
-  cancelled: "Execução encerrada.",
-}
 
 function getExecutionBadgeTone(status: WhileYouRestHydratedPlan["status"]) {
   if (status === "queued" || status === "running") return "bg-amber-50 text-amber-700"
@@ -72,54 +55,21 @@ function getExecutionBadgeTone(status: WhileYouRestHydratedPlan["status"]) {
   return "bg-rose-50 text-rose-700"
 }
 
-function getRuntimeIcon(status: WhileYouRestHydratedPlan["items"][number]["runtimeStatus"]) {
-  switch (status) {
-    case "concluido":
-      return CheckCircle2
-    case "em_execucao":
-      return Loader2
-    case "falhou":
-      return XCircle
-    case "cancelado":
-      return Square
-    case "aguardando_confirmacao":
-    case "nao_suportado":
-      return Circle
-    default:
-      return Circle
-  }
-}
-
-function getRuntimeTone(status: WhileYouRestHydratedPlan["items"][number]["runtimeStatus"]) {
-  switch (status) {
-    case "concluido":
-      return "text-emerald-600"
-    case "em_execucao":
-      return "text-amber-600"
-    case "falhou":
-      return "text-rose-600"
-    case "cancelado":
-      return "text-zinc-500"
-    case "aguardando_confirmacao":
-      return "text-orange-600"
-    case "nao_suportado":
-      return "text-zinc-500"
-    default:
-      return "text-slate-500"
-  }
-}
-
-
-function resolveResultLink(item: WhileYouRestHydratedPlan["items"][number]) {
-  if (item.result?.entityType === "client") {
-    return { href: "/portal/cadastros/clientes", label: "Ver clientes" }
-  }
-
-  if (item.result?.entityType === "document") {
-    return { href: "/portal/documentos", label: "Ver documentos" }
-  }
-
-  return null
+function WhileYouRestIcon({
+  active = false,
+  className = "",
+}: {
+  active?: boolean
+  className?: string
+}) {
+  return (
+    <div
+      className={`relative flex items-center justify-center rounded-2xl bg-[#111111] text-white shadow-[0_10px_30px_rgba(17,17,17,0.24)] ${className}`}
+    >
+      <span className={`absolute inset-0 rounded-2xl bg-white/10 ${active ? "animate-pulse" : "opacity-60"}`} />
+      <Sparkles className={`relative h-5 w-5 ${active ? "animate-pulse" : ""}`} />
+    </div>
+  )
 }
 
 function formatDateTime(value: string | null) {
@@ -141,82 +91,192 @@ function formatEstimatedTime(minutes: number) {
   return remaining === 0 ? `${hours} h` : `${hours} h ${remaining} min`
 }
 
-function numberFromSummary(summary: Record<string, unknown>, key: string) {
+function summaryNumber(summary: Record<string, unknown>, key: string) {
   const value = summary[key]
   return typeof value === "number" && Number.isFinite(value) ? value : 0
 }
 
+function getLauncherState(plans: WhileYouRestHydratedPlan[]) {
+  if (plans.some((plan) => plan.status === "waiting_confirmation")) {
+    return "Precisa de você"
+  }
+
+  if (plans.some((plan) => plan.status === "paused")) {
+    return "Execução pausada"
+  }
+
+  if (plans.some((plan) => plan.status === "queued" || plan.status === "running")) {
+    return "COS trabalhando"
+  }
+
+  return "Enquanto você descansa"
+}
+
+function getLauncherTone(plans: WhileYouRestHydratedPlan[]) {
+  if (plans.some((plan) => plan.status === "waiting_confirmation")) {
+    return "border-orange-200 bg-[#1b1611] text-orange-50"
+  }
+
+  if (plans.some((plan) => plan.status === "paused")) {
+    return "border-slate-200 bg-[#16181b] text-slate-50"
+  }
+
+  if (plans.some((plan) => plan.status === "queued" || plan.status === "running")) {
+    return "border-emerald-200 bg-[#111111] text-white"
+  }
+
+  return "border-white/70 bg-[#0a0a0a] text-white"
+}
+
+function shouldPoll(plan: WhileYouRestHydratedPlan) {
+  if (plan.status === "draft" || plan.status === "completed" || plan.status === "failed") {
+    return false
+  }
+
+  if (plan.status === "cancelled") {
+    return plan.items.some((item) => item.runtimeStatus === "em_execucao")
+  }
+
+  if (plan.status === "paused") {
+    return plan.items.some((item) => item.runtimeStatus === "em_execucao")
+  }
+
+  return plan.items.some((item) => item.runtimeStatus === "aguardando" || item.runtimeStatus === "em_execucao")
+}
+
+function resolveResultLink(item: WhileYouRestHydratedPlan["items"][number]) {
+  if (item.result?.entityType === "client") {
+    return { href: "/portal/cadastros/clientes", label: "Ver clientes" }
+  }
+
+  if (item.result?.entityType === "document") {
+    return { href: "/portal/documentos", label: "Ver documentos" }
+  }
+
+  return null
+}
+
+function getRuntimeIcon(status: WhileYouRestHydratedPlan["items"][number]["runtimeStatus"]) {
+  switch (status) {
+    case "concluido":
+      return CheckCircle2
+    case "em_execucao":
+      return Loader2
+    case "falhou":
+      return XCircle
+    case "cancelado":
+      return Square
+    case "aguardando_confirmacao":
+      return CircleAlert
+    default:
+      return Circle
+  }
+}
+
+function getRuntimeTone(status: WhileYouRestHydratedPlan["items"][number]["runtimeStatus"]) {
+  switch (status) {
+    case "concluido":
+      return "text-emerald-600"
+    case "em_execucao":
+      return "text-amber-600"
+    case "falhou":
+      return "text-rose-600"
+    case "cancelado":
+      return "text-zinc-500"
+    case "aguardando_confirmacao":
+      return "text-orange-600"
+    default:
+      return "text-slate-500"
+  }
+}
+
+function statusHeadline(status: WhileYouRestHydratedPlan["status"]) {
+  switch (status) {
+    case "queued":
+      return "Tudo pronto para começar."
+    case "running":
+      return "Estou trabalhando nisso."
+    case "paused":
+      return "Execução pausada."
+    case "cancelled":
+      return "Execução encerrada."
+    case "completed":
+      return "Tudo pronto."
+    case "completed_with_issues":
+      return "Concluí o que foi possível."
+    case "failed":
+      return "Não consegui concluir esta execução."
+    case "waiting_confirmation":
+      return "Precisa de você."
+    default:
+      return "Tudo pronto para revisar."
+  }
+}
+
+function SoftMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-[#ece9e2] bg-[#faf8f3] px-4 py-3">
+      <p className="text-xs text-[#8b847b]">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-[#111111]">{value}</p>
+    </div>
+  )
+}
+
+function SoftTag({ children }: { children: React.ReactNode }) {
+  return <span className="rounded-full bg-white px-3 py-1 text-xs text-[#6d675f]">{children}</span>
+}
+
+function resolvePrioritySummary(items: WhileYouRestHydratedPlan["items"]) {
+  if (items.some((item) => item.priority === "alta")) return "Alta"
+  if (items.some((item) => item.priority === "media")) return "Média"
+  return "Baixa"
+}
+
+function resolveNearestDeadline(items: WhileYouRestHydratedPlan["items"]) {
+  return items.find((item) => item.deadline)?.deadline ?? "Sem prazo"
+}
+
 export function WhileYouRestLauncher({ variant }: Props) {
   const { workspace, canManageWorkspace, isLoading } = useAuth()
-  const [open, setOpen] = useState(false)
   const [requestText, setRequestText] = useState("")
   const [draftPlan, setDraftPlan] = useState<WhileYouRestHydratedPlan | null>(null)
   const [plans, setPlans] = useState<WhileYouRestHydratedPlan[]>([])
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
-  const [localStatusOverride, setLocalStatusOverride] = useState<Record<string, WhileYouRestHydratedPlan["status"]>>({})
-  const [isPlanning, startPlanning] = useTransition()
-  const [isStarting, startStarting] = useTransition()
-  const [isMutating, startMutating] = useTransition()
-  const [isRefreshing, startRefreshing] = useTransition()
-  const pollingRef = useRef(false)
+  const [open, setOpen] = useState(false)
+
+  const [loadingPlan, setLoadingPlan] = useState(false)
+  const [loadingStart, setLoadingStart] = useState(false)
+  const [loadingPause, setLoadingPause] = useState(false)
+  const [loadingResume, setLoadingResume] = useState(false)
+  const [loadingCancel, setLoadingCancel] = useState(false)
+  const [loadingRefresh, setLoadingRefresh] = useState(false)
+
+  const pollingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const refreshInFlightRef = useRef(false)
 
   const isOperationsWorkspace = workspace?.type === "operations"
   const selectedPlan = useMemo(() => plans.find((plan) => plan.id === selectedPlanId) ?? null, [plans, selectedPlanId])
-  const phase = draftPlan ? "review" : selectedPlan ? "tracking" : "request"
-
-  const visiblePlans = useMemo(
-    () =>
-      plans.map((plan) =>
-        localStatusOverride[plan.id]
-          ? {
-              ...plan,
-              status: localStatusOverride[plan.id],
-            }
-          : plan,
-      ),
-    [localStatusOverride, plans],
-  )
-
-  const visibleSelectedPlan = useMemo(
-    () => visiblePlans.find((plan) => plan.id === selectedPlanId) ?? selectedPlan,
-    [selectedPlan, selectedPlanId, visiblePlans],
-  )
+  const phase: Phase = draftPlan ? "review" : selectedPlan ? "tracking" : "request"
+  const launcherLabel = getLauncherState(plans)
+  const launcherTone = getLauncherTone(plans)
+  const launcherActive = plans.some((plan) => plan.status === "queued" || plan.status === "running")
 
   const groupedPlans = useMemo(
     () =>
       sections.map((section) => ({
         ...section,
-        plans: visiblePlans.filter((plan) => section.statuses.includes(plan.status)),
+        plans: plans.filter((plan) => section.statuses.some((status) => status === plan.status)),
       })),
-    [visiblePlans],
-  )
-
-  const hasPollingCandidate = useMemo(
-    () =>
-      plans.some((plan) => {
-        if (["completed", "completed_with_issues", "failed"].includes(plan.status)) {
-          return false
-        }
-
-        if (plan.status === "cancelled") {
-          return plan.items.some((item) => item.runtimeStatus === "em_execucao")
-        }
-
-        if (plan.status === "paused") {
-          return plan.items.some((item) => item.runtimeStatus === "em_execucao")
-        }
-
-        return plan.items.some((item) => item.runtimeStatus === "aguardando" || item.runtimeStatus === "em_execucao")
-      }),
     [plans],
   )
 
   const refreshPlans = async (preferredPlanId?: string | null) => {
-    if (pollingRef.current) {
+    if (refreshInFlightRef.current) {
       return
     }
 
-    pollingRef.current = true
+    refreshInFlightRef.current = true
+    setLoadingRefresh(true)
 
     try {
       const result = await getWhileYouRestPlansAction()
@@ -226,9 +286,16 @@ export function WhileYouRestLauncher({ variant }: Props) {
 
       setPlans(result.plans)
       setSelectedPlanId((current) => preferredPlanId ?? current ?? result.plans[0]?.id ?? null)
-      setLocalStatusOverride({})
     } finally {
-      pollingRef.current = false
+      refreshInFlightRef.current = false
+      setLoadingRefresh(false)
+    }
+  }
+
+  const stopPolling = () => {
+    if (pollingTimerRef.current) {
+      clearInterval(pollingTimerRef.current)
+      pollingTimerRef.current = null
     }
   }
 
@@ -237,31 +304,43 @@ export function WhileYouRestLauncher({ variant }: Props) {
       return
     }
 
-    startRefreshing(async () => {
-      await refreshPlans()
-    })
+    void refreshPlans()
   }, [canManageWorkspace, isOperationsWorkspace])
 
   useEffect(() => {
-    if (!open || !hasPollingCandidate) {
+    stopPolling()
+
+    if (!open) {
       return
     }
 
-    const interval = window.setInterval(() => {
-      startRefreshing(async () => {
-        await refreshPlans()
-      })
+    const pollable = plans.some((plan) => shouldPoll(plan))
+    if (!pollable) {
+      return
+    }
+
+    pollingTimerRef.current = setInterval(() => {
+      void refreshPlans()
     }, 8000)
 
-    return () => window.clearInterval(interval)
-  }, [hasPollingCandidate, open])
+    return () => {
+      stopPolling()
+    }
+  }, [open, plans])
 
   if (isLoading || !isOperationsWorkspace || !canManageWorkspace) {
     return null
   }
 
-  const handleBuildPlan = () => {
-    startPlanning(async () => {
+  const hasMutationLoading = loadingStart || loadingPause || loadingResume || loadingCancel
+
+  const handleBuildPlan = async () => {
+    if (loadingPlan || !requestText.trim()) {
+      return
+    }
+
+    setLoadingPlan(true)
+    try {
       const result = await createWhileYouRestPlanAction(requestText)
       if (result.error || !result.plan) {
         toast({
@@ -272,15 +351,28 @@ export function WhileYouRestLauncher({ variant }: Props) {
       }
 
       setDraftPlan(result.plan)
-    })
+    } finally {
+      setLoadingPlan(false)
+    }
   }
 
-  const handleStartPlan = () => {
+  const handleAdjustRequest = () => {
     if (!draftPlan) {
       return
     }
 
-    startStarting(async () => {
+    setRequestText(draftPlan.requestText)
+    setDraftPlan(null)
+    setSelectedPlanId(null)
+  }
+
+  const handleStartPlan = async () => {
+    if (!draftPlan || loadingStart) {
+      return
+    }
+
+    setLoadingStart(true)
+    try {
       const result = await startWhileYouRestPlanAction(draftPlan.id)
       if (result.error || !result.plan) {
         toast({
@@ -297,62 +389,113 @@ export function WhileYouRestLauncher({ variant }: Props) {
         title: "Comecei a cuidar disso",
         description: "O COS colocou a execução em andamento.",
       })
-    })
+    } finally {
+      setLoadingStart(false)
+    }
   }
 
-  const runOptimisticMutation = ({
-    planId,
-    optimisticStatus,
-    pendingTitle,
-    action,
-  }: {
-    planId: string
-    optimisticStatus: WhileYouRestHydratedPlan["status"]
-    pendingTitle: string
-    action: () => Promise<{ error?: string; plan?: WhileYouRestHydratedPlan; success?: boolean }>
-  }) => {
-    if (isMutating) {
+  const handlePause = async () => {
+    if (!selectedPlan || loadingPause) {
       return
     }
 
-    setLocalStatusOverride((current) => ({ ...current, [planId]: optimisticStatus }))
+    const snapshot = selectedPlan
+    setPlans((current) => current.map((plan) => (plan.id === snapshot.id ? { ...plan, status: "paused" } : plan)))
+    setLoadingPause(true)
 
-    startMutating(async () => {
-      toast({
-        title: pendingTitle,
-      })
-
-      const result = await action()
+    try {
+      const result = await pauseWhileYouRestPlanAction(snapshot.id)
       if (result.error || !result.plan) {
-        setLocalStatusOverride((current) => {
-          const next = { ...current }
-          delete next[planId]
-          return next
-        })
+        setPlans((current) => current.map((plan) => (plan.id === snapshot.id ? snapshot : plan)))
         toast({
-          title: "Não foi possível concluir a ação",
+          title: "Não foi possível pausar",
           description: result.error ?? "Tente novamente em instantes.",
         })
         return
       }
 
-      await refreshPlans(planId)
-    })
+      setPlans((current) => current.map((plan) => (plan.id === result.plan!.id ? result.plan! : plan)))
+      setSelectedPlanId(result.plan.id)
+    } finally {
+      setLoadingPause(false)
+    }
   }
 
-  const selectedPlanForActions = visibleSelectedPlan
+  const handleResume = async () => {
+    if (!selectedPlan || loadingResume) {
+      return
+    }
+
+    const snapshot = selectedPlan
+    setPlans((current) => current.map((plan) => (plan.id === snapshot.id ? { ...plan, status: "queued" } : plan)))
+    setLoadingResume(true)
+
+    try {
+      const result = await continueWhileYouRestPlanAction(snapshot.id)
+      if (result.error || !result.plan) {
+        setPlans((current) => current.map((plan) => (plan.id === snapshot.id ? snapshot : plan)))
+        toast({
+          title: "Não foi possível continuar",
+          description: result.error ?? "Tente novamente em instantes.",
+        })
+        return
+      }
+
+      setPlans((current) => current.map((plan) => (plan.id === result.plan!.id ? result.plan! : plan)))
+      setSelectedPlanId(result.plan.id)
+    } finally {
+      setLoadingResume(false)
+    }
+  }
+
+  const handleCancel = async () => {
+    if (!selectedPlan || loadingCancel) {
+      return
+    }
+
+    if (!window.confirm("Encerrar esta execução? O que já foi concluído permanece salvo.")) {
+      return
+    }
+
+    const snapshot = selectedPlan
+    setPlans((current) => current.map((plan) => (plan.id === snapshot.id ? { ...plan, status: "cancelled" } : plan)))
+    setLoadingCancel(true)
+
+    try {
+      const result = await endWhileYouRestPlanAction(snapshot.id)
+      if (result.error || !result.plan) {
+        setPlans((current) => current.map((plan) => (plan.id === snapshot.id ? snapshot : plan)))
+        toast({
+          title: "Não foi possível encerrar",
+          description: result.error ?? "Tente novamente em instantes.",
+        })
+        return
+      }
+
+      setPlans((current) => current.map((plan) => (plan.id === result.plan!.id ? result.plan! : plan)))
+      setSelectedPlanId(result.plan.id)
+    } finally {
+      setLoadingCancel(false)
+    }
+  }
 
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`fixed z-40 flex items-center gap-3 rounded-full border border-white/70 bg-[#0a0a0a] px-4 py-3 text-sm font-medium text-white shadow-[0_18px_50px_rgba(10,10,10,0.24)] backdrop-blur ${
+        className={`fixed z-40 flex items-center gap-3 rounded-full border px-3.5 py-3 text-sm font-medium shadow-[0_18px_50px_rgba(10,10,10,0.18)] backdrop-blur transition-all ${launcherTone} ${
           variant === "app" ? "bottom-24 right-4 lg:bottom-6" : "bottom-6 right-4"
         }`}
       >
-        <MoonStar className="h-4 w-4" />
-        <span>Enquanto você descansa</span>
+        <div className="relative">
+          <WhileYouRestIcon active={launcherActive} className="h-10 w-10" />
+          {launcherActive && <span className="absolute inset-[-4px] rounded-[20px] bg-emerald-400/10 blur-md" />}
+        </div>
+        <div className="flex min-w-0 flex-col items-start">
+          <span className="truncate text-sm font-semibold">{launcherLabel}</span>
+          <span className="text-xs text-white/70">Recurso especial do COS</span>
+        </div>
       </button>
 
       <Sheet open={open} onOpenChange={setOpen}>
@@ -360,9 +503,7 @@ export function WhileYouRestLauncher({ variant }: Props) {
           <SheetHeader className="border-b border-[#ece9e2] px-6 py-5">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#111111] text-white">
-                  <Sparkles className="h-5 w-5" />
-                </div>
+                <WhileYouRestIcon active={launcherActive} className="h-11 w-11" />
                 <div>
                   <SheetTitle className="text-xl text-[#111111]">Enquanto você descansa</SheetTitle>
                   <SheetDescription className="mt-1 text-sm text-[#6d675f]">
@@ -405,12 +546,12 @@ export function WhileYouRestLauncher({ variant }: Props) {
                     <div className="mt-5 flex justify-end">
                       <Button
                         type="button"
-                        onClick={handleBuildPlan}
-                        disabled={!requestText.trim() || isPlanning}
+                        onClick={() => void handleBuildPlan()}
+                        disabled={!requestText.trim() || loadingPlan}
                         className="rounded-full bg-[#111111] px-5 text-white hover:bg-[#222222]"
                       >
-                        {isPlanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                        Organizar plano
+                        {loadingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                        Organizar tudo
                       </Button>
                     </div>
                   </div>
@@ -420,15 +561,20 @@ export function WhileYouRestLauncher({ variant }: Props) {
               {phase === "review" && draftPlan && (
                 <section className="space-y-4">
                   <div className="rounded-[32px] border border-[#ece9e2] bg-white p-6 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b847b]">Planejamento</p>
-                    <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[#111111]">Enquanto você descansa</h2>
-                    <p className="mt-3 text-sm leading-7 text-[#4c463f]">Vou cuidar de:</p>
+                    <div className="flex items-center gap-3">
+                      <WhileYouRestIcon className="h-10 w-10" />
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b847b]">Planejamento</p>
+                        <h2 className="mt-1 text-3xl font-semibold tracking-tight text-[#111111]">Enquanto você descansa</h2>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-sm leading-7 text-[#4c463f]">Vou cuidar de:</p>
 
                     <div className="mt-5 space-y-4">
                       {draftPlan.items.map((item) => (
                         <div key={item.id} className="rounded-[24px] border border-[#ece9e2] bg-[#faf8f3] p-4">
                           <div className="flex items-start gap-3">
-                            <span className="mt-0.5 text-lg leading-none text-[#111111]">{getReviewLinePrefix(item)}</span>
+                            <span className="mt-0.5 text-lg leading-none text-[#111111]">{item.kind === "executable" ? "✓" : "○"}</span>
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-medium text-[#111111]">{item.title}</p>
                               <div className="mt-3 flex flex-wrap gap-2">
@@ -450,20 +596,17 @@ export function WhileYouRestLauncher({ variant }: Props) {
                     <div className="mt-6 flex flex-wrap items-center gap-3">
                       <Button
                         type="button"
-                        onClick={handleStartPlan}
-                        disabled={isStarting}
+                        onClick={() => void handleStartPlan()}
+                        disabled={loadingStart}
                         className="rounded-full bg-[#111111] px-5 text-white hover:bg-[#222222]"
                       >
-                        {isStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+                        {loadingStart ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
                         Começar
                       </Button>
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => {
-                          setRequestText(draftPlan.requestText)
-                          setDraftPlan(null)
-                        }}
+                        onClick={handleAdjustRequest}
                         className="rounded-full border-[#d8d0c3] bg-white"
                       >
                         Ajustar pedido
@@ -473,86 +616,68 @@ export function WhileYouRestLauncher({ variant }: Props) {
                 </section>
               )}
 
-              {phase === "tracking" && selectedPlanForActions && (
+              {phase === "tracking" && selectedPlan && (
                 <section className="space-y-4">
                   <div className="rounded-[32px] border border-[#ece9e2] bg-white p-6 shadow-sm">
                     <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b847b]">
-                          {selectedPlanForActions.status === "cancelled" ? "Execução encerrada" : "Execução"}
-                        </p>
-                        <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[#111111]">{statusText[selectedPlanForActions.status]}</h2>
-                        <p className="mt-3 text-sm leading-7 text-[#4c463f]">{selectedPlanForActions.title}</p>
+                      <div className="flex items-start gap-3">
+                        <WhileYouRestIcon active={selectedPlan.status === "queued" || selectedPlan.status === "running"} className="h-10 w-10" />
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b847b]">
+                            {selectedPlan.status === "cancelled" ? "Execução encerrada" : "Execução"}
+                          </p>
+                          <h2 className="mt-1 text-3xl font-semibold tracking-tight text-[#111111]">{statusHeadline(selectedPlan.status)}</h2>
+                          <p className="mt-3 text-sm leading-7 text-[#4c463f]">{selectedPlan.title}</p>
+                        </div>
                       </div>
-                      {(isRefreshing || isMutating) && <Loader2 className="h-5 w-5 animate-spin text-[#8b847b]" />}
+                      {loadingRefresh && <Loader2 className="h-5 w-5 animate-spin text-[#8b847b]" />}
                     </div>
 
                     <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                      <SoftMetric label="Concluídas" value={String(numberFromSummary(selectedPlanForActions.summary, "completedCount"))} />
-                      <SoftMetric
-                        label="Em andamento"
-                        value={String(numberFromSummary(selectedPlanForActions.summary, "runningCount"))}
-                      />
-                      <SoftMetric label="Pendentes" value={String(numberFromSummary(selectedPlanForActions.summary, "pendingCount"))} />
-                      <SoftMetric label="Com erro" value={String(numberFromSummary(selectedPlanForActions.summary, "failedCount"))} />
-                      <SoftMetric
-                        label="Aguardando confirmação"
-                        value={String(numberFromSummary(selectedPlanForActions.summary, "waitingConfirmationCount"))}
-                      />
-                      <SoftMetric
-                        label="Canceladas"
-                        value={String(numberFromSummary(selectedPlanForActions.summary, "cancelledCount"))}
-                      />
+                      <SoftMetric label="Concluídas" value={String(summaryNumber(selectedPlan.summary, "completedCount"))} />
+                      <SoftMetric label="Em andamento" value={String(summaryNumber(selectedPlan.summary, "runningCount"))} />
+                      <SoftMetric label="Pendentes" value={String(summaryNumber(selectedPlan.summary, "pendingCount"))} />
+                      <SoftMetric label="Com erro" value={String(summaryNumber(selectedPlan.summary, "failedCount"))} />
+                      <SoftMetric label="Aguardando confirmação" value={String(summaryNumber(selectedPlan.summary, "waitingConfirmationCount"))} />
+                      <SoftMetric label="Canceladas" value={String(summaryNumber(selectedPlan.summary, "cancelledCount"))} />
                     </div>
 
                     <div className="mt-6 h-2 overflow-hidden rounded-full bg-[#f0ece6]">
                       <div
                         className="h-full rounded-full bg-[#111111]"
-                        style={{ width: `${numberFromSummary(selectedPlanForActions.summary, "progressPercent")}%` }}
+                        style={{ width: `${summaryNumber(selectedPlan.summary, "progressPercent")}%` }}
                       />
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-3 text-sm text-[#6d675f]">
-                      <span>Progresso {numberFromSummary(selectedPlanForActions.summary, "finalizedCount")}/{numberFromSummary(selectedPlanForActions.summary, "totalCount")}</span>
-                      <span>Início {formatDateTime(selectedPlanForActions.startedAt ?? selectedPlanForActions.createdAt)}</span>
-                      <span>Tempo decorrido {selectedPlanForActions.elapsedLabel}</span>
+                      <span>
+                        Progresso {summaryNumber(selectedPlan.summary, "finalizedCount")}/{summaryNumber(selectedPlan.summary, "totalCount")}
+                      </span>
+                      <span>Início {formatDateTime(selectedPlan.startedAt ?? selectedPlan.createdAt)}</span>
+                      <span>Tempo decorrido {selectedPlan.elapsedLabel}</span>
                     </div>
 
-                    {!["completed", "completed_with_issues", "failed", "cancelled"].includes(selectedPlanForActions.status) && (
+                    {!["completed", "completed_with_issues", "failed", "cancelled"].includes(selectedPlan.status) && (
                       <div className="mt-6 flex flex-wrap items-center gap-3">
-                        {selectedPlanForActions.status === "paused" ? (
+                        {selectedPlan.status === "paused" ? (
                           <Button
                             type="button"
-                            onClick={() =>
-                              runOptimisticMutation({
-                                planId: selectedPlanForActions.id,
-                                optimisticStatus: "queued",
-                                pendingTitle: "Retomando...",
-                                action: () => continueWhileYouRestPlanAction(selectedPlanForActions.id),
-                              })
-                            }
-                            disabled={isMutating}
+                            onClick={() => void handleResume()}
+                            disabled={loadingResume || hasMutationLoading}
                             className="rounded-full bg-[#111111] px-5 text-white hover:bg-[#222222]"
                           >
-                            <PlayCircle className="h-4 w-4" />
+                            {loadingResume ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
                             Continuar
                           </Button>
                         ) : (
                           <Button
                             type="button"
                             variant="outline"
-                            onClick={() =>
-                              runOptimisticMutation({
-                                planId: selectedPlanForActions.id,
-                                optimisticStatus: "paused",
-                                pendingTitle: "Pausando...",
-                                action: () => pauseWhileYouRestPlanAction(selectedPlanForActions.id),
-                              })
-                            }
-                            disabled={isMutating}
+                            onClick={() => void handlePause()}
+                            disabled={loadingPause || hasMutationLoading}
                             className="rounded-full border-[#d8d0c3] bg-white"
                           >
-                            <PauseCircle className="h-4 w-4" />
+                            {loadingPause ? <Loader2 className="h-4 w-4 animate-spin" /> : <PauseCircle className="h-4 w-4" />}
                             Pausar
                           </Button>
                         )}
@@ -560,22 +685,11 @@ export function WhileYouRestLauncher({ variant }: Props) {
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={() => {
-                            if (!window.confirm("Encerrar esta execução? O que já foi concluído permanece salvo.")) {
-                              return
-                            }
-
-                            runOptimisticMutation({
-                              planId: selectedPlanForActions.id,
-                              optimisticStatus: "cancelled",
-                              pendingTitle: "Encerrando...",
-                              action: () => endWhileYouRestPlanAction(selectedPlanForActions.id),
-                            })
-                          }}
-                          disabled={isMutating}
+                          onClick={() => void handleCancel()}
+                          disabled={loadingCancel || hasMutationLoading}
                           className="rounded-full border-[#ead4d4] bg-white text-[#8b4141] hover:bg-[#fff7f7]"
                         >
-                          <Square className="h-4 w-4" />
+                          {loadingCancel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
                           Encerrar
                         </Button>
                       </div>
@@ -584,7 +698,7 @@ export function WhileYouRestLauncher({ variant }: Props) {
 
                   <div className="rounded-[32px] border border-[#ece9e2] bg-white p-6 shadow-sm">
                     <div className="space-y-4">
-                      {selectedPlanForActions.items.map((item) => {
+                      {selectedPlan.items.map((item) => {
                         const Icon = getRuntimeIcon(item.runtimeStatus)
                         const tone = getRuntimeTone(item.runtimeStatus)
                         const resultLink = resolveResultLink(item)
@@ -627,7 +741,7 @@ export function WhileYouRestLauncher({ variant }: Props) {
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b847b]">Execuções</p>
                     <p className="mt-2 text-sm text-[#5d564d]">Você delega. O COS assume e organiza o andamento.</p>
                   </div>
-                  {isRefreshing && <Loader2 className="h-4 w-4 animate-spin text-[#8b847b]" />}
+                  {loadingRefresh && <Loader2 className="h-4 w-4 animate-spin text-[#8b847b]" />}
                 </div>
               </div>
 
@@ -658,24 +772,21 @@ export function WhileYouRestLauncher({ variant }: Props) {
                         </div>
 
                         <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#f0ece6]">
-                          <div
-                            className="h-full rounded-full bg-[#111111]"
-                            style={{ width: `${numberFromSummary(plan.summary, "progressPercent")}%` }}
-                          />
+                          <div className="h-full rounded-full bg-[#111111]" style={{ width: `${summaryNumber(plan.summary, "progressPercent")}%` }} />
                         </div>
 
                         <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-[#6d675f]">
                           <div>
                             <p>Concluídas</p>
-                            <p className="mt-1 text-sm font-semibold text-[#111111]">{numberFromSummary(plan.summary, "completedCount")}</p>
+                            <p className="mt-1 text-sm font-semibold text-[#111111]">{summaryNumber(plan.summary, "completedCount")}</p>
                           </div>
                           <div>
                             <p>Pendentes</p>
-                            <p className="mt-1 text-sm font-semibold text-[#111111]">{numberFromSummary(plan.summary, "pendingCount")}</p>
+                            <p className="mt-1 text-sm font-semibold text-[#111111]">{summaryNumber(plan.summary, "pendingCount")}</p>
                           </div>
                           <div>
                             <p>Com erro</p>
-                            <p className="mt-1 text-sm font-semibold text-[#111111]">{numberFromSummary(plan.summary, "failedCount")}</p>
+                            <p className="mt-1 text-sm font-semibold text-[#111111]">{summaryNumber(plan.summary, "failedCount")}</p>
                           </div>
                         </div>
                       </button>
@@ -689,35 +800,4 @@ export function WhileYouRestLauncher({ variant }: Props) {
       </Sheet>
     </>
   )
-}
-
-function SoftMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-[#ece9e2] bg-[#faf8f3] px-4 py-3">
-      <p className="text-xs text-[#8b847b]">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-[#111111]">{value}</p>
-    </div>
-  )
-}
-
-function SoftTag({ children }: { children: React.ReactNode }) {
-  return <span className="rounded-full bg-white px-3 py-1 text-xs text-[#6d675f]">{children}</span>
-}
-
-function resolvePrioritySummary(items: WhileYouRestHydratedPlan["items"]) {
-  if (items.some((item) => item.priority === "alta")) {
-    return "Alta"
-  }
-  if (items.some((item) => item.priority === "media")) {
-    return "Média"
-  }
-  return "Baixa"
-}
-
-function resolveNearestDeadline(items: WhileYouRestHydratedPlan["items"]) {
-  return items.find((item) => item.deadline)?.deadline ?? "Sem prazo"
-}
-
-function getReviewLinePrefix(item: WhileYouRestHydratedPlan["items"][number]) {
-  return item.kind === "executable" ? "✓" : "○"
 }
