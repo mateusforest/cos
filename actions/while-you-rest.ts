@@ -12,8 +12,27 @@ import {
   type WhileYouRestPlanItem,
 } from "@/lib/while-you-rest"
 
-type PlanStatus = "draft" | "running" | "completed" | "partial" | "waiting_confirmation" | "failed"
-type DisplayStatus = "in_progress" | "waiting_confirmation" | "completed" | "error" | "paused"
+type StoredPlanStatus = "draft" | "running" | "completed" | "partial" | "waiting_confirmation" | "failed"
+export type WhileYouRestExecutionState =
+  | "draft"
+  | "queued"
+  | "running"
+  | "paused"
+  | "waiting_confirmation"
+  | "completed"
+  | "completed_with_issues"
+  | "failed"
+  | "cancelled"
+
+type BackgroundJobStatus = "pending" | "processing" | "completed" | "failed" | "waiting_confirmation"
+type RuntimeItemStatus =
+  | "aguardando"
+  | "em_execucao"
+  | "concluido"
+  | "falhou"
+  | "aguardando_confirmacao"
+  | "nao_suportado"
+  | "cancelado"
 
 type WhileYouRestPlanRow = {
   id: string
@@ -22,7 +41,7 @@ type WhileYouRestPlanRow = {
   request_text: string
   plan: WhileYouRestPlanItem[] | null
   job_ids: string[] | null
-  status: PlanStatus
+  status: StoredPlanStatus
   summary: Record<string, unknown> | null
   started_at: string | null
   completed_at: string | null
@@ -32,29 +51,26 @@ type WhileYouRestPlanRow = {
 
 type BackgroundJobSnapshot = {
   id: string
-  status: "pending" | "processing" | "completed" | "failed" | "waiting_confirmation"
+  status: BackgroundJobStatus
   type: string
   result: Record<string, unknown> | null
   error: string | null
   updated_at: string
-  available_at?: string
 }
 
 type PlanItemView = WhileYouRestPlanItem & {
-  runtimeStatus: "aguardando" | "em_execucao" | "concluido" | "falhou" | "aguardando_confirmacao" | "nao_suportado"
+  runtimeStatus: RuntimeItemStatus
   jobId: string | null
   result: Record<string, unknown> | null
   error: string | null
 }
 
-type HydratedPlan = {
+export type WhileYouRestHydratedPlan = {
   id: string
   title: string
   requestText: string
-  status: PlanStatus
-  displayStatus: DisplayStatus
+  status: WhileYouRestExecutionState
   controlState: WhileYouRestControlState
-  isFinished: boolean
   items: PlanItemView[]
   createdAt: string
   startedAt: string | null
@@ -64,7 +80,41 @@ type HydratedPlan = {
   summary: Record<string, unknown>
 }
 
-const PAUSE_DELAY_DAYS = 3650
+const PAUSE_DELAY_YEARS = 10
+
+function formatElapsedLabel(startedAt: string | null, fallbackAt: string, completedAt: string | null) {
+  const start = new Date(startedAt ?? fallbackAt).getTime()
+  const end = new Date(completedAt ?? new Date().toISOString()).getTime()
+  const diffMinutes = Math.max(1, Math.round((end - start) / 60000))
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes} min`
+  }
+
+  const hours = Math.floor(diffMinutes / 60)
+  const minutes = diffMinutes % 60
+  return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`
+}
+
+function getSummaryString(summary: Record<string, unknown> | null | undefined, key: string, fallback: string) {
+  const value = summary?.[key]
+  return typeof value === "string" ? value : fallback
+}
+
+function getSummaryNumber(summary: Record<string, unknown> | null | undefined, key: string, fallback: number) {
+  const value = summary?.[key]
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback
+}
+
+function getSummaryStringArray(summary: Record<string, unknown> | null | undefined, key: string) {
+  const value = summary?.[key]
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+}
+
+function getSummaryControlState(summary: Record<string, unknown> | null | undefined): WhileYouRestControlState {
+  const value = summary?.controlState
+  return value === "draft" || value === "running" || value === "paused" || value === "ended" ? value : "draft"
+}
 
 async function getWhileYouRestActor() {
   const supabase = await createSupabaseServerClient()
@@ -97,34 +147,15 @@ async function getWhileYouRestActor() {
   }
 }
 
-function readSummaryValue<T>(summary: Record<string, unknown> | null | undefined, key: string, fallback: T): T {
-  const value = summary?.[key]
-  return value === undefined ? fallback : (value as T)
-}
-
-function formatElapsedLabel(startedAt: string | null, completedAt: string | null) {
-  const start = startedAt ? new Date(startedAt).getTime() : Date.now()
-  const end = completedAt ? new Date(completedAt).getTime() : Date.now()
-  const diffMinutes = Math.max(1, Math.round((end - start) / 60000))
-
-  if (diffMinutes < 60) {
-    return `${diffMinutes} min`
-  }
-
-  const hours = Math.floor(diffMinutes / 60)
-  const minutes = diffMinutes % 60
-
-  if (minutes === 0) {
-    return `${hours} h`
-  }
-
-  return `${hours} h ${minutes} min`
-}
-
-function mapJobStatus(
-  item: WhileYouRestPlanItem,
-  job: BackgroundJobSnapshot | null,
-): PlanItemView["runtimeStatus"] {
+function mapRuntimeStatus({
+  item,
+  job,
+  cancelledJobIds,
+}: {
+  item: WhileYouRestPlanItem
+  job: BackgroundJobSnapshot | null
+  cancelledJobIds: string[]
+}): RuntimeItemStatus {
   if (item.kind === "unsupported") {
     return "nao_suportado"
   }
@@ -135,6 +166,10 @@ function mapJobStatus(
 
   if (!job) {
     return "aguardando"
+  }
+
+  if (cancelledJobIds.includes(job.id) && job.status === "pending") {
+    return "cancelado"
   }
 
   switch (job.status) {
@@ -153,131 +188,150 @@ function mapJobStatus(
   }
 }
 
-function summarizePlan(items: PlanItemView[], controlState: WhileYouRestControlState) {
-  const completed = items.filter((item) => item.runtimeStatus === "concluido")
-  const failed = items.filter((item) => item.runtimeStatus === "falhou")
-  const waitingConfirmation = items.filter((item) => item.runtimeStatus === "aguardando_confirmacao")
-  const unsupported = items.filter((item) => item.runtimeStatus === "nao_suportado")
-  const pending = items.filter((item) => item.runtimeStatus === "aguardando")
-  const processing = items.filter((item) => item.runtimeStatus === "em_execucao")
+function buildStateAndSummary(items: PlanItemView[], controlState: WhileYouRestControlState) {
+  const counts = {
+    completed: items.filter((item) => item.runtimeStatus === "concluido").length,
+    running: items.filter((item) => item.runtimeStatus === "em_execucao").length,
+    pending: items.filter((item) => item.runtimeStatus === "aguardando").length,
+    failed: items.filter((item) => item.runtimeStatus === "falhou").length,
+    waitingConfirmation: items.filter((item) => item.runtimeStatus === "aguardando_confirmacao").length,
+    cancelled: items.filter((item) => item.runtimeStatus === "cancelado").length,
+    unsupported: items.filter((item) => item.runtimeStatus === "nao_suportado").length,
+  }
 
-  let status: PlanStatus = "draft"
+  const total = items.length
+  const hasPendingOrRunning = counts.pending > 0 || counts.running > 0
+  const onlySuccessful = total > 0 && counts.completed === total
+  const hasIssues =
+    counts.failed > 0 ||
+    counts.waitingConfirmation > 0 ||
+    counts.cancelled > 0 ||
+    counts.unsupported > 0
 
-  if (controlState === "paused") {
-    status = "running"
-  } else if (processing.length > 0 || pending.length > 0) {
-    status = "running"
-  } else if (failed.length > 0 && completed.length > 0) {
-    status = "partial"
-  } else if (failed.length > 0 && completed.length === 0) {
+  let status: WhileYouRestExecutionState = "draft"
+
+  if (controlState === "draft") {
+    status = "draft"
+  } else if (controlState === "paused") {
+    status = "paused"
+  } else if (controlState === "ended") {
+    status = "cancelled"
+  } else if (hasPendingOrRunning) {
+    status = counts.running > 0 ? "running" : "queued"
+  } else if (onlySuccessful) {
+    status = "completed"
+  } else if (counts.failed > 0 && counts.completed === 0 && counts.waitingConfirmation === 0 && counts.cancelled === 0) {
     status = "failed"
-  } else if (waitingConfirmation.length > 0 && completed.length === 0) {
+  } else if (counts.waitingConfirmation > 0 && counts.completed === 0 && counts.failed === 0 && counts.cancelled === 0) {
     status = "waiting_confirmation"
-  } else if (completed.length > 0) {
-    status = waitingConfirmation.length > 0 || unsupported.length > 0 ? "partial" : "completed"
-  }
-
-  let displayStatus: DisplayStatus
-  if (controlState === "paused") {
-    displayStatus = "paused"
-  } else if (status === "running") {
-    displayStatus = "in_progress"
-  } else if (status === "waiting_confirmation") {
-    displayStatus = "waiting_confirmation"
-  } else if (status === "failed") {
-    displayStatus = "error"
   } else {
-    displayStatus = failed.length > 0 ? "error" : "completed"
+    status = hasIssues || counts.completed > 0 ? "completed_with_issues" : "failed"
   }
 
-  if (controlState === "ended" && displayStatus === "in_progress") {
-    displayStatus = "completed"
-  }
+  const finalForProgress =
+    counts.completed +
+    counts.failed +
+    counts.cancelled +
+    ((status === "waiting_confirmation" || status === "completed_with_issues" || status === "cancelled") ? counts.waitingConfirmation + counts.unsupported : 0)
+  const progressPercent = total > 0 ? Math.round((finalForProgress / total) * 100) : 0
 
   return {
     status,
-    displayStatus,
     summary: {
-      completedCount: completed.length,
-      failedCount: failed.length,
-      waitingConfirmationCount: waitingConfirmation.length,
-      unsupportedCount: unsupported.length,
-      pendingCount: pending.length + unsupported.length + waitingConfirmation.length,
-      processingCount: processing.length,
-      totalCount: items.length,
-      progressPercent: items.length > 0 ? Math.round((completed.length / items.length) * 100) : 0,
-      documentsCreated: completed.filter((item) => item.result?.entityType === "document").length,
-      clientsCreated: completed.filter((item) => item.result?.entityType === "client").length,
+      completedCount: counts.completed,
+      runningCount: counts.running,
+      pendingCount: counts.pending,
+      failedCount: counts.failed,
+      waitingConfirmationCount: counts.waitingConfirmation,
+      cancelledCount: counts.cancelled,
+      unsupportedCount: counts.unsupported,
+      totalCount: total,
+      finalizedCount: finalForProgress,
+      progressPercent,
+      documentsCreated: items.filter((item) => item.result?.entityType === "document").length,
+      clientsCreated: items.filter((item) => item.result?.entityType === "client").length,
       nextStep: buildWhileYouRestNextStep(items),
     },
   }
 }
 
-async function fetchPlanJobs(adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>, jobIds: string[]) {
+async function fetchJobs(adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>, jobIds: string[]) {
   if (jobIds.length === 0) {
     return [] as BackgroundJobSnapshot[]
   }
 
   const { data } = await adminClient
     .from("background_jobs")
-    .select("id, status, type, result, error, updated_at, available_at")
+    .select("id, status, type, result, error, updated_at")
     .in("id", jobIds)
     .returns<BackgroundJobSnapshot[]>()
 
   return data ?? []
 }
 
-async function hydratePlan(row: WhileYouRestPlanRow, adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>): Promise<HydratedPlan> {
+async function hydratePlan(
+  row: WhileYouRestPlanRow,
+  adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
+): Promise<WhileYouRestHydratedPlan> {
   const plan = row.plan ?? []
   const jobIds = (row.job_ids ?? []).filter(Boolean)
-  const jobs = await fetchPlanJobs(adminClient, jobIds)
+  const jobs = await fetchJobs(adminClient, jobIds)
   const jobById = new Map(jobs.map((job) => [job.id, job]))
-  const executableJobIds = jobIds
-  const controlState = readSummaryValue<WhileYouRestControlState>(row.summary, "controlState", row.status === "draft" ? "draft" : "running")
+  const cancelledJobIds = getSummaryStringArray(row.summary, "cancelledJobIds")
+  const controlState = getSummaryControlState(row.summary)
 
   const items: PlanItemView[] = plan.map((item, index) => {
-    const jobId = item.kind === "executable" ? executableJobIds[index] ?? null : null
+    const jobId = item.kind === "executable" ? jobIds[index] ?? null : null
     const job = jobId ? jobById.get(jobId) ?? null : null
 
     return {
       ...item,
-      runtimeStatus: mapJobStatus(item, job),
+      runtimeStatus: mapRuntimeStatus({ item, job, cancelledJobIds }),
       jobId,
       result: job?.result ?? null,
       error: job?.error ?? null,
     }
   })
 
-  const { status, displayStatus, summary } = summarizePlan(items, controlState)
-  const title = readSummaryValue<string>(row.summary, "title", buildWhileYouRestTitle(row.request_text, plan))
-  const estimatedMinutes = readSummaryValue<number>(row.summary, "estimatedMinutes", estimateWhileYouRestMinutes(plan))
-  const finished = controlState === "ended" || ["completed", "partial", "failed"].includes(status)
-  const completedAt = finished ? row.completed_at ?? new Date().toISOString() : row.completed_at
+  const title = getSummaryString(row.summary, "title", buildWhileYouRestTitle(row.request_text, plan))
+  const estimatedMinutes = getSummaryNumber(row.summary, "estimatedMinutes", estimateWhileYouRestMinutes(plan))
+  const { status, summary } = buildStateAndSummary(items, controlState)
+  const completedAt =
+    status === "completed" || status === "completed_with_issues" || status === "failed" || status === "cancelled"
+      ? row.completed_at ?? new Date().toISOString()
+      : row.completed_at
 
   return {
     id: row.id,
     title,
     requestText: row.request_text,
     status,
-    displayStatus,
     controlState,
-    isFinished: finished,
     items,
     createdAt: row.created_at,
     startedAt: row.started_at,
     completedAt,
-    elapsedLabel: formatElapsedLabel(row.started_at ?? row.created_at, completedAt),
+    elapsedLabel: formatElapsedLabel(row.started_at, row.created_at, completedAt),
     estimatedMinutes,
     summary: {
       ...summary,
       title,
-      controlState,
       estimatedMinutes,
+      controlState,
+      cancelledJobIds,
     },
   }
 }
 
-async function getPlanRow(planId: string, workspaceId: string, adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>) {
+async function getPlanRow({
+  planId,
+  workspaceId,
+  adminClient,
+}: {
+  planId: string
+  workspaceId: string
+  adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>
+}) {
   const { data, error } = await adminClient
     .from("while_you_rest_plans")
     .select("*")
@@ -293,42 +347,10 @@ async function getPlanRow(planId: string, workspaceId: string, adminClient: NonN
     return { error: "Execucao nao encontrada." }
   }
 
-  return { data }
+  return { row: data }
 }
 
-async function updatePlanSummary({
-  adminClient,
-  row,
-  summary,
-  status,
-  completedAt,
-}: {
-  adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>
-  row: WhileYouRestPlanRow
-  summary: Record<string, unknown>
-  status?: PlanStatus
-  completedAt?: string | null
-}) {
-  const { data, error } = await adminClient
-    .from("while_you_rest_plans")
-    .update({
-      status: status ?? row.status,
-      completed_at: completedAt === undefined ? row.completed_at : completedAt,
-      summary,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", row.id)
-    .select("*")
-    .single<WhileYouRestPlanRow>()
-
-  if (error || !data) {
-    return { error: error?.message ?? "Nao foi possivel atualizar a execucao." }
-  }
-
-  return { data }
-}
-
-async function updatePendingJobsAvailability({
+async function updatePendingAvailability({
   adminClient,
   jobIds,
   availableAt,
@@ -351,9 +373,34 @@ async function updatePendingJobsAvailability({
     .eq("status", "pending")
 }
 
+async function persistRowUpdate({
+  adminClient,
+  row,
+  patch,
+}: {
+  adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>
+  row: WhileYouRestPlanRow
+  patch: Record<string, unknown>
+}) {
+  const { data, error } = await adminClient
+    .from("while_you_rest_plans")
+    .update({
+      ...patch,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", row.id)
+    .select("*")
+    .single<WhileYouRestPlanRow>()
+
+  if (error || !data) {
+    return { error: error?.message ?? "Nao foi possivel atualizar a execucao." }
+  }
+
+  return { row: data }
+}
+
 export async function createWhileYouRestPlanAction(requestText: string) {
   const actor = await getWhileYouRestActor()
-
   if ("error" in actor) {
     return { error: actor.error }
   }
@@ -383,6 +430,7 @@ export async function createWhileYouRestPlanAction(requestText: string) {
         title,
         estimatedMinutes,
         controlState: "draft",
+        cancelledJobIds: [],
         nextStep: buildWhileYouRestNextStep(planDraft.items),
       },
     })
@@ -390,7 +438,7 @@ export async function createWhileYouRestPlanAction(requestText: string) {
     .single<WhileYouRestPlanRow>()
 
   if (error || !data) {
-    return { error: error?.message ?? "Nao foi possivel montar o plano agora." }
+    return { error: error?.message ?? "Nao foi possivel organizar esse pedido." }
   }
 
   return {
@@ -409,14 +457,18 @@ export async function startWhileYouRestPlanAction(planId: string) {
     return { error: "Apenas owner, admin ou master podem iniciar esse modo." }
   }
 
-  const planRow = await getPlanRow(planId, actor.workspaceId, actor.adminClient)
-  if ("error" in planRow) {
-    return { error: planRow.error }
+  const loaded = await getPlanRow({
+    planId,
+    workspaceId: actor.workspaceId,
+    adminClient: actor.adminClient,
+  })
+  if ("error" in loaded) {
+    return { error: loaded.error }
   }
 
-  const row = planRow.data
+  const row = loaded.row
   const planItems = row.plan ?? []
-  const createdJobIds: string[] = [...(row.job_ids ?? [])]
+  const createdJobIds = [...(row.job_ids ?? [])]
 
   for (const item of planItems) {
     if (item.kind !== "executable") {
@@ -438,41 +490,28 @@ export async function startWhileYouRestPlanAction(planId: string) {
     }
   }
 
-  const executableCount = planItems.filter((item) => item.kind === "executable").length
-  const waitingConfirmationCount = planItems.filter((item) => item.kind === "waiting_confirmation").length
-  const unsupportedCount = planItems.filter((item) => item.kind === "unsupported").length
-
-  const summary = {
-    ...(row.summary ?? {}),
-    controlState: "running",
-    executableCount,
-    waitingConfirmationCount,
-    unsupportedCount,
-    estimatedMinutes: readSummaryValue<number>(row.summary, "estimatedMinutes", estimateWhileYouRestMinutes(planItems)),
-    title: readSummaryValue<string>(row.summary, "title", buildWhileYouRestTitle(row.request_text, planItems)),
-    nextStep: buildWhileYouRestNextStep(planItems),
-  }
-
-  const { data: updated, error: updateError } = await actor.adminClient
-    .from("while_you_rest_plans")
-    .update({
+  const updated = await persistRowUpdate({
+    adminClient: actor.adminClient,
+    row,
+    patch: {
       job_ids: createdJobIds,
-      status: executableCount > 0 ? "running" : waitingConfirmationCount > 0 ? "waiting_confirmation" : "failed",
+      status: "running",
       started_at: row.started_at ?? new Date().toISOString(),
-      summary,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", row.id)
-    .select("*")
-    .single<WhileYouRestPlanRow>()
+      summary: {
+        ...(row.summary ?? {}),
+        controlState: "running",
+        cancelledJobIds: getSummaryStringArray(row.summary, "cancelledJobIds"),
+      },
+    },
+  })
 
-  if (updateError || !updated) {
-    return { error: updateError?.message ?? "Nao foi possivel iniciar o plano." }
+  if ("error" in updated) {
+    return { error: updated.error }
   }
 
   return {
     success: true,
-    plan: await hydratePlan(updated, actor.adminClient),
+    plan: await hydratePlan(updated.row, actor.adminClient),
   }
 }
 
@@ -482,26 +521,32 @@ export async function pauseWhileYouRestPlanAction(planId: string) {
     return { error: actor.error }
   }
 
-  const planRow = await getPlanRow(planId, actor.workspaceId, actor.adminClient)
-  if ("error" in planRow) {
-    return { error: planRow.error }
+  const loaded = await getPlanRow({
+    planId,
+    workspaceId: actor.workspaceId,
+    adminClient: actor.adminClient,
+  })
+  if ("error" in loaded) {
+    return { error: loaded.error }
   }
 
-  const row = planRow.data
-  const futureDate = new Date(Date.now() + PAUSE_DELAY_DAYS * 24 * 60 * 60 * 1000).toISOString()
-  await updatePendingJobsAvailability({
+  const row = loaded.row
+  const availableAt = new Date(Date.now() + PAUSE_DELAY_YEARS * 365 * 24 * 60 * 60 * 1000).toISOString()
+  await updatePendingAvailability({
     adminClient: actor.adminClient,
     jobIds: (row.job_ids ?? []).filter(Boolean),
-    availableAt: futureDate,
+    availableAt,
   })
 
-  const updated = await updatePlanSummary({
+  const updated = await persistRowUpdate({
     adminClient: actor.adminClient,
     row,
-    status: "running",
-    summary: {
-      ...(row.summary ?? {}),
-      controlState: "paused",
+    patch: {
+      status: "running",
+      summary: {
+        ...(row.summary ?? {}),
+        controlState: "paused",
+      },
     },
   })
 
@@ -511,7 +556,7 @@ export async function pauseWhileYouRestPlanAction(planId: string) {
 
   return {
     success: true,
-    plan: await hydratePlan(updated.data, actor.adminClient),
+    plan: await hydratePlan(updated.row, actor.adminClient),
   }
 }
 
@@ -521,25 +566,31 @@ export async function continueWhileYouRestPlanAction(planId: string) {
     return { error: actor.error }
   }
 
-  const planRow = await getPlanRow(planId, actor.workspaceId, actor.adminClient)
-  if ("error" in planRow) {
-    return { error: planRow.error }
+  const loaded = await getPlanRow({
+    planId,
+    workspaceId: actor.workspaceId,
+    adminClient: actor.adminClient,
+  })
+  if ("error" in loaded) {
+    return { error: loaded.error }
   }
 
-  const row = planRow.data
-  await updatePendingJobsAvailability({
+  const row = loaded.row
+  await updatePendingAvailability({
     adminClient: actor.adminClient,
     jobIds: (row.job_ids ?? []).filter(Boolean),
     availableAt: new Date().toISOString(),
   })
 
-  const updated = await updatePlanSummary({
+  const updated = await persistRowUpdate({
     adminClient: actor.adminClient,
     row,
-    status: "running",
-    summary: {
-      ...(row.summary ?? {}),
-      controlState: "running",
+    patch: {
+      status: "running",
+      summary: {
+        ...(row.summary ?? {}),
+        controlState: "running",
+      },
     },
   })
 
@@ -549,7 +600,7 @@ export async function continueWhileYouRestPlanAction(planId: string) {
 
   return {
     success: true,
-    plan: await hydratePlan(updated.data, actor.adminClient),
+    plan: await hydratePlan(updated.row, actor.adminClient),
   }
 }
 
@@ -559,27 +610,44 @@ export async function endWhileYouRestPlanAction(planId: string) {
     return { error: actor.error }
   }
 
-  const planRow = await getPlanRow(planId, actor.workspaceId, actor.adminClient)
-  if ("error" in planRow) {
-    return { error: planRow.error }
+  const loaded = await getPlanRow({
+    planId,
+    workspaceId: actor.workspaceId,
+    adminClient: actor.adminClient,
+  })
+  if ("error" in loaded) {
+    return { error: loaded.error }
   }
 
-  const row = planRow.data
-  const futureDate = new Date(Date.now() + PAUSE_DELAY_DAYS * 24 * 60 * 60 * 1000).toISOString()
-  await updatePendingJobsAvailability({
+  const row = loaded.row
+  const jobIds = (row.job_ids ?? []).filter(Boolean)
+  const jobs = await fetchJobs(actor.adminClient, jobIds)
+  const cancelledJobIds = [
+    ...new Set([
+      ...getSummaryStringArray(row.summary, "cancelledJobIds"),
+      ...jobs.filter((job) => job.status === "pending").map((job) => job.id),
+    ]),
+  ]
+
+  const availableAt = new Date(Date.now() + PAUSE_DELAY_YEARS * 365 * 24 * 60 * 60 * 1000).toISOString()
+  await updatePendingAvailability({
     adminClient: actor.adminClient,
-    jobIds: (row.job_ids ?? []).filter(Boolean),
-    availableAt: futureDate,
+    jobIds,
+    availableAt,
   })
 
-  const updated = await updatePlanSummary({
+  const updated = await persistRowUpdate({
     adminClient: actor.adminClient,
     row,
-    summary: {
-      ...(row.summary ?? {}),
-      controlState: "ended",
+    patch: {
+      status: "partial",
+      completed_at: row.completed_at ?? new Date().toISOString(),
+      summary: {
+        ...(row.summary ?? {}),
+        controlState: "ended",
+        cancelledJobIds,
+      },
     },
-    completedAt: row.completed_at ?? new Date().toISOString(),
   })
 
   if ("error" in updated) {
@@ -588,7 +656,7 @@ export async function endWhileYouRestPlanAction(planId: string) {
 
   return {
     success: true,
-    plan: await hydratePlan(updated.data, actor.adminClient),
+    plan: await hydratePlan(updated.row, actor.adminClient),
   }
 }
 
