@@ -60,6 +60,7 @@ export function AreaChat({
   isLoadingHistory = false,
   prefilledInput,
   renderMessageActions,
+  hideHeader = false,
 }: {
   title: string
   subtitle?: string
@@ -75,6 +76,7 @@ export function AreaChat({
   isLoadingHistory?: boolean
   prefilledInput?: string
   renderMessageActions?: (message: ChatMessage) => ReactNode
+  hideHeader?: boolean
 }) {
   const router = useRouter()
   const [input, setInput] = useState("")
@@ -143,22 +145,24 @@ export function AreaChat({
   return (
     <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col overflow-hidden lg:h-full">
       {/* Header */}
-      <div className="sticky top-0 z-10 flex flex-shrink-0 items-center gap-3 border-b border-gray-100 bg-white/95 px-4 py-3 backdrop-blur-lg">
-        <button
-          onClick={() => router.back()}
-          className="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 transition-colors"
-          aria-label="Voltar"
-        >
-          <ChevronLeft className="w-5 h-5 text-gray-600" />
-        </button>
-        <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bg }}>
-          <Icon className="w-4.5 h-4.5" style={{ color }} />
-        </span>
-        <div className="min-w-0">
-          <h1 className="text-base font-semibold text-[#0a0a0a] truncate">{title}</h1>
-          {subtitle && <p className="text-xs text-gray-500 truncate">{subtitle}</p>}
+      {!hideHeader && (
+        <div className="sticky top-0 z-10 flex flex-shrink-0 items-center gap-3 border-b border-gray-100 bg-white/95 px-4 py-3 backdrop-blur-lg">
+          <button
+            onClick={() => router.back()}
+            className="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 transition-colors"
+            aria-label="Voltar"
+          >
+            <ChevronLeft className="w-5 h-5 text-gray-600" />
+          </button>
+          <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: bg }}>
+            <Icon className="w-4.5 h-4.5" style={{ color }} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-base font-semibold text-[#0a0a0a] truncate">{title}</h1>
+            {subtitle && <p className="text-xs text-gray-500 truncate">{subtitle}</p>}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* History */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">

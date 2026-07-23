@@ -1,11 +1,25 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Copy, MessageSquare, Pencil, Plus, Sparkles, Trash2, CopyPlus, Download, RefreshCcw, WandSparkles } from "lucide-react"
 import {
-  createStudioConversationAction,
+  Clapperboard,
+  Copy,
+  CopyPlus,
+  Download,
+  FileImage,
+  Layers3,
+  Megaphone,
+  MessageSquare,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+  RefreshCcw,
+  WandSparkles,
+} from "lucide-react"
+import {
   createStudioImageVariationAction,
   createStudioVideoVariationAction,
   deleteStudioConversationAction,
@@ -23,34 +37,75 @@ import { PortalHeader, PortalPageHeader } from "@/components/portal/portal-heade
 import { toast } from "@/hooks/use-toast"
 import type { StudioConversationSummary } from "@/lib/studio-types"
 
-const studioSuggestions = [
-  "Criar campanha",
-  "Criar anuncio",
-  "Criar post",
-  "Criar roteiro",
-  "Criar e-mail",
-  "Criar apresentacao",
-  "Criar landing page",
-  "Criar sequencia de WhatsApp",
-]
+const studioSuggestions = ["Campanha", "Criativo", "Imagem", "Video", "Landing", "E-mail"]
 
-const initialPromptExamples = [
-  "Um post para Instagram",
-  "Uma campanha",
-  "Um anuncio",
-  "Um e-mail",
-  "Um roteiro",
-  "Uma apresentacao",
-  "Um video",
-  "Uma imagem",
-]
+const starterItems = ["campanhas", "criativos", "imagens", "videos", "apresentacoes", "landing pages", "anuncios", "e-mails"]
+
+const studioCreationCards = [
+  {
+    title: "Criativos",
+    description: "Posts, anuncios e conteudos para redes sociais.",
+    prompt: "Quero criar um criativo para redes sociais.",
+    icon: Layers3,
+  },
+  {
+    title: "Campanhas",
+    description: "Planejamento completo de campanhas.",
+    prompt: "Quero criar uma campanha completa.",
+    icon: Megaphone,
+  },
+  {
+    title: "Imagens",
+    description: "Crie imagens com IA.",
+    prompt: "Quero criar uma imagem com IA.",
+    icon: FileImage,
+  },
+  {
+    title: "Videos",
+    description: "Crie videos com IA.",
+    prompt: "Quero criar um video com IA.",
+    icon: Clapperboard,
+  },
+] as const
 
 function buildStudioStarterText() {
-  return [
-    "O que voce deseja criar hoje?",
-    "",
-    ...initialPromptExamples.map((item) => `• ${item}`),
-  ].join("\n")
+  return ["Como posso ajudar?", "", "Posso criar:", "", ...starterItems.map((item) => `- ${item}`)].join("\n")
+}
+
+function mapServerMessageToChatMessage(message: {
+  id: string
+  from: string
+  text: string
+  time: string
+  createdAt?: string | null
+  imageUrl?: string
+  imageAlt?: string
+  imageStatus?: string
+  imagePrompt?: string
+  videoUrl?: string
+  videoStatus?: string
+  videoPrompt?: string
+  videoState?: string
+  videoGenerationId?: string
+  videoFileName?: string
+}): ChatMessage {
+  return {
+    id: message.id,
+    from: message.from as "cos" | "user",
+    text: message.text,
+    time: message.time,
+    createdAt: message.createdAt,
+    imageUrl: message.imageUrl,
+    imageAlt: message.imageAlt,
+    imageStatus: message.imageStatus,
+    imagePrompt: message.imagePrompt,
+    videoUrl: message.videoUrl,
+    videoStatus: message.videoStatus,
+    videoPrompt: message.videoPrompt,
+    videoState: message.videoState,
+    videoGenerationId: message.videoGenerationId,
+    videoFileName: message.videoFileName,
+  }
 }
 
 export function StudioHome() {
@@ -66,10 +121,11 @@ export function StudioHome() {
   const [prefilledInput, setPrefilledInput] = useState(draft)
   const [pendingImageMessageId, setPendingImageMessageId] = useState<string | null>(null)
   const [pendingVideoMessageId, setPendingVideoMessageId] = useState<string | null>(null)
+  const [isConversationMenuOpen, setIsConversationMenuOpen] = useState(false)
   const refreshingVideoIdsRef = useRef<Set<string>>(new Set())
   const videoPollingAttemptsRef = useRef<Record<string, number>>({})
 
-  const loadConversations = async (nextConversationId?: string | null) => {
+  const loadConversations = async () => {
     setIsLoadingConversations(true)
     const result = await getStudioConversationsAction()
 
@@ -84,20 +140,7 @@ export function StudioHome() {
 
     setConversations(result.conversations ?? [])
     setIsLoadingConversations(false)
-
-    if (nextConversationId && !conversationId) {
-      router.replace(`/portal/marketing?conversationId=${nextConversationId}`)
-    }
   }
-
-  useEffect(() => {
-    void loadConversations()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => {
-    setPrefilledInput(draft)
-  }, [draft])
 
   const loadConversationMessages = async (targetConversationId: string) => {
     const result = await getStudioConversationMessagesAction({ conversationId: targetConversationId })
@@ -128,6 +171,14 @@ export function StudioHome() {
   }
 
   useEffect(() => {
+    void loadConversations()
+  }, [])
+
+  useEffect(() => {
+    setPrefilledInput(draft)
+  }, [draft])
+
+  useEffect(() => {
     let active = true
 
     const loadMessages = async () => {
@@ -142,6 +193,7 @@ export function StudioHome() {
         ])
         setActiveTitle("Studio IA")
         setIsLoadingMessages(false)
+        setIsConversationMenuOpen(false)
         return
       }
 
@@ -179,6 +231,7 @@ export function StudioHome() {
       )
       setActiveTitle(result.title || "Studio IA")
       setIsLoadingMessages(false)
+      setIsConversationMenuOpen(false)
     }
 
     void loadMessages()
@@ -237,23 +290,7 @@ export function StudioHome() {
           continue
         }
 
-        const refreshedMessage: ChatMessage = {
-          id: result.message.id,
-          from: result.message.from as "cos" | "user",
-          text: result.message.text,
-          time: result.message.time,
-          createdAt: result.message.createdAt,
-          imageUrl: result.message.imageUrl,
-          imageAlt: result.message.imageAlt,
-          imageStatus: result.message.imageStatus,
-          imagePrompt: result.message.imagePrompt,
-          videoUrl: result.message.videoUrl,
-          videoStatus: result.message.videoStatus,
-          videoPrompt: result.message.videoPrompt,
-          videoState: result.message.videoState,
-          videoGenerationId: result.message.videoGenerationId,
-          videoFileName: result.message.videoFileName,
-        }
+        const refreshedMessage = mapServerMessageToChatMessage(result.message)
 
         setMessages((current) =>
           current.map((item) =>
@@ -284,33 +321,24 @@ export function StudioHome() {
     [conversations, conversationId],
   )
 
-  const openNewConversation = async () => {
-    const result = await createStudioConversationAction()
-
-    if ("error" in result && result.error) {
-      toast({
-        title: "Nao foi possivel abrir",
-        description: result.error,
-      })
-      return
-    }
-
-    if (!("conversation" in result) || !result.conversation) {
-      toast({
-        title: "Nao foi possivel abrir",
-        description: "O Studio nao conseguiu preparar a nova conversa.",
-      })
-      return
-    }
-
+  const openNewConversation = () => {
     setPrefilledInput("")
-    await loadConversations(result.conversation.id)
-    router.replace(`/portal/marketing?conversationId=${result.conversation.id}`)
+    setActiveTitle("Studio IA")
+    setIsConversationMenuOpen(false)
+    router.replace("/portal/marketing")
   }
 
   const openConversation = (id: string) => {
     setPrefilledInput("")
+    setIsConversationMenuOpen(false)
     router.replace(`/portal/marketing?conversationId=${id}`)
+  }
+
+  const openCreationCard = (prompt: string) => {
+    setPrefilledInput(prompt)
+    setActiveTitle("Studio IA")
+    setIsConversationMenuOpen(false)
+    router.replace(`/portal/marketing?draft=${encodeURIComponent(prompt)}`)
   }
 
   const handleRenameConversation = async () => {
@@ -336,6 +364,7 @@ export function StudioHome() {
     }
 
     setActiveTitle(nextTitle.trim())
+    setIsConversationMenuOpen(false)
     await loadConversations()
     toast({
       title: "Conversa renomeada",
@@ -372,6 +401,7 @@ export function StudioHome() {
     ])
     setActiveTitle("Studio IA")
     setPrefilledInput("")
+    setIsConversationMenuOpen(false)
     router.replace("/portal/marketing")
     await loadConversations()
     toast({
@@ -393,7 +423,8 @@ export function StudioHome() {
       return
     }
 
-    await loadConversations(result.conversationId)
+    await loadConversations()
+    setIsConversationMenuOpen(false)
     router.replace(`/portal/marketing?conversationId=${result.conversationId}`)
     toast({
       title: "Conversa duplicada",
@@ -448,8 +479,8 @@ export function StudioHome() {
       })
       return
     }
-    await loadConversationMessages(conversationId)
 
+    await loadConversationMessages(conversationId)
     await loadConversations()
   }
 
@@ -510,20 +541,6 @@ export function StudioHome() {
       <PortalHeader />
       <div className="flex flex-1 overflow-hidden">
         <aside className="hidden w-[22rem] shrink-0 border-r border-gray-100 bg-white xl:flex xl:flex-col">
-          <div className="border-b border-gray-100 px-5 py-5">
-            <PortalPageHeader
-              title="Studio IA"
-              description="Crie campanhas, criativos, textos, imagens e videos conversando com o COS."
-            />
-            <button
-              onClick={() => void openNewConversation()}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#0a0a0a] px-4 py-2.5 text-sm text-white transition-colors hover:bg-gray-800"
-            >
-              <Plus className="h-4 w-4" />
-              Nova criacao
-            </button>
-          </div>
-
           <div className="flex-1 overflow-y-auto px-4 py-4">
             <div className="mb-6">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400">Conversas recentes</p>
@@ -553,97 +570,95 @@ export function StudioHome() {
                 )}
               </div>
             </div>
-
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400">Sugestoes</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {studioSuggestions.map((suggestion) => (
-                  <Link
-                    key={suggestion}
-                    href={`/portal/marketing?draft=${encodeURIComponent(suggestion)}`}
-                    className="rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
-                  >
-                    {suggestion}
-                  </Link>
-                ))}
-              </div>
-            </div>
           </div>
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col bg-[#fcfcfc]">
-          <div className="border-b border-gray-100 bg-white px-4 py-4 xl:hidden">
-            <PortalPageHeader
-              title="Studio IA"
-              description="Crie campanhas, criativos, textos, imagens e videos conversando com o COS."
-            />
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                onClick={() => void openNewConversation()}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#0a0a0a] px-4 py-2.5 text-sm text-white transition-colors hover:bg-gray-800"
-              >
-                <Plus className="h-4 w-4" />
-                Nova criacao
-              </button>
-              {studioSuggestions.slice(0, 4).map((suggestion) => (
-                <Link
-                  key={suggestion}
-                  href={`/portal/marketing?draft=${encodeURIComponent(suggestion)}`}
-                  className="rounded-full border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
-                >
-                  {suggestion}
-                </Link>
-              ))}
-            </div>
-          </div>
-
           <div className="border-b border-gray-100 bg-white px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-base font-semibold text-[#0a0a0a]">{activeConversation?.title || activeTitle}</p>
-                <p className="text-sm text-gray-500">Converse com o COS para criar textos e materiais do Studio.</p>
+                <p className="text-sm text-gray-500">Crie campanhas, criativos, imagens e videos conversando com o COS.</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => void openNewConversation()}
-                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
-                >
-                  <Plus className="h-4 w-4" />
-                  Nova criacao
-                </button>
-                {conversationId ? (
-                  <>
+              {conversationId ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={openNewConversation}
+                    className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Nova conversa
+                  </button>
+                  <button
+                    onClick={() => void handleRenameConversation()}
+                    className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Renomear
+                  </button>
+                  <div className="relative">
                     <button
-                      onClick={() => void handleRenameConversation()}
-                      className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                      onClick={() => setIsConversationMenuOpen((current) => !current)}
+                      className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                      aria-label="Mais acoes"
                     >
-                      <Pencil className="h-4 w-4" />
-                      Renomear
+                      <MoreHorizontal className="h-4 w-4" />
                     </button>
-                    <button
-                      onClick={() => void handleDuplicateConversation()}
-                      className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
-                    >
-                      <CopyPlus className="h-4 w-4" />
-                      Duplicar
-                    </button>
-                    <button
-                      onClick={() => void handleDeleteConversation()}
-                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Excluir
-                    </button>
-                  </>
-                ) : null}
-              </div>
+                    {isConversationMenuOpen ? (
+                      <div className="absolute right-0 top-full z-20 mt-2 w-44 rounded-2xl border border-gray-100 bg-white p-2 shadow-lg">
+                        <button
+                          onClick={() => void handleDuplicateConversation()}
+                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                        >
+                          <CopyPlus className="h-4 w-4" />
+                          Duplicar
+                        </button>
+                        <button
+                          onClick={() => void handleDeleteConversation()}
+                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-red-700 transition-colors hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Excluir
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
+
+          {!conversationId ? (
+            <div className="border-b border-gray-100 bg-white px-4 py-6">
+              <div className="mx-auto max-w-5xl">
+                <PortalPageHeader
+                  title="Studio IA"
+                  description="Crie campanhas, criativos, imagens e videos conversando com o COS."
+                />
+                <p className="mt-6 text-lg font-semibold text-[#0a0a0a]">O que voce deseja criar hoje?</p>
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  {studioCreationCards.map((card) => (
+                    <button
+                      key={card.title}
+                      onClick={() => openCreationCard(card.prompt)}
+                      className="rounded-3xl border border-gray-100 bg-white p-5 text-left transition-colors hover:bg-gray-50"
+                    >
+                      <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-50">
+                        <card.icon className="h-5 w-5 text-[#0a0a0a]" />
+                      </span>
+                      <p className="text-base font-semibold text-[#0a0a0a]">{card.title}</p>
+                      <p className="mt-2 text-sm text-gray-500">{card.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <AreaChat
             conversationKey={conversationId || "studio-root"}
             title={activeConversation?.title || activeTitle}
-            subtitle="Crie campanhas, criativos, textos e planejamentos conversando com o COS."
+            subtitle="Crie campanhas, criativos, imagens e videos conversando com o COS."
             icon={Sparkles}
             color="#0a0a0a"
             bg="#f5f5f5"
@@ -651,11 +666,12 @@ export function StudioHome() {
             isLoadingHistory={isLoadingMessages}
             placeholder="Descreva o que voce deseja criar..."
             prefilledInput={prefilledInput}
+            hideHeader={!conversationId}
             quickActions={studioSuggestions.map((label) => ({
               label,
               onClick: () => setPrefilledInput(label),
             }))}
-            emptyLabel="O que voce deseja criar hoje?"
+            emptyLabel="Como posso ajudar?"
             renderMessageActions={(message) =>
               message.from === "cos" && conversationId ? (
                 <div className="flex flex-wrap gap-2">
@@ -767,27 +783,6 @@ export function StudioHome() {
                     <MessageSquare className="h-3 w-3" />
                     Continuar criacao
                   </button>
-                  <button
-                    onClick={() => void handleRenameConversation()}
-                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
-                  >
-                    <Pencil className="h-3 w-3" />
-                    Renomear conversa
-                  </button>
-                  <button
-                    onClick={() => void handleDuplicateConversation()}
-                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
-                  >
-                    <CopyPlus className="h-3 w-3" />
-                    Duplicar
-                  </button>
-                  <button
-                    onClick={() => void handleDeleteConversation()}
-                    className="inline-flex items-center gap-1 rounded-full border border-red-200 px-2.5 py-1 text-[11px] font-medium text-red-700 transition-colors hover:bg-red-50"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                    Excluir conversa
-                  </button>
                 </div>
               ) : null
             }
@@ -815,9 +810,11 @@ export function StudioHome() {
               }
 
               setPrefilledInput("")
+
               if (result.conversationId) {
                 await loadConversationMessages(result.conversationId)
               }
+
               await loadConversations()
 
               return { messages: [] }
