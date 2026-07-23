@@ -20,6 +20,7 @@ import {
   WandSparkles,
 } from "lucide-react"
 import {
+  createStudioConversationAction,
   createStudioImageVariationAction,
   createStudioVideoVariationAction,
   deleteStudioConversationAction,
@@ -37,7 +38,7 @@ import { PortalHeader, PortalPageHeader } from "@/components/portal/portal-heade
 import { toast } from "@/hooks/use-toast"
 import type { StudioConversationSummary } from "@/lib/studio-types"
 
-const studioSuggestions = ["Campanha", "Criativo", "Imagem", "Video", "Landing", "E-mail"]
+const studioSuggestions = ["Campanha", "Criativo", "Imagem", "Video"]
 
 const starterItems = ["campanhas", "criativos", "imagens", "videos", "apresentacoes", "landing pages", "anuncios", "e-mails"]
 
@@ -334,11 +335,30 @@ export function StudioHome() {
     router.replace(`/portal/marketing?conversationId=${id}`)
   }
 
-  const openCreationCard = (prompt: string) => {
+  const openCreationCard = async (prompt: string) => {
+    const result = await createStudioConversationAction()
+
+    if ("error" in result && result.error) {
+      toast({
+        title: "Nao foi possivel abrir",
+        description: result.error,
+      })
+      return
+    }
+
+    if (!("conversation" in result) || !result.conversation) {
+      toast({
+        title: "Nao foi possivel abrir",
+        description: "O Studio nao conseguiu preparar a nova conversa.",
+      })
+      return
+    }
+
     setPrefilledInput(prompt)
     setActiveTitle("Studio IA")
     setIsConversationMenuOpen(false)
-    router.replace(`/portal/marketing?draft=${encodeURIComponent(prompt)}`)
+    await loadConversations()
+    router.replace(`/portal/marketing?conversationId=${result.conversation.id}&draft=${encodeURIComponent(prompt)}`)
   }
 
   const handleRenameConversation = async () => {
@@ -629,7 +649,7 @@ export function StudioHome() {
           </div>
 
           {!conversationId ? (
-            <div className="border-b border-gray-100 bg-white px-4 py-6">
+            <div className="flex-1 overflow-y-auto bg-white px-4 py-6">
               <div className="mx-auto max-w-5xl">
                 <PortalPageHeader
                   title="Studio IA"
@@ -640,7 +660,7 @@ export function StudioHome() {
                   {studioCreationCards.map((card) => (
                     <button
                       key={card.title}
-                      onClick={() => openCreationCard(card.prompt)}
+                      onClick={() => void openCreationCard(card.prompt)}
                       className="rounded-3xl border border-gray-100 bg-white p-5 text-left transition-colors hover:bg-gray-50"
                     >
                       <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-50">
@@ -651,175 +671,203 @@ export function StudioHome() {
                     </button>
                   ))}
                 </div>
+                <div className="mt-8 xl:hidden">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400">Conversas recentes</p>
+                  <div className="mt-3 space-y-2">
+                    {isLoadingConversations ? (
+                      <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-500">
+                        Carregando conversas...
+                      </div>
+                    ) : conversations.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-4 text-sm text-gray-500">
+                        Nenhuma criacao salva ainda.
+                      </div>
+                    ) : (
+                      conversations.map((conversation) => (
+                        <button
+                          key={conversation.id}
+                          onClick={() => openConversation(conversation.id)}
+                          className="w-full rounded-2xl border border-gray-100 bg-white px-4 py-3 text-left transition-colors hover:bg-gray-50"
+                        >
+                          <p className="truncate text-sm font-semibold text-[#0a0a0a]">{conversation.title}</p>
+                          <p className="mt-1 line-clamp-2 text-xs text-gray-500">{conversation.preview}</p>
+                          <p className="mt-2 text-[11px] text-gray-400">{conversation.time}</p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}
 
-          <AreaChat
-            conversationKey={conversationId || "studio-root"}
-            title={activeConversation?.title || activeTitle}
-            subtitle="Crie campanhas, criativos, imagens e videos conversando com o COS."
-            icon={Sparkles}
-            color="#0a0a0a"
-            bg="#f5f5f5"
-            messages={messages}
-            isLoadingHistory={isLoadingMessages}
-            placeholder="Descreva o que voce deseja criar..."
-            prefilledInput={prefilledInput}
-            hideHeader={!conversationId}
-            quickActions={studioSuggestions.map((label) => ({
-              label,
-              onClick: () => setPrefilledInput(label),
-            }))}
-            emptyLabel="Como posso ajudar?"
-            renderMessageActions={(message) =>
-              message.from === "cos" && conversationId ? (
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(message.text)
-                      toast({
-                        title: "Conteudo copiado",
-                        description: "A resposta do Studio foi copiada.",
-                      })
-                    }}
-                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
-                  >
-                    <Copy className="h-3 w-3" />
-                    Copiar
-                  </button>
-                  {message.imagePrompt ? (
+          {conversationId ? (
+            <AreaChat
+              conversationKey={conversationId}
+              title={activeConversation?.title || activeTitle}
+              subtitle="Crie campanhas, criativos, imagens e videos conversando com o COS."
+              icon={Sparkles}
+              color="#0a0a0a"
+              bg="#f5f5f5"
+              messages={messages}
+              isLoadingHistory={isLoadingMessages}
+              placeholder="Descreva o que voce deseja criar..."
+              prefilledInput={prefilledInput}
+              hideHeader={false}
+              quickActions={studioSuggestions.map((label) => ({
+                label,
+                onClick: () => setPrefilledInput(label),
+              }))}
+              emptyLabel="Como posso ajudar?"
+              renderMessageActions={(message) =>
+                message.from === "cos" ? (
+                  <div className="flex flex-wrap gap-2">
                     <button
                       onClick={async () => {
-                        await navigator.clipboard.writeText(message.imagePrompt || "")
+                        await navigator.clipboard.writeText(message.text)
                         toast({
-                          title: "Prompt copiado",
-                          description: "O prompt final da imagem foi copiado.",
+                          title: "Conteudo copiado",
+                          description: "A resposta do Studio foi copiada.",
                         })
                       }}
                       className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
                     >
                       <Copy className="h-3 w-3" />
-                      Copiar prompt
+                      Copiar
                     </button>
-                  ) : null}
-                  {message.imageUrl && message.id ? (
+                    {message.imagePrompt ? (
+                      <button
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(message.imagePrompt || "")
+                          toast({
+                            title: "Prompt copiado",
+                            description: "O prompt final da imagem foi copiado.",
+                          })
+                        }}
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                      >
+                        <Copy className="h-3 w-3" />
+                        Copiar prompt
+                      </button>
+                    ) : null}
+                    {message.imageUrl && message.id ? (
+                      <button
+                        onClick={() => void handleDownloadImage(message.id!)}
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                      >
+                        <Download className="h-3 w-3" />
+                        Baixar
+                      </button>
+                    ) : null}
+                    {message.imagePrompt && message.id ? (
+                      <button
+                        onClick={() => void handleImageVariation(message.id!, false)}
+                        disabled={pendingImageMessageId === message.id}
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <WandSparkles className="h-3 w-3" />
+                        Criar variacao
+                      </button>
+                    ) : null}
+                    {message.imagePrompt && message.id ? (
+                      <button
+                        onClick={() => void handleImageVariation(message.id!, true)}
+                        disabled={pendingImageMessageId === message.id}
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <RefreshCcw className="h-3 w-3" />
+                        Gerar novamente
+                      </button>
+                    ) : null}
+                    {message.videoPrompt ? (
+                      <button
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(message.videoPrompt || "")
+                          toast({
+                            title: "Prompt copiado",
+                            description: "O prompt final do video foi copiado.",
+                          })
+                        }}
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                      >
+                        <Copy className="h-3 w-3" />
+                        Copiar prompt
+                      </button>
+                    ) : null}
+                    {message.videoUrl && message.id ? (
+                      <button
+                        onClick={() => void handleDownloadVideo(message.id!)}
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                      >
+                        <Download className="h-3 w-3" />
+                        Baixar
+                      </button>
+                    ) : null}
+                    {message.videoPrompt && message.id ? (
+                      <button
+                        onClick={() => void handleVideoVariation(message.id!, false)}
+                        disabled={pendingVideoMessageId === message.id}
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <WandSparkles className="h-3 w-3" />
+                        Nova versao
+                      </button>
+                    ) : null}
+                    {message.videoPrompt && message.id ? (
+                      <button
+                        onClick={() => void handleVideoVariation(message.id!, true)}
+                        disabled={pendingVideoMessageId === message.id}
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <RefreshCcw className="h-3 w-3" />
+                        Gerar novamente
+                      </button>
+                    ) : null}
                     <button
-                      onClick={() => void handleDownloadImage(message.id!)}
+                      onClick={() => setPrefilledInput("Continue esta criacao considerando a ultima resposta.")}
                       className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
                     >
-                      <Download className="h-3 w-3" />
-                      Baixar
+                      <MessageSquare className="h-3 w-3" />
+                      Continuar criacao
                     </button>
-                  ) : null}
-                  {message.imagePrompt && message.id ? (
-                    <button
-                      onClick={() => void handleImageVariation(message.id!, false)}
-                      disabled={pendingImageMessageId === message.id}
-                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <WandSparkles className="h-3 w-3" />
-                      Criar variacao
-                    </button>
-                  ) : null}
-                  {message.imagePrompt && message.id ? (
-                    <button
-                      onClick={() => void handleImageVariation(message.id!, true)}
-                      disabled={pendingImageMessageId === message.id}
-                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <RefreshCcw className="h-3 w-3" />
-                      Gerar novamente
-                    </button>
-                  ) : null}
-                  {message.videoPrompt ? (
-                    <button
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(message.videoPrompt || "")
-                        toast({
-                          title: "Prompt copiado",
-                          description: "O prompt final do video foi copiado.",
-                        })
-                      }}
-                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
-                    >
-                      <Copy className="h-3 w-3" />
-                      Copiar prompt
-                    </button>
-                  ) : null}
-                  {message.videoUrl && message.id ? (
-                    <button
-                      onClick={() => void handleDownloadVideo(message.id!)}
-                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
-                    >
-                      <Download className="h-3 w-3" />
-                      Baixar
-                    </button>
-                  ) : null}
-                  {message.videoPrompt && message.id ? (
-                    <button
-                      onClick={() => void handleVideoVariation(message.id!, false)}
-                      disabled={pendingVideoMessageId === message.id}
-                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <WandSparkles className="h-3 w-3" />
-                      Nova versao
-                    </button>
-                  ) : null}
-                  {message.videoPrompt && message.id ? (
-                    <button
-                      onClick={() => void handleVideoVariation(message.id!, true)}
-                      disabled={pendingVideoMessageId === message.id}
-                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <RefreshCcw className="h-3 w-3" />
-                      Gerar novamente
-                    </button>
-                  ) : null}
-                  <button
-                    onClick={() => setPrefilledInput("Continue esta criacao considerando a ultima resposta.")}
-                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
-                  >
-                    <MessageSquare className="h-3 w-3" />
-                    Continuar criacao
-                  </button>
-                </div>
-              ) : null
-            }
-            onSendMessage={async (input, now) => {
-              const result = await runStudioConversationAction({
-                conversationId: conversationId || undefined,
-                message: input,
-              })
+                  </div>
+                ) : null
+              }
+              onSendMessage={async (input, now) => {
+                const result = await runStudioConversationAction({
+                  conversationId: conversationId || undefined,
+                  message: input,
+                })
 
-              if (result.error || !result.message) {
-                return {
-                  messages: [
-                    {
-                      id: `studio-error-${Date.now()}`,
-                      from: "cos" as const,
-                      text: result.error || "Nao consegui concluir esta criacao agora. Tente novamente em instantes.",
-                      time: now,
-                    },
-                  ],
+                if (result.error || !result.message) {
+                  return {
+                    messages: [
+                      {
+                        id: `studio-error-${Date.now()}`,
+                        from: "cos" as const,
+                        text: result.error || "Nao consegui concluir esta criacao agora. Tente novamente em instantes.",
+                        time: now,
+                      },
+                    ],
+                  }
                 }
-              }
 
-              if (result.conversationId && result.conversationId !== conversationId) {
-                router.replace(`/portal/marketing?conversationId=${result.conversationId}`)
-              }
+                if (result.conversationId && result.conversationId !== conversationId) {
+                  router.replace(`/portal/marketing?conversationId=${result.conversationId}`)
+                }
 
-              setPrefilledInput("")
+                setPrefilledInput("")
 
-              if (result.conversationId) {
-                await loadConversationMessages(result.conversationId)
-              }
+                if (result.conversationId) {
+                  await loadConversationMessages(result.conversationId)
+                }
 
-              await loadConversations()
+                await loadConversations()
 
-              return { messages: [] }
-            }}
-          />
+                return { messages: [] }
+              }}
+            />
+          ) : null}
         </div>
       </div>
     </div>
