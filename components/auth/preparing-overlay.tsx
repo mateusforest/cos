@@ -35,7 +35,7 @@ export function PreparingOverlay() {
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-background/95 backdrop-blur-sm">
       <div className="flex w-full max-w-xs flex-col items-center text-center">
         <div className={cn('transition-transform duration-500', done && 'scale-105')}>
-          <CosLogo className="h-7" />
+          <CosLogo variant="mark" className="h-7" />
         </div>
 
         {!done ? (

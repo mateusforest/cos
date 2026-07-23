@@ -1,10 +1,17 @@
 import type { Metadata, Viewport } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
+import { Caveat } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from '@/components/auth/auth-provider'
 import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
+
+const caveat = Caveat({
+  subsets: ['latin'],
+  variable: '--font-caveat',
+  weight: ['400', '500', '600', '700'],
+})
 
 export const metadata: Metadata = {
   title: 'COS - Conversational Operating System',
@@ -42,7 +49,7 @@ export default function RootLayout({
     <html
       lang="pt-BR"
       suppressHydrationWarning
-      className={`${GeistSans.variable} ${GeistMono.variable} bg-background text-foreground`}
+      className={`${GeistSans.variable} ${GeistMono.variable} ${caveat.variable} bg-background text-foreground`}
     >
       <body className="font-sans antialiased bg-background text-foreground">
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>

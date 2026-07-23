@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 export type Sector = { value: string; label: string; recommended?: boolean }
 
 const SECTORS: Sector[] = [
-  { value: 'default', label: 'Padrão', recommended: true },
+  { value: 'padrao', label: 'Padrão', recommended: true },
   { value: 'comercio', label: 'Comércio' },
   { value: 'servicos', label: 'Serviços' },
   { value: 'industria', label: 'Indústria' },
@@ -18,7 +18,7 @@ const SECTORS: Sector[] = [
   { value: 'advocacia', label: 'Advocacia' },
   { value: 'contabilidade', label: 'Contabilidade' },
   { value: 'construcao', label: 'Construção' },
-  { value: 'recursos-humanos', label: 'Recursos Humanos' },
+  { value: 'rh', label: 'Recursos Humanos' },
   { value: 'outro', label: 'Outro segmento' },
 ]
 
