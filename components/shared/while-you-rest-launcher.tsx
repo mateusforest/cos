@@ -72,15 +72,22 @@ function WhileYouRestIcon({
   )
 }
 
-function WhileYouRestLauncherIcon({ active = false }: { active?: boolean }) {
+function WhileYouRestLauncherIcon({
+  active = false,
+  indicatorClassName = "bg-transparent",
+}: {
+  active?: boolean
+  indicatorClassName?: string
+}) {
   return (
-    <div className="relative flex h-[48px] w-[48px] items-center justify-center rounded-full bg-[radial-gradient(circle_at_30%_25%,#cc92ff_0%,#9245ff_38%,#6328db_70%,#4b1eb8_100%)] shadow-[0_10px_26px_rgba(140,82,255,0.28)]">
-      <div className="absolute inset-[-6px] rounded-full border border-[rgba(255,255,255,0.84)] bg-white/25 blur-[0.6px]" />
-      <div className={`absolute inset-[-12px] rounded-full bg-[radial-gradient(circle,rgba(194,132,255,0.22)_0%,rgba(194,132,255,0.08)_48%,rgba(194,132,255,0)_78%)] ${active ? "animate-pulse" : "opacity-70"}`} />
+    <div className="relative flex h-[38px] w-[38px] items-center justify-center rounded-full bg-[radial-gradient(circle_at_30%_25%,#cc92ff_0%,#9245ff_38%,#6328db_70%,#4b1eb8_100%)] shadow-[0_8px_18px_rgba(140,82,255,0.18)]">
+      <div className="absolute inset-[-4px] rounded-full border border-[rgba(255,255,255,0.84)] bg-white/20 blur-[0.4px]" />
+      <div className={`absolute inset-[-8px] rounded-full bg-[radial-gradient(circle,rgba(194,132,255,0.16)_0%,rgba(194,132,255,0.06)_46%,rgba(194,132,255,0)_78%)] ${active ? "animate-pulse" : "opacity-60"}`} />
+      <span className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-white shadow-[0_0_0_2px_rgba(255,255,255,0.85)] ${indicatorClassName}`} />
       <svg
         viewBox="0 0 64 64"
         aria-hidden="true"
-        className="relative h-7 w-7 text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.24)]"
+        className="relative h-5.5 w-5.5 text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.2)]"
         fill="none"
         stroke="currentColor"
         strokeWidth="3.2"
@@ -138,18 +145,22 @@ function getLauncherState(plans: WhileYouRestHydratedPlan[]) {
 
 function getLauncherTone(plans: WhileYouRestHydratedPlan[]) {
   if (plans.some((plan) => plan.status === "waiting_confirmation")) {
-    return "border-orange-200 bg-[#1b1611] text-orange-50"
+    return "bg-[#f59e0b]"
   }
 
   if (plans.some((plan) => plan.status === "paused")) {
-    return "border-slate-200 bg-[#16181b] text-slate-50"
+    return "bg-[#64748b]"
+  }
+
+  if (plans.some((plan) => plan.status === "failed")) {
+    return "bg-[#ef4444]"
   }
 
   if (plans.some((plan) => plan.status === "queued" || plan.status === "running")) {
-    return "border-emerald-200 bg-[#111111] text-white"
+    return "bg-[#22c55e]"
   }
 
-  return "border-white/70 bg-[#0a0a0a] text-white"
+  return "bg-[#c4b5fd]"
 }
 
 function shouldPoll(plan: WhileYouRestHydratedPlan) {
@@ -285,7 +296,6 @@ export function WhileYouRestLauncher({ variant }: Props) {
   const isOperationsWorkspace = workspace?.type === "operations"
   const selectedPlan = useMemo(() => plans.find((plan) => plan.id === selectedPlanId) ?? null, [plans, selectedPlanId])
   const phase: Phase = draftPlan ? "review" : selectedPlan ? "tracking" : "request"
-  const launcherStatus = getLauncherState(plans)
   const launcherTone = getLauncherTone(plans)
   const launcherActive = plans.some((plan) => plan.status === "queued" || plan.status === "running")
 
@@ -512,31 +522,25 @@ export function WhileYouRestLauncher({ variant }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`fixed z-40 flex items-center gap-3 rounded-full border border-[rgba(199,170,248,0.9)] bg-white/90 px-3 py-2.5 text-left backdrop-blur-xl transition-all ${
+        className={`fixed z-40 flex items-center gap-2 rounded-full border border-[rgba(199,170,248,0.82)] bg-white/90 px-2.5 py-2 text-left backdrop-blur-xl transition-all ${
           launcherActive ? "scale-[1.01]" : "scale-100"
         } ${variant === "app" ? "bottom-24 right-4 lg:bottom-6" : "bottom-6 right-4"}`}
         style={{
-          minWidth: "min(90vw, 286px)",
           backgroundImage:
             "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(250,245,255,0.94) 100%)",
           boxShadow:
-            "0 16px 34px rgba(165, 118, 255, 0.16), 0 0 0 1px rgba(205, 174, 251, 0.52), inset 0 1px 0 rgba(255,255,255,0.98), inset 0 -8px 18px rgba(210, 176, 255, 0.05)",
+            "0 12px 24px rgba(165, 118, 255, 0.12), 0 0 0 1px rgba(205, 174, 251, 0.44), inset 0 1px 0 rgba(255,255,255,0.98), inset 0 -6px 14px rgba(210, 176, 255, 0.04)",
         }}
       >
-        <span className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_78%_92%,rgba(255,132,232,0.18)_0%,rgba(255,132,232,0.06)_8%,rgba(255,255,255,0)_18%)]" />
-        <span className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_18%_110%,rgba(171,108,255,0.14)_0%,rgba(171,108,255,0.06)_14%,rgba(255,255,255,0)_30%)]" />
+        <span className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_78%_92%,rgba(255,132,232,0.12)_0%,rgba(255,132,232,0.04)_8%,rgba(255,255,255,0)_18%)]" />
+        <span className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_18%_110%,rgba(171,108,255,0.1)_0%,rgba(171,108,255,0.04)_14%,rgba(255,255,255,0)_30%)]" />
         <span className="pointer-events-none absolute inset-0 rounded-full border border-white/70" />
         <div className="relative shrink-0">
-          <WhileYouRestLauncherIcon active={launcherActive} />
+          <WhileYouRestLauncherIcon active={launcherActive} indicatorClassName={launcherTone} />
         </div>
-        <div className="relative min-w-0 pr-1">
-          <span className="block truncate text-[15px] font-semibold leading-none tracking-[-0.03em] text-[#34178f] sm:text-[16px]">
-            Enquanto você descansa
-          </span>
-          <span className="mt-1 block truncate text-[11px] font-medium leading-none text-[#7b6f9a]">
-            {launcherStatus === "Enquanto você descansa" ? "Planeje e acompanhe o que o COS vai deixar pronto" : launcherStatus}
-          </span>
-        </div>
+        <span className="relative whitespace-nowrap pr-0.5 text-[13px] font-medium leading-none tracking-[-0.02em] text-[#34178f] sm:text-[14px]">
+          Enquanto você descansa
+        </span>
       </button>
 
       <Sheet open={open} onOpenChange={setOpen}>
