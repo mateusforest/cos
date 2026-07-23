@@ -13,12 +13,19 @@ export type ChatMessage = {
   from: "cos" | "user"
   text: string
   time: string
+  createdAt?: string | null
   ctaLabel?: string
   ctaHref?: string
   imageUrl?: string
   imageAlt?: string
   imageStatus?: string
   imagePrompt?: string
+  videoUrl?: string
+  videoStatus?: string
+  videoPrompt?: string
+  videoState?: string
+  videoGenerationId?: string
+  videoFileName?: string
 }
 
 export type QuickAction = {
@@ -194,6 +201,12 @@ export function AreaChat({
                   </div>
                 ) : null}
                 {m.imageStatus ? <p className="mt-2 text-[11px] text-gray-400">{m.imageStatus}</p> : null}
+                {m.videoUrl ? (
+                  <div className="mt-2 overflow-hidden rounded-2xl border border-gray-100 bg-gray-50">
+                    <video src={m.videoUrl} controls playsInline className="h-auto w-full bg-black" />
+                  </div>
+                ) : null}
+                {m.videoStatus ? <p className="mt-2 text-[11px] text-gray-400">{m.videoStatus}</p> : null}
                 {m.ctaLabel && m.ctaHref && (
                   <Link
                     href={m.ctaHref}

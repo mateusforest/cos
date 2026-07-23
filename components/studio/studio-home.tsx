@@ -1,17 +1,20 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Copy, MessageSquare, Pencil, Plus, Sparkles, Trash2, CopyPlus, Download, RefreshCcw, WandSparkles } from "lucide-react"
 import {
   createStudioConversationAction,
   createStudioImageVariationAction,
+  createStudioVideoVariationAction,
   deleteStudioConversationAction,
   duplicateStudioConversationAction,
   getStudioConversationMessagesAction,
   getStudioConversationsAction,
   getStudioImageSignedUrlAction,
+  getStudioVideoSignedUrlAction,
+  refreshStudioConversationVideoAction,
   renameStudioConversationAction,
   runStudioConversationAction,
 } from "@/actions/studio"
@@ -62,6 +65,9 @@ export function StudioHome() {
   const [activeTitle, setActiveTitle] = useState("Studio IA")
   const [prefilledInput, setPrefilledInput] = useState(draft)
   const [pendingImageMessageId, setPendingImageMessageId] = useState<string | null>(null)
+  const [pendingVideoMessageId, setPendingVideoMessageId] = useState<string | null>(null)
+  const refreshingVideoIdsRef = useRef<Set<string>>(new Set())
+  const videoPollingAttemptsRef = useRef<Record<string, number>>({})
 
   const loadConversations = async (nextConversationId?: string | null) => {
     setIsLoadingConversations(true)
@@ -92,6 +98,34 @@ export function StudioHome() {
   useEffect(() => {
     setPrefilledInput(draft)
   }, [draft])
+
+  const loadConversationMessages = async (targetConversationId: string) => {
+    const result = await getStudioConversationMessagesAction({ conversationId: targetConversationId })
+
+    if (result.error) {
+      toast({
+        title: "Nao foi possivel carregar",
+        description: result.error,
+      })
+      return null
+    }
+
+    const nextMessages = ((result.messages ?? []).filter(Boolean) as ChatMessage[])
+    setMessages(
+      nextMessages.length > 0
+        ? nextMessages
+        : [
+            {
+              id: "studio-welcome",
+              from: "cos",
+              text: buildStudioStarterText(),
+              time: "",
+            },
+          ],
+    )
+    setActiveTitle(result.title || "Studio IA")
+    return result
+  }
 
   useEffect(() => {
     let active = true
@@ -153,6 +187,97 @@ export function StudioHome() {
       active = false
     }
   }, [conversationId])
+
+  useEffect(() => {
+    if (!conversationId) {
+      return
+    }
+
+    const pendingMessages = messages.filter(
+      (message) =>
+        message.id &&
+        message.videoGenerationId &&
+        (message.videoState === "queued" || message.videoState === "processing" || message.videoState === "preparing"),
+    )
+
+    if (pendingMessages.length === 0) {
+      return
+    }
+
+    let cancelled = false
+
+    const refreshPendingVideos = async () => {
+      for (const message of pendingMessages) {
+        if (!message.id || refreshingVideoIdsRef.current.has(message.id)) {
+          continue
+        }
+
+        const attempts = videoPollingAttemptsRef.current[message.id] ?? 0
+        const createdAt = message.createdAt ? new Date(message.createdAt).getTime() : 0
+
+        if (attempts >= 40 || (createdAt > 0 && Date.now() - createdAt > 1000 * 60 * 30)) {
+          continue
+        }
+
+        refreshingVideoIdsRef.current.add(message.id)
+        videoPollingAttemptsRef.current[message.id] = attempts + 1
+
+        const result = await refreshStudioConversationVideoAction({
+          conversationId,
+          messageId: message.id,
+        })
+
+        refreshingVideoIdsRef.current.delete(message.id)
+
+        if (cancelled) {
+          return
+        }
+
+        if (result.error || !result.message) {
+          continue
+        }
+
+        const refreshedMessage: ChatMessage = {
+          id: result.message.id,
+          from: result.message.from as "cos" | "user",
+          text: result.message.text,
+          time: result.message.time,
+          createdAt: result.message.createdAt,
+          imageUrl: result.message.imageUrl,
+          imageAlt: result.message.imageAlt,
+          imageStatus: result.message.imageStatus,
+          imagePrompt: result.message.imagePrompt,
+          videoUrl: result.message.videoUrl,
+          videoStatus: result.message.videoStatus,
+          videoPrompt: result.message.videoPrompt,
+          videoState: result.message.videoState,
+          videoGenerationId: result.message.videoGenerationId,
+          videoFileName: result.message.videoFileName,
+        }
+
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === refreshedMessage.id
+              ? {
+                  ...item,
+                  ...refreshedMessage,
+                }
+              : item,
+          ),
+        )
+      }
+    }
+
+    void refreshPendingVideos()
+    const interval = window.setInterval(() => {
+      void refreshPendingVideos()
+    }, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [conversationId, messages])
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === conversationId) ?? null,
@@ -323,23 +448,60 @@ export function StudioHome() {
       })
       return
     }
+    await loadConversationMessages(conversationId)
 
-    const nextMessage = result.message
+    await loadConversations()
+  }
 
-    setMessages((current) => [
-      ...current,
-      {
-        id: nextMessage.id,
-        from: nextMessage.from as "cos" | "user",
-        text: nextMessage.text,
-        time: nextMessage.time,
-        imageUrl: nextMessage.imageUrl,
-        imageAlt: nextMessage.imageAlt,
-        imageStatus: nextMessage.imageStatus,
-        imagePrompt: nextMessage.imagePrompt,
-      },
-    ])
+  const handleDownloadVideo = async (messageId: string) => {
+    if (!conversationId) return
 
+    const result = await getStudioVideoSignedUrlAction({
+      conversationId,
+      messageId,
+      download: true,
+    })
+
+    if (result.error || !result.url) {
+      toast({
+        title: "Nao foi possivel baixar",
+        description: result.error || "O video ainda nao esta disponivel.",
+      })
+      return
+    }
+
+    window.open(result.url, "_blank", "noopener,noreferrer")
+  }
+
+  const handleVideoVariation = async (messageId: string, regenerate = false) => {
+    if (!conversationId) return
+
+    const instructions = regenerate ? "" : window.prompt("Como voce quer ajustar a nova versao?", "mais cinematografico")
+
+    if (!regenerate && instructions === null) {
+      return
+    }
+
+    setPendingVideoMessageId(messageId)
+
+    const result = await createStudioVideoVariationAction({
+      conversationId,
+      messageId,
+      instructions: instructions || "",
+      regenerate,
+    })
+
+    setPendingVideoMessageId(null)
+
+    if (result.error || !("message" in result) || !result.message) {
+      toast({
+        title: regenerate ? "Nao foi possivel gerar novamente" : "Nao foi possivel criar a nova versao",
+        description: result.error || "Tente novamente em instantes.",
+      })
+      return
+    }
+
+    await loadConversationMessages(conversationId)
     await loadConversations()
   }
 
@@ -554,6 +716,50 @@ export function StudioHome() {
                       Gerar novamente
                     </button>
                   ) : null}
+                  {message.videoPrompt ? (
+                    <button
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(message.videoPrompt || "")
+                        toast({
+                          title: "Prompt copiado",
+                          description: "O prompt final do video foi copiado.",
+                        })
+                      }}
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                    >
+                      <Copy className="h-3 w-3" />
+                      Copiar prompt
+                    </button>
+                  ) : null}
+                  {message.videoUrl && message.id ? (
+                    <button
+                      onClick={() => void handleDownloadVideo(message.id!)}
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
+                    >
+                      <Download className="h-3 w-3" />
+                      Baixar
+                    </button>
+                  ) : null}
+                  {message.videoPrompt && message.id ? (
+                    <button
+                      onClick={() => void handleVideoVariation(message.id!, false)}
+                      disabled={pendingVideoMessageId === message.id}
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <WandSparkles className="h-3 w-3" />
+                      Nova versao
+                    </button>
+                  ) : null}
+                  {message.videoPrompt && message.id ? (
+                    <button
+                      onClick={() => void handleVideoVariation(message.id!, true)}
+                      disabled={pendingVideoMessageId === message.id}
+                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <RefreshCcw className="h-3 w-3" />
+                      Gerar novamente
+                    </button>
+                  ) : null}
                   <button
                     onClick={() => setPrefilledInput("Continue esta criacao considerando a ultima resposta.")}
                     className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-gray-50"
@@ -609,22 +815,12 @@ export function StudioHome() {
               }
 
               setPrefilledInput("")
+              if (result.conversationId) {
+                await loadConversationMessages(result.conversationId)
+              }
               await loadConversations()
 
-              return {
-                messages: [
-                  {
-                    id: result.message.id,
-                    from: result.message.from as "cos" | "user",
-                    text: result.message.text,
-                    time: result.message.time || now,
-                    imageUrl: result.message.imageUrl,
-                    imageAlt: result.message.imageAlt,
-                    imageStatus: result.message.imageStatus,
-                    imagePrompt: result.message.imagePrompt,
-                  },
-                ],
-              }
+              return { messages: [] }
             }}
           />
         </div>

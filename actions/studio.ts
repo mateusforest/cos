@@ -35,6 +35,8 @@ const maxDownloadedAssetSize = 30 * 1024 * 1024
 const studioConversationArea = "marketing"
 const studioDefaultConversationTitle = "Nova criacao"
 const studioImageGenerationCreditCost = 1
+const studioVideoGenerationCreditCost = 5
+const studioVideoPollingTimeoutMs = 1000 * 60 * 30
 
 type QueryError = { message: string } | null
 
@@ -83,6 +85,28 @@ type StudioImageMessageMetadata = {
   fileName: string | null
   mimeType: string | null
   generatedAt: string | null
+  error: string | null
+}
+
+type StudioVideoMessageMetadata = {
+  type: "video"
+  status: "preparing" | "queued" | "processing" | "completed" | "failed"
+  prompt: string
+  aspectRatio: "16:9" | "9:16" | "1:1"
+  duration: "5s" | "10s"
+  generationId: string | null
+  sourceImageFilePath: string | null
+  sourceImageFileName: string | null
+  sourceImageMimeType: string | null
+  storagePath: string | null
+  fileName: string | null
+  mimeType: string | null
+  debitTransactionId: string | null
+  debitIdempotencyKey: string | null
+  refundedAt: string | null
+  parentMessageId: string | null
+  generatedAt: string | null
+  lastCheckedAt: string | null
   error: string | null
 }
 
@@ -238,6 +262,45 @@ function buildStudioImageMetadata(input: StudioImageMessageMetadata) {
     studio_mode: "conversation",
     studio_image: input,
   }
+}
+
+function buildStudioVideoMetadata(input: StudioVideoMessageMetadata) {
+  return {
+    engine: "studio",
+    conversation_area: studioConversationArea,
+    studio_mode: "conversation",
+    studio_video: input,
+  }
+}
+
+function normalizeStudioVideoAspectRatioFromText(value: string): "16:9" | "9:16" | "1:1" {
+  const normalized = value.toLowerCase()
+
+  if (/\b(9:16|stories|story|reels|vertical)\b/.test(normalized)) {
+    return "9:16"
+  }
+
+  if (/\b(1:1|quadrado|square)\b/.test(normalized)) {
+    return "1:1"
+  }
+
+  return "16:9"
+}
+
+function normalizeStudioVideoDurationFromText(value: string): "5s" | "10s" {
+  return /\b(10s|10 segundos|dez segundos)\b/i.test(value) ? "10s" : "5s"
+}
+
+function stripVideoRequestLead(message: string) {
+  return message
+    .replace(/^(por favor[, ]*)?/i, "")
+    .replace(/^(crie|gere|faca|faça|monte|produza|anime)\s+(um|uma)\s+(video|videos|vídeo|vídeos)\s*/i, "")
+    .replace(/^(preciso de|quero)\s+(um|uma)\s+(video|videos|vídeo|vídeos)\s*/i, "")
+    .trim()
+}
+
+function shouldUseLatestStudioImageForVideo(message: string) {
+  return /\b(dessa imagem|desta imagem|essa imagem|esta imagem|ultima imagem|última imagem|animar a imagem|animar essa imagem|a partir da imagem)\b/i.test(message)
 }
 
 function ensureStudioSection(section: string): StudioSection | null {
@@ -1097,6 +1160,511 @@ async function downloadRemoteAsset(url: string) {
   }
 }
 
+function parseStudioVideoRequest({
+  message,
+  latestImage,
+}: {
+  message: string
+  latestImage: ReturnType<typeof findLatestCompletedStudioImage>
+}):
+  | { ask: string }
+  | {
+      prompt: string
+      aspectRatio: "16:9" | "9:16" | "1:1"
+      duration: "5s" | "10s"
+      sourceImage: ReturnType<typeof findLatestCompletedStudioImage> | null
+    } {
+  const normalized = message.trim()
+  if (!normalized) {
+    return { ask: "Descreva o video que voce deseja criar e informe o formato: 16:9, 9:16 ou 1:1." }
+  }
+
+  const promptCandidate = stripVideoRequestLead(normalized)
+  const sourceImage = shouldUseLatestStudioImageForVideo(normalized) ? latestImage : null
+  const hasMeaningfulPrompt =
+    promptCandidate.length >= 12 &&
+    !/^(para|com|sem|em|de|da|do|no|na)\b/i.test(promptCandidate)
+
+  if (!hasMeaningfulPrompt && !sourceImage) {
+    return {
+      ask: "Posso gerar. Me diga em uma frase a cena do video e o formato desejado: 16:9, 9:16 ou 1:1.",
+    }
+  }
+
+  if (shouldUseLatestStudioImageForVideo(normalized) && !latestImage) {
+    return {
+      ask: "Nao encontrei uma imagem valida nesta conversa para animar. Gere uma imagem primeiro ou descreva o video por texto.",
+    }
+  }
+
+  return {
+    prompt: hasMeaningfulPrompt ? promptCandidate : normalized,
+    aspectRatio: normalizeStudioVideoAspectRatioFromText(normalized),
+    duration: normalizeStudioVideoDurationFromText(normalized),
+    sourceImage,
+  }
+}
+
+async function maybeRefundStudioVideoCredit({
+  actor,
+  video,
+  conversationId,
+  messageId,
+  error,
+}: {
+  actor: Exclude<StudioActor, { error: string }>
+  video: ReturnType<typeof readStudioVideoMetadata>
+  conversationId: string
+  messageId: string
+  error: string
+}) {
+  if (!video?.debitTransactionId || video.refundedAt) {
+    return video?.refundedAt ?? null
+  }
+
+  const refundResult = await refundWorkspaceCredits({
+    originalTransactionId: video.debitTransactionId,
+    reason: "Falha elegivel na geracao de video do Studio IA",
+    idempotencyKey: `studio-video-refund:${video.debitTransactionId}`,
+    metadata: {
+      conversationId,
+      messageId,
+      generationId: video.generationId,
+      error,
+    },
+  })
+
+  if (refundResult.status === "success" || refundResult.status === "already_processed") {
+    return new Date().toISOString()
+  }
+
+  return null
+}
+
+async function createStudioVideoSignedUrlFromPath({
+  actor,
+  storagePath,
+  fileName,
+  download = false,
+}: {
+  actor: Exclude<StudioActor, { error: string }>
+  storagePath: string
+  fileName?: string | null
+  download?: boolean
+}) {
+  return createStudioDocumentSignedUrl({
+    actor,
+    filePath: storagePath,
+    fileName,
+    download,
+  })
+}
+
+async function startStudioConversationVideoGeneration({
+  actor,
+  conversationId,
+  userMessageId,
+  sourceText,
+  prompt,
+  aspectRatio,
+  duration,
+  sourceImage,
+  parentMessageId = null,
+}: {
+  actor: Exclude<StudioActor, { error: string }>
+  conversationId: string
+  userMessageId: string
+  sourceText: string
+  prompt: string
+  aspectRatio: "16:9" | "9:16" | "1:1"
+  duration: "5s" | "10s"
+  sourceImage: ReturnType<typeof findLatestCompletedStudioImage> | null
+  parentMessageId?: string | null
+}) {
+  const debitKey = `studio-video:${conversationId}:${userMessageId}`
+  const existingMessages = await getStudioMessages({ actor, conversationId })
+
+  if ("error" in existingMessages) {
+    return { error: existingMessages.error }
+  }
+
+  const existingMessage = findStudioVideoMessageByDebitKey(existingMessages.rows, debitKey)
+  if (existingMessage) {
+    const mapped = await mapStudioChatMessage({ actor, row: existingMessage })
+    if (mapped) {
+      return {
+        success: true as const,
+        conversationId,
+        conversationArea: studioConversationArea,
+        message: mapped,
+      }
+    }
+  }
+
+  const debitResult = await debitWorkspaceCredits({
+    amount: studioVideoGenerationCreditCost,
+    feature: "studio_video_generation",
+    provider: "luma",
+    reason: "Geracao de video no Studio IA",
+    idempotencyKey: debitKey,
+    metadata: {
+      conversationId,
+      messageId: userMessageId,
+      aspectRatio,
+      duration,
+      hasSourceImage: Boolean(sourceImage?.image.filePath),
+    },
+  })
+
+  if (debitResult.status === "insufficient_credits") {
+    const insufficientSaved = await insertStudioMessage({
+      actor,
+      conversationId,
+      role: "assistant",
+      content: "Saldo insuficiente para gerar este video agora.",
+      metadata: buildStudioVideoMetadata({
+        type: "video",
+        status: "failed",
+        prompt,
+        aspectRatio,
+        duration,
+        generationId: null,
+        sourceImageFilePath: sourceImage?.image.filePath ?? null,
+        sourceImageFileName: sourceImage?.image.fileName ?? null,
+        sourceImageMimeType: sourceImage?.image.mimeType ?? null,
+        storagePath: null,
+        fileName: null,
+        mimeType: null,
+        debitTransactionId: null,
+        debitIdempotencyKey: debitKey,
+        refundedAt: null,
+        parentMessageId,
+        generatedAt: new Date().toISOString(),
+        lastCheckedAt: null,
+        error: "Saldo insuficiente para gerar este video agora.",
+      }),
+    })
+
+    if ("error" in insufficientSaved) {
+      return { error: insufficientSaved.error }
+    }
+
+    return {
+      success: true as const,
+      conversationId,
+      conversationArea: studioConversationArea,
+      message: await mapStudioChatMessage({ actor, row: insufficientSaved.message }),
+    }
+  }
+
+  if (debitResult.status === "already_processed") {
+    const reusedMessage = existingMessages.rows.find((row) => {
+      const video = readStudioVideoMetadata(row)
+      return video?.debitTransactionId === debitResult.transactionId
+    })
+
+    if (reusedMessage) {
+      const mapped = await mapStudioChatMessage({ actor, row: reusedMessage })
+      if (mapped) {
+        return {
+          success: true as const,
+          conversationId,
+          conversationArea: studioConversationArea,
+          message: mapped,
+        }
+      }
+    }
+  }
+
+  if ((debitResult.status !== "success" && debitResult.status !== "already_processed") || !debitResult.transactionId) {
+    return { error: "Nao foi possivel validar os creditos do video no Studio agora." }
+  }
+
+  let keyframes: Array<Record<string, unknown>> | undefined
+  let keyframeIndexes: number[] | undefined
+
+  if (sourceImage?.image.filePath) {
+    const signedImage = await createStudioDocumentSignedUrl({
+      actor,
+      filePath: sourceImage.image.filePath,
+      fileName: sourceImage.image.fileName,
+    })
+
+    if ("error" in signedImage || !signedImage.url) {
+      const refundedAt = await maybeRefundStudioVideoCredit({
+        actor,
+        video: {
+          prompt,
+          status: "failed",
+          aspectRatio,
+          duration,
+          generationId: null,
+          sourceImageFilePath: sourceImage.image.filePath,
+          sourceImageFileName: sourceImage.image.fileName,
+          sourceImageMimeType: sourceImage.image.mimeType,
+          storagePath: null,
+          fileName: null,
+          mimeType: null,
+          debitTransactionId: debitResult.transactionId,
+          debitIdempotencyKey: debitKey,
+          refundedAt: null,
+          parentMessageId,
+          generatedAt: null,
+          lastCheckedAt: null,
+          error: signedImage.error || "Nao foi possivel preparar a imagem de origem.",
+        },
+        conversationId,
+        messageId: userMessageId,
+        error: signedImage.error || "Nao foi possivel preparar a imagem de origem.",
+      })
+
+      const failedSaved = await insertStudioMessage({
+        actor,
+        conversationId,
+        role: "assistant",
+        content: "Nao foi possivel preparar a imagem de origem deste video agora.",
+        metadata: buildStudioVideoMetadata({
+          type: "video",
+          status: "failed",
+          prompt,
+          aspectRatio,
+          duration,
+          generationId: null,
+          sourceImageFilePath: sourceImage.image.filePath,
+          sourceImageFileName: sourceImage.image.fileName,
+          sourceImageMimeType: sourceImage.image.mimeType,
+          storagePath: null,
+          fileName: null,
+          mimeType: null,
+          debitTransactionId: debitResult.transactionId,
+          debitIdempotencyKey: debitKey,
+          refundedAt,
+          parentMessageId,
+          generatedAt: new Date().toISOString(),
+          lastCheckedAt: null,
+          error: signedImage.error || "Nao foi possivel preparar a imagem de origem deste video agora.",
+        }),
+      })
+
+      if ("error" in failedSaved) {
+        return { error: failedSaved.error }
+      }
+
+      return {
+        success: true as const,
+        conversationId,
+        conversationArea: studioConversationArea,
+        message: await mapStudioChatMessage({ actor, row: failedSaved.message }),
+      }
+    }
+
+    keyframes = [
+      {
+        url: signedImage.url,
+        media_type: sourceImage.image.mimeType || "image/png",
+      },
+    ]
+    keyframeIndexes = [0]
+  }
+
+  const lumaResponse = await fetchLumaGeneration({
+    endpoint: LUMA_GENERATIONS_URL,
+    method: "POST",
+    body: {
+      model: "ray-3.2",
+      type: "video",
+      prompt: prompt.slice(0, studioPromptLimit),
+      aspect_ratio: aspectRatio,
+      keyframes,
+      keyframe_indexes: keyframeIndexes,
+      video: {
+        resolution: "720p",
+        duration,
+      },
+    },
+  })
+
+  if ("error" in lumaResponse) {
+    const refundedAt = await maybeRefundStudioVideoCredit({
+      actor,
+      video: {
+        prompt,
+        status: "failed",
+        aspectRatio,
+        duration,
+        generationId: null,
+        sourceImageFilePath: sourceImage?.image.filePath ?? null,
+        sourceImageFileName: sourceImage?.image.fileName ?? null,
+        sourceImageMimeType: sourceImage?.image.mimeType ?? null,
+        storagePath: null,
+        fileName: null,
+        mimeType: null,
+        debitTransactionId: debitResult.transactionId,
+        debitIdempotencyKey: debitKey,
+        refundedAt: null,
+        parentMessageId,
+        generatedAt: null,
+        lastCheckedAt: null,
+        error: lumaResponse.error ?? null,
+      },
+      conversationId,
+      messageId: userMessageId,
+      error: lumaResponse.error ?? "Nao foi possivel iniciar a geracao deste video agora.",
+    })
+
+    const failedSaved = await insertStudioMessage({
+      actor,
+      conversationId,
+      role: "assistant",
+      content: "Nao foi possivel iniciar a geracao deste video agora.",
+      metadata: buildStudioVideoMetadata({
+        type: "video",
+        status: "failed",
+        prompt,
+        aspectRatio,
+        duration,
+        generationId: null,
+        sourceImageFilePath: sourceImage?.image.filePath ?? null,
+        sourceImageFileName: sourceImage?.image.fileName ?? null,
+        sourceImageMimeType: sourceImage?.image.mimeType ?? null,
+        storagePath: null,
+        fileName: null,
+        mimeType: null,
+        debitTransactionId: debitResult.transactionId,
+        debitIdempotencyKey: debitKey,
+        refundedAt,
+        parentMessageId,
+        generatedAt: new Date().toISOString(),
+        lastCheckedAt: null,
+        error: lumaResponse.error ?? null,
+      }),
+    })
+
+    if ("error" in failedSaved) {
+      return { error: failedSaved.error }
+    }
+
+    return {
+      success: true as const,
+      conversationId,
+      conversationArea: studioConversationArea,
+      message: await mapStudioChatMessage({ actor, row: failedSaved.message }),
+    }
+  }
+
+  const payload = lumaResponse.data
+  const generationId = typeof payload.id === "string" ? payload.id : ""
+  const state =
+    payload.state === "completed" ? "completed" : payload.state === "failed" ? "failed" : payload.state === "processing" ? "processing" : "queued"
+
+  if (!generationId) {
+    const refundedAt = await maybeRefundStudioVideoCredit({
+      actor,
+      video: {
+        prompt,
+        status: "failed",
+        aspectRatio,
+        duration,
+        generationId: null,
+        sourceImageFilePath: sourceImage?.image.filePath ?? null,
+        sourceImageFileName: sourceImage?.image.fileName ?? null,
+        sourceImageMimeType: sourceImage?.image.mimeType ?? null,
+        storagePath: null,
+        fileName: null,
+        mimeType: null,
+        debitTransactionId: debitResult.transactionId,
+        debitIdempotencyKey: debitKey,
+        refundedAt: null,
+        parentMessageId,
+        generatedAt: null,
+        lastCheckedAt: null,
+        error: "A Luma nao retornou um identificador valido para esta geracao.",
+      },
+      conversationId,
+      messageId: userMessageId,
+      error: "A Luma nao retornou um identificador valido para esta geracao.",
+    })
+
+    const failedSaved = await insertStudioMessage({
+      actor,
+      conversationId,
+      role: "assistant",
+      content: "Nao foi possivel iniciar a geracao deste video agora.",
+      metadata: buildStudioVideoMetadata({
+        type: "video",
+        status: "failed",
+        prompt,
+        aspectRatio,
+        duration,
+        generationId: null,
+        sourceImageFilePath: sourceImage?.image.filePath ?? null,
+        sourceImageFileName: sourceImage?.image.fileName ?? null,
+        sourceImageMimeType: sourceImage?.image.mimeType ?? null,
+        storagePath: null,
+        fileName: null,
+        mimeType: null,
+        debitTransactionId: debitResult.transactionId,
+        debitIdempotencyKey: debitKey,
+        refundedAt,
+        parentMessageId,
+        generatedAt: new Date().toISOString(),
+        lastCheckedAt: null,
+        error: "A Luma nao retornou um identificador valido para esta geracao.",
+      }),
+    })
+
+    if ("error" in failedSaved) {
+      return { error: failedSaved.error }
+    }
+
+    return {
+      success: true as const,
+      conversationId,
+      conversationArea: studioConversationArea,
+      message: await mapStudioChatMessage({ actor, row: failedSaved.message }),
+    }
+  }
+
+  const saved = await insertStudioMessage({
+    actor,
+    conversationId,
+    role: "assistant",
+    content: state === "queued" ? "Geracao de video iniciada." : "Video em processamento.",
+    metadata: buildStudioVideoMetadata({
+      type: "video",
+      status: state === "completed" ? "processing" : state,
+      prompt,
+      aspectRatio,
+      duration,
+      generationId,
+      sourceImageFilePath: sourceImage?.image.filePath ?? null,
+      sourceImageFileName: sourceImage?.image.fileName ?? null,
+      sourceImageMimeType: sourceImage?.image.mimeType ?? null,
+      storagePath: null,
+      fileName: null,
+      mimeType: null,
+      debitTransactionId: debitResult.transactionId,
+      debitIdempotencyKey: debitKey,
+      refundedAt: null,
+      parentMessageId,
+      generatedAt: new Date().toISOString(),
+      lastCheckedAt: new Date().toISOString(),
+      error: null,
+    }),
+  })
+
+  if ("error" in saved) {
+    return { error: saved.error }
+  }
+
+  return {
+    success: true as const,
+    conversationId,
+    conversationArea: studioConversationArea,
+    message: await mapStudioChatMessage({ actor, row: saved.message }),
+  }
+}
+
 function isNonEmptyStringArray(value: unknown) {
   return Array.isArray(value) && value.every((item) => typeof item === "string" && item.trim())
 }
@@ -1280,6 +1848,12 @@ async function mapStudioChatMessage({
   let imageAlt: string | undefined
   let imageStatus: string | undefined
   let imagePrompt: string | undefined
+  let videoUrl: string | undefined
+  let videoStatus: string | undefined
+  let videoPrompt: string | undefined
+  let videoState: string | undefined
+  let videoGenerationId: string | undefined
+  let videoFileName: string | undefined
 
   if (studioImage) {
     const filePath = typeof studioImage.filePath === "string" ? studioImage.filePath : ""
@@ -1313,15 +1887,65 @@ async function mapStudioChatMessage({
               : undefined
   }
 
+  const studioVideo =
+    metadata && typeof metadata === "object" && "studio_video" in metadata && metadata.studio_video && typeof metadata.studio_video === "object"
+      ? (metadata.studio_video as Record<string, unknown>)
+      : null
+
+  if (studioVideo) {
+    const filePath = typeof studioVideo.storagePath === "string" ? studioVideo.storagePath : ""
+    const fileName = typeof studioVideo.fileName === "string" ? studioVideo.fileName : null
+    const status = typeof studioVideo.status === "string" ? studioVideo.status : ""
+    const prompt = typeof studioVideo.prompt === "string" ? studioVideo.prompt : ""
+    const generationId = typeof studioVideo.generationId === "string" ? studioVideo.generationId : ""
+    const error = typeof studioVideo.error === "string" ? studioVideo.error : ""
+
+    if (filePath && status === "completed") {
+      const signedUrl = await createStudioDocumentSignedUrl({
+        actor,
+        filePath,
+        fileName,
+      })
+
+      if ("url" in signedUrl) {
+        videoUrl = signedUrl.url
+      }
+    }
+
+    videoPrompt = prompt || undefined
+    videoGenerationId = generationId || undefined
+    videoFileName = fileName || undefined
+    videoState = status || undefined
+    videoStatus =
+      status === "preparing"
+        ? "Preparando video"
+        : status === "queued"
+          ? "Video enviado"
+          : status === "processing"
+            ? "Video em processamento"
+            : status === "completed"
+              ? "Video concluido"
+              : status === "failed"
+                ? error || "Falha na geracao"
+                : undefined
+  }
+
   return {
     id: row.id,
     from: role,
     text: row.content,
     time: formatOperationsConversationTime(row.created_at),
+    createdAt: row.created_at,
     imageUrl,
     imageAlt,
     imageStatus,
     imagePrompt,
+    videoUrl,
+    videoStatus,
+    videoPrompt,
+    videoState,
+    videoGenerationId,
+    videoFileName,
   }
 }
 
@@ -1398,6 +2022,83 @@ function readStudioImageMetadata(row: StudioMessageRow) {
   }
 }
 
+function readStudioVideoMetadata(row: StudioMessageRow) {
+  const metadata = row.metadata ?? {}
+  if (!metadata || typeof metadata !== "object") {
+    return null
+  }
+
+  const studioVideo =
+    "studio_video" in metadata && metadata.studio_video && typeof metadata.studio_video === "object"
+      ? (metadata.studio_video as Record<string, unknown>)
+      : null
+
+  if (!studioVideo) {
+    return null
+  }
+
+  const aspectRatio =
+    studioVideo.aspectRatio === "16:9" || studioVideo.aspectRatio === "9:16" || studioVideo.aspectRatio === "1:1"
+      ? studioVideo.aspectRatio
+      : null
+  const duration = studioVideo.duration === "5s" || studioVideo.duration === "10s" ? studioVideo.duration : null
+
+  if (!aspectRatio || !duration) {
+    return null
+  }
+
+  return {
+    prompt: typeof studioVideo.prompt === "string" ? studioVideo.prompt : "",
+    status:
+      studioVideo.status === "preparing" ||
+      studioVideo.status === "queued" ||
+      studioVideo.status === "processing" ||
+      studioVideo.status === "completed" ||
+      studioVideo.status === "failed"
+        ? studioVideo.status
+        : "failed",
+    aspectRatio: aspectRatio as "16:9" | "9:16" | "1:1",
+    duration: duration as "5s" | "10s",
+    generationId: typeof studioVideo.generationId === "string" ? studioVideo.generationId : null,
+    sourceImageFilePath: typeof studioVideo.sourceImageFilePath === "string" ? studioVideo.sourceImageFilePath : null,
+    sourceImageFileName: typeof studioVideo.sourceImageFileName === "string" ? studioVideo.sourceImageFileName : null,
+    sourceImageMimeType: typeof studioVideo.sourceImageMimeType === "string" ? studioVideo.sourceImageMimeType : null,
+    storagePath: typeof studioVideo.storagePath === "string" ? studioVideo.storagePath : null,
+    fileName: typeof studioVideo.fileName === "string" ? studioVideo.fileName : null,
+    mimeType: typeof studioVideo.mimeType === "string" ? studioVideo.mimeType : null,
+    debitTransactionId: typeof studioVideo.debitTransactionId === "string" ? studioVideo.debitTransactionId : null,
+    debitIdempotencyKey: typeof studioVideo.debitIdempotencyKey === "string" ? studioVideo.debitIdempotencyKey : null,
+    refundedAt: typeof studioVideo.refundedAt === "string" ? studioVideo.refundedAt : null,
+    parentMessageId: typeof studioVideo.parentMessageId === "string" ? studioVideo.parentMessageId : null,
+    generatedAt: typeof studioVideo.generatedAt === "string" ? studioVideo.generatedAt : null,
+    lastCheckedAt: typeof studioVideo.lastCheckedAt === "string" ? studioVideo.lastCheckedAt : null,
+    error: typeof studioVideo.error === "string" ? studioVideo.error : null,
+  }
+}
+
+function findLatestCompletedStudioImage(rows: StudioMessageRow[]) {
+  const candidates = [...rows].reverse()
+
+  for (const row of candidates) {
+    const image = readStudioImageMetadata(row)
+    if (image?.filePath && image.status === "completed") {
+      return {
+        row,
+        image,
+      }
+    }
+  }
+
+  return null
+}
+
+function findStudioVideoMessageByDebitKey(rows: StudioMessageRow[], debitKey: string) {
+  return rows.find((row) => {
+    const video = readStudioVideoMetadata(row)
+    return video?.debitIdempotencyKey === debitKey
+  })
+}
+
 export async function createStudioConversationAction() {
   const actor = await getStudioActor()
 
@@ -1457,10 +2158,17 @@ export async function getStudioConversationMessagesAction(input?: { conversation
     from: "cos" | "user"
     text: string
     time: string
+    createdAt?: string | null
     imageUrl?: string
     imageAlt?: string
     imageStatus?: string
     imagePrompt?: string
+    videoUrl?: string
+    videoStatus?: string
+    videoPrompt?: string
+    videoState?: string
+    videoGenerationId?: string
+    videoFileName?: string
   }>
 
   return {
@@ -1713,6 +2421,67 @@ export async function getStudioImageSignedUrlAction({
   }
 }
 
+export async function getStudioVideoSignedUrlAction({
+  conversationId,
+  messageId,
+  download = false,
+}: {
+  conversationId: string
+  messageId: string
+  download?: boolean
+}) {
+  const actor = await getStudioActor()
+
+  if (!isStudioActorReady(actor)) {
+    return { error: actor.error }
+  }
+
+  const found = await findStudioRootConversation({
+    actor,
+    conversationId,
+  })
+
+  if ("error" in found) {
+    return { error: found.error }
+  }
+
+  const messages = await getStudioMessages({
+    actor,
+    conversationId: found.conversation.id,
+  })
+
+  if ("error" in messages) {
+    return { error: messages.error }
+  }
+
+  const row = messages.rows.find((item) => item.id === messageId)
+  if (!row) {
+    return { error: "Nao foi possivel localizar este video no historico do Studio." }
+  }
+
+  const video = readStudioVideoMetadata(row)
+  if (!video?.storagePath || video.status !== "completed") {
+    return { error: "Este video ainda nao esta disponivel para acesso." }
+  }
+
+  const signed = await createStudioVideoSignedUrlFromPath({
+    actor,
+    storagePath: video.storagePath,
+    fileName: video.fileName,
+    download,
+  })
+
+  if ("error" in signed) {
+    return { error: signed.error }
+  }
+
+  return {
+    success: true as const,
+    url: signed.url,
+    expiresInSeconds: signed.expiresInSeconds,
+  }
+}
+
 export async function createStudioImageVariationAction({
   conversationId,
   messageId,
@@ -1898,6 +2667,282 @@ export async function createStudioImageVariationAction({
   }
 }
 
+export async function createStudioVideoVariationAction({
+  conversationId,
+  messageId,
+  instructions,
+  regenerate = false,
+}: {
+  conversationId: string
+  messageId: string
+  instructions?: string
+  regenerate?: boolean
+}) {
+  const actor = await getStudioActor()
+
+  if (!isStudioActorReady(actor)) {
+    return { error: actor.error }
+  }
+
+  const found = await findStudioRootConversation({
+    actor,
+    conversationId,
+  })
+
+  if ("error" in found) {
+    return { error: found.error }
+  }
+
+  const messages = await getStudioMessages({
+    actor,
+    conversationId: found.conversation.id,
+  })
+
+  if ("error" in messages) {
+    return { error: messages.error }
+  }
+
+  const baseRow = messages.rows.find((item) => item.id === messageId)
+  if (!baseRow) {
+    return { error: "Nao foi possivel localizar o video original desta nova versao." }
+  }
+
+  const baseVideo = readStudioVideoMetadata(baseRow)
+  if (!baseVideo?.prompt) {
+    return { error: "Nao foi possivel recuperar o contexto deste video." }
+  }
+
+  const latestImage = findLatestCompletedStudioImage(messages.rows)
+  const normalizedInstructions = optionalSafeText(instructions || "", 600)
+  const wantsLatestImage = /\b(trocar a imagem|usar a imagem|usar a ultima imagem|usar a última imagem|nova imagem)\b/i.test(normalizedInstructions)
+  const sourceImage =
+    wantsLatestImage && latestImage
+      ? latestImage
+      : baseVideo.sourceImageFilePath
+        ? {
+            row: baseRow,
+            image: {
+              format: "square" as const,
+              prompt: baseVideo.prompt,
+              purpose: "video",
+              textOverlay: "",
+              filePath: baseVideo.sourceImageFilePath,
+              fileName: baseVideo.sourceImageFileName,
+              mimeType: baseVideo.sourceImageMimeType,
+              status: "completed",
+            },
+          }
+        : null
+
+  const nextPrompt = regenerate || !normalizedInstructions
+    ? baseVideo.prompt
+    : `${baseVideo.prompt}\n\nAjuste esta nova versao: ${normalizedInstructions}`
+
+  const userText = regenerate
+    ? `Gerar novamente o video: ${baseVideo.prompt}`
+    : `Criar nova versao do video: ${normalizedInstructions || baseVideo.prompt}`
+
+  const userSaved = await insertStudioMessage({
+    actor,
+    conversationId: found.conversation.id,
+    role: "user",
+    content: userText,
+    metadata: {
+      engine: "studio",
+      conversation_area: studioConversationArea,
+      studio_mode: "conversation",
+    },
+  })
+
+  if ("error" in userSaved) {
+    return { error: userSaved.error }
+  }
+
+  return startStudioConversationVideoGeneration({
+    actor,
+    conversationId: found.conversation.id,
+    userMessageId: userSaved.message.id,
+    sourceText: userText,
+    prompt: nextPrompt,
+    aspectRatio: baseVideo.aspectRatio,
+    duration: baseVideo.duration,
+    sourceImage,
+    parentMessageId: messageId,
+  })
+}
+
+export async function refreshStudioConversationVideoAction({
+  conversationId,
+  messageId,
+}: {
+  conversationId: string
+  messageId: string
+}) {
+  const actor = await getStudioActor()
+
+  if (!isStudioActorReady(actor)) {
+    return { error: actor.error }
+  }
+
+  const found = await findStudioRootConversation({
+    actor,
+    conversationId,
+  })
+
+  if ("error" in found) {
+    return { error: found.error }
+  }
+
+  const messages = await getStudioMessages({ actor, conversationId: found.conversation.id })
+
+  if ("error" in messages) {
+    return { error: messages.error }
+  }
+
+  const row = messages.rows.find((item) => item.id === messageId)
+  if (!row) {
+    return { error: "Nao foi possivel localizar esta geracao de video." }
+  }
+
+  const baseVideo = readStudioVideoMetadata(row)
+  if (!baseVideo) {
+    return { error: "Esta mensagem nao contem uma geracao de video valida." }
+  }
+
+  if (baseVideo.status === "completed" && baseVideo.storagePath) {
+    return {
+      success: true as const,
+      message: await mapStudioChatMessage({ actor, row }),
+    }
+  }
+
+  if (!baseVideo.generationId) {
+    return { error: "A geracao deste video nao possui identificador valido para acompanhamento." }
+  }
+
+  const lumaResponse = await fetchLumaGeneration({
+    endpoint: `${LUMA_GENERATIONS_URL}/${baseVideo.generationId}`,
+    method: "GET",
+    timeoutMs: 30000,
+  })
+
+  if ("error" in lumaResponse) {
+    return { error: lumaResponse.error }
+  }
+
+  const payload = lumaResponse.data
+  const state =
+    payload.state === "completed" ? "completed" : payload.state === "failed" ? "failed" : payload.state === "processing" ? "processing" : "queued"
+  const outputs = Array.isArray(payload.output) ? payload.output : []
+  const videoOutput = outputs.find((item) => item && typeof item === "object" && (item as Record<string, unknown>).type === "video") as Record<string, unknown> | undefined
+  const outputUrl = videoOutput && typeof videoOutput.url === "string" ? videoOutput.url : ""
+
+  let nextStatus: StudioVideoMessageMetadata["status"] =
+    state === "queued" ? "queued" : state === "processing" ? "processing" : state === "completed" ? "completed" : "failed"
+  let storagePath = baseVideo.storagePath
+  let fileName = baseVideo.fileName
+  let mimeType = baseVideo.mimeType
+  let error = baseVideo.error
+  let refundedAt = baseVideo.refundedAt
+
+  if (state === "completed") {
+    if (!outputUrl) {
+      nextStatus = "failed"
+      error = "A Luma concluiu a geracao, mas nao retornou um arquivo de video valido."
+    } else {
+      const downloaded = await downloadRemoteAsset(outputUrl)
+
+      if ("error" in downloaded) {
+        nextStatus = "failed"
+          error = downloaded.error ?? "Nao foi possivel baixar o video gerado."
+      } else {
+        const stored = await maybeStoreGeneratedAsset({
+          actor,
+          sourceBytes: downloaded.bytes,
+          contentType: downloaded.contentType || "video/mp4",
+          fileName: `studio-video-${baseVideo.generationId}.mp4`,
+        })
+
+        if ("error" in stored) {
+          nextStatus = "failed"
+          error = stored.error ?? "Nao foi possivel salvar o video gerado com seguranca."
+        } else {
+          storagePath = stored.filePath
+          fileName = stored.fileName
+          mimeType = stored.mimeType
+          nextStatus = "completed"
+          error = null
+        }
+      }
+    }
+  }
+
+  if (nextStatus === "failed") {
+    refundedAt = await maybeRefundStudioVideoCredit({
+      actor,
+      video: baseVideo,
+      conversationId,
+      messageId,
+      error: error || "Nao foi possivel concluir a geracao deste video.",
+    })
+  }
+
+  const updatedMetadata = buildStudioVideoMetadata({
+    type: "video",
+    status: nextStatus,
+    prompt: baseVideo.prompt,
+    aspectRatio: baseVideo.aspectRatio,
+    duration: baseVideo.duration,
+    generationId: baseVideo.generationId,
+    sourceImageFilePath: baseVideo.sourceImageFilePath,
+    sourceImageFileName: baseVideo.sourceImageFileName,
+    sourceImageMimeType: baseVideo.sourceImageMimeType,
+    storagePath,
+    fileName,
+    mimeType,
+    debitTransactionId: baseVideo.debitTransactionId,
+    debitIdempotencyKey: baseVideo.debitIdempotencyKey,
+    refundedAt,
+    parentMessageId: baseVideo.parentMessageId,
+    generatedAt: baseVideo.generatedAt,
+    lastCheckedAt: new Date().toISOString(),
+    error,
+  })
+
+  const update = await updateStudioMessage({
+    actor,
+    messageId,
+    content:
+      nextStatus === "completed"
+        ? "Video gerado com sucesso."
+        : nextStatus === "failed"
+          ? "Nao foi possivel concluir a geracao deste video."
+          : nextStatus === "queued"
+            ? "Geracao de video iniciada."
+            : "Geracao de video em andamento.",
+    metadata: updatedMetadata,
+  })
+
+  if ("error" in update) {
+    return { error: update.error }
+  }
+
+  const refreshedMessages = await getStudioMessages({ actor, conversationId: found.conversation.id })
+  if ("error" in refreshedMessages) {
+    return { error: refreshedMessages.error }
+  }
+
+  const refreshedRow = refreshedMessages.rows.find((item) => item.id === messageId)
+  if (!refreshedRow) {
+    return { error: "Nao foi possivel atualizar esta geracao de video." }
+  }
+
+  return {
+    success: true as const,
+    message: await mapStudioChatMessage({ actor, row: refreshedRow }),
+  }
+}
+
 export async function runStudioConversationAction(input: {
   conversationId?: string
   message: string
@@ -1984,38 +3029,57 @@ export async function runStudioConversationAction(input: {
       content: row.content || "",
     }))
     .filter((row) => row.content.trim())
+  const latestImage = findLatestCompletedStudioImage(priorMessages.rows)
 
   const lowerMessage = message.toLowerCase()
   const isVideoRequest = /\b(video|videos|vídeo|vídeos)\b/.test(lowerMessage)
   const isImageRequest = !isVideoRequest && /\b(imagem|imagens|image|foto|fotos|arte visual|arte)\b/.test(lowerMessage)
 
   if (isVideoRequest) {
-    const assistantSaved = await insertStudioMessage({
-      actor,
-      conversationId: conversation.id,
-      role: "assistant",
-      content: "Status\nA geracao de videos sera disponibilizada nesta area em breve.",
-      metadata: {
-        engine: "studio",
-        conversation_area: studioConversationArea,
-        studio_mode: "conversation",
-        title: deriveStudioConversationTitle(message),
-      },
+    const parsedVideoRequest = parseStudioVideoRequest({
+      message,
+      latestImage,
     })
 
-    if ("error" in assistantSaved) {
-      return { error: assistantSaved.error }
+    if ("ask" in parsedVideoRequest) {
+      const assistantSaved = await insertStudioMessage({
+        actor,
+        conversationId: conversation.id,
+        role: "assistant",
+        content: parsedVideoRequest.ask,
+        metadata: {
+          engine: "studio",
+          conversation_area: studioConversationArea,
+          studio_mode: "conversation",
+          title: deriveStudioConversationTitle(message),
+        },
+      })
+
+      if ("error" in assistantSaved) {
+        return { error: assistantSaved.error }
+      }
+
+      return {
+        success: true as const,
+        conversationId: conversation.id,
+        conversationArea: studioConversationArea,
+        message: await mapStudioChatMessage({
+          actor,
+          row: assistantSaved.message,
+        }),
+      }
     }
 
-    return {
-      success: true as const,
+    return startStudioConversationVideoGeneration({
+      actor,
       conversationId: conversation.id,
-      conversationArea: studioConversationArea,
-      message: await mapStudioChatMessage({
-        actor,
-        row: assistantSaved.message,
-      }),
-    }
+      userMessageId: userSaved.message.id,
+      sourceText: message,
+      prompt: parsedVideoRequest.prompt,
+      aspectRatio: parsedVideoRequest.aspectRatio,
+      duration: parsedVideoRequest.duration,
+      sourceImage: parsedVideoRequest.sourceImage,
+    })
   }
 
   if (isImageRequest) {
