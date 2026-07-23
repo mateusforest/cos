@@ -8,6 +8,7 @@ import { Search, Bell, Command, Menu, User, Settings, ExternalLink, LogOut } fro
 import { usePortalUI } from "./portal-ui-context"
 import { useAuth } from "@/components/auth/auth-provider"
 import { logoutAction } from "@/actions/auth"
+import { WhileYouRestLauncher } from "@/components/shared/while-you-rest-launcher"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 
@@ -69,6 +70,7 @@ export function PortalHeader({ placeholder = "Pergunte ao COS..." }: { placehold
       </form>
 
       <div className="flex items-center gap-2 sm:gap-4 ml-4 sm:ml-6">
+        <WhileYouRestLauncher variant="portal" placement="header-inline" />
         <div className="relative">
           <button onClick={() => setOpenMenu(openMenu === "notif" ? null : "notif")} className="relative p-2 hover:bg-gray-50 rounded-xl transition-colors" aria-label="Notificações">
             <Bell className="w-5 h-5 text-muted-foreground" />

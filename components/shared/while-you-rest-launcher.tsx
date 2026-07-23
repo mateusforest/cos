@@ -33,7 +33,7 @@ import { toast } from "@/hooks/use-toast"
 
 type Props = {
   variant: "app" | "portal"
-  placement?: "floating-mobile" | "sidebar-desktop"
+  placement?: "floating-mobile" | "sidebar-desktop" | "header-inline"
   collapsed?: boolean
 }
 
@@ -553,12 +553,14 @@ export function WhileYouRestLauncher({
         onClick={() => setOpen(true)}
         title={collapsed ? "Enquanto você descansa" : undefined}
         aria-label="Enquanto você descansa"
-        className={`flex items-center rounded-full border border-[rgba(199,170,248,0.82)] bg-white/90 text-left backdrop-blur-xl transition-all ${
+        className={`flex min-w-0 items-center overflow-hidden rounded-full border border-[rgba(199,170,248,0.82)] bg-white/90 text-left backdrop-blur-xl transition-all ${
           launcherActive ? "scale-[1.01]" : "scale-100"
         } ${
           placement === "floating-mobile"
             ? `fixed bottom-24 left-4 z-40 gap-2 px-2.5 py-2 ${variant === "portal" ? "sm:bottom-6" : ""}`
-            : `relative z-10 w-full ${collapsed ? "justify-center px-2 py-2" : "gap-2 px-2.5 py-2"}`
+            : placement === "header-inline"
+              ? "relative z-10 h-10 w-10 shrink-0 justify-center px-2 lg:w-auto lg:max-w-[220px] lg:justify-start lg:gap-2 lg:px-2.5"
+              : `relative z-10 h-10 w-full max-w-full ${collapsed ? "justify-center px-2" : "gap-2 px-2.5"}`
         }`}
         style={{
           backgroundImage:
@@ -574,7 +576,7 @@ export function WhileYouRestLauncher({
           <WhileYouRestLauncherIcon active={launcherActive} indicatorClassName={launcherTone} />
         </div>
         {!collapsed ? (
-          <span className="relative whitespace-nowrap pr-0.5 text-[13px] font-medium leading-none tracking-[-0.02em] text-[#34178f] sm:text-[14px]">
+          <span className={`relative min-w-0 flex-1 truncate pr-0.5 text-[13px] font-medium leading-none tracking-[-0.02em] text-[#34178f] ${placement === "header-inline" ? "hidden lg:block" : "block"}`}>
             Enquanto você descansa
           </span>
         ) : null}
