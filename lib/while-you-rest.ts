@@ -1,6 +1,7 @@
 export type WhileYouRestItemKind = "executable" | "waiting_confirmation" | "unsupported"
 export type WhileYouRestPriority = "alta" | "media" | "baixa"
 export type WhileYouRestActionType = "create_client" | "create_document" | "waiting_confirmation" | "unsupported"
+export type WhileYouRestControlState = "draft" | "running" | "paused" | "ended"
 
 export type WhileYouRestPlanItem = {
   id: string
@@ -29,7 +30,7 @@ const SENSITIVE_KEYWORDS = [
   "mandar mensagem",
 ]
 
-const DOCUMENT_KEYWORDS = ["documento", "contrato", "relatorio", "relatório", "proposta", "arquivo"]
+const DOCUMENT_KEYWORDS = ["documento", "contrato", "relatorio", "relatorio", "proposta", "arquivo"]
 const CLIENT_KEYWORDS = ["cliente", "paciente", "lead", "contato"]
 
 function normalizeText(value: string) {
@@ -62,7 +63,7 @@ function inferPriority(entry: string): WhileYouRestPriority {
     return "alta"
   }
 
-  if (normalized.includes("amanha") || normalized.includes("amanhã") || normalized.includes("prioridade")) {
+  if (normalized.includes("amanha") || normalized.includes("prioridade")) {
     return "media"
   }
 
@@ -230,5 +231,36 @@ export function buildWhileYouRestNextStep(items: WhileYouRestPlanItem[]) {
     return "Use os itens nao suportados como roteiro para a proxima etapa manual."
   }
 
-  return "Acompanhe os jobs em segundo plano e revise os resultados concluídos."
+  return "Acompanhe os jobs em segundo plano e revise os resultados concluidos."
+}
+
+export function buildWhileYouRestTitle(request: string, items: WhileYouRestPlanItem[]) {
+  const executableItem = items.find((item) => item.kind === "executable")
+  if (executableItem) {
+    return executableItem.title
+  }
+
+  const waitingConfirmationItem = items.find((item) => item.kind === "waiting_confirmation")
+  if (waitingConfirmationItem) {
+    return waitingConfirmationItem.title
+  }
+
+  const firstLine = request
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .find(Boolean)
+
+  if (firstLine) {
+    return firstLine.length > 60 ? `${firstLine.slice(0, 57)}...` : firstLine
+  }
+
+  return "Nova execucao"
+}
+
+export function estimateWhileYouRestMinutes(items: WhileYouRestPlanItem[]) {
+  return items.reduce((total, item) => {
+    if (item.kind === "executable") return total + 4
+    if (item.kind === "waiting_confirmation") return total + 2
+    return total + 1
+  }, 0)
 }
