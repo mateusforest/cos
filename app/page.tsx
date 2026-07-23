@@ -1,41 +1,34 @@
-import { Header } from "@/components/cos/header"
-import { HeroSection } from "@/components/cos/hero-section"
-import { VisionSection } from "@/components/cos/vision-section"
-import { HowItWorksSection } from "@/components/cos/how-it-works-section"
-import { ProductsSection } from "@/components/cos/products-section"
-import { CompaniesSection } from "@/components/cos/companies-section"
-import { InstallSection } from "@/components/cos/install-section"
-import { CTASection } from "@/components/cos/cta-section"
-import { Footer } from "@/components/cos/footer"
+import { SiteHeader } from "@/components/site-header"
+import { Hero } from "@/components/hero"
+import { TrySection } from "@/components/try-section"
+import { ProductSection } from "@/components/product-section"
+import { ActionsBand } from "@/components/actions-band"
+import { RestSection } from "@/components/rest-section"
+import { MeetSection } from "@/components/meet-section"
+import { CtaSection } from "@/components/cta-section"
+import { SiteFooter } from "@/components/site-footer"
+import { Reveal } from "@/components/reveal"
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-[#f5f5f3]">
-      <Header />
-      
-      {/* Hero Section */}
-      <HeroSection />
-      
-      {/* Vision / Manifesto Section */}
-      <VisionSection />
-      
-      {/* How It Works Section */}
-      <HowItWorksSection />
-      
-      {/* Products Section */}
-      <ProductsSection />
-      
-      {/* Companies Section */}
-      <CompaniesSection />
-      
-      {/* Install Section */}
-      <InstallSection />
-      
-      {/* CTA Section */}
-      <CTASection />
-      
-      {/* Footer */}
-      <Footer />
-    </main>
+    <div className="min-h-screen bg-background">
+      <SiteHeader />
+      <main>
+        <Hero />
+        <Reveal>
+          <TrySection />
+        </Reveal>
+        <ProductSection />
+        <ActionsBand />
+        <RestSection />
+        <Reveal>
+          <MeetSection />
+        </Reveal>
+        <Reveal>
+          <CtaSection />
+        </Reveal>
+      </main>
+      <SiteFooter />
+    </div>
   )
 }
