@@ -33,6 +33,8 @@ import { toast } from "@/hooks/use-toast"
 
 type Props = {
   variant: "app" | "portal"
+  placement?: "floating-mobile" | "sidebar-desktop"
+  collapsed?: boolean
 }
 
 type Phase = "request" | "review" | "tracking"
@@ -275,13 +277,18 @@ function resolveNearestDeadline(items: WhileYouRestHydratedPlan["items"]) {
   return items.find((item) => item.deadline)?.deadline ?? "Sem prazo"
 }
 
-export function WhileYouRestLauncher({ variant }: Props) {
+export function WhileYouRestLauncher({
+  variant,
+  placement = "floating-mobile",
+  collapsed = false,
+}: Props) {
   const { workspace, canManageWorkspace, isLoading } = useAuth()
   const [requestText, setRequestText] = useState("")
   const [draftPlan, setDraftPlan] = useState<WhileYouRestHydratedPlan | null>(null)
   const [plans, setPlans] = useState<WhileYouRestHydratedPlan[]>([])
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(false)
 
   const [loadingPlan, setLoadingPlan] = useState(false)
   const [loadingStart, setLoadingStart] = useState(false)
@@ -338,6 +345,20 @@ export function WhileYouRestLauncher({ variant }: Props) {
   }
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const syncViewport = () => setIsDesktop(window.innerWidth >= 1024)
+    syncViewport()
+    window.addEventListener("resize", syncViewport)
+
+    return () => {
+      window.removeEventListener("resize", syncViewport)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!isOperationsWorkspace || !canManageWorkspace) {
       return
     }
@@ -367,6 +388,14 @@ export function WhileYouRestLauncher({ variant }: Props) {
   }, [open, plans])
 
   if (isLoading || !isOperationsWorkspace || !canManageWorkspace) {
+    return null
+  }
+
+  if (placement === "floating-mobile" && isDesktop) {
+    return null
+  }
+
+  if (placement === "sidebar-desktop" && !isDesktop) {
     return null
   }
 
@@ -522,9 +551,15 @@ export function WhileYouRestLauncher({ variant }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`fixed z-40 flex items-center gap-2 rounded-full border border-[rgba(199,170,248,0.82)] bg-white/90 px-2.5 py-2 text-left backdrop-blur-xl transition-all ${
+        title={collapsed ? "Enquanto você descansa" : undefined}
+        aria-label="Enquanto você descansa"
+        className={`flex items-center rounded-full border border-[rgba(199,170,248,0.82)] bg-white/90 text-left backdrop-blur-xl transition-all ${
           launcherActive ? "scale-[1.01]" : "scale-100"
-        } ${variant === "app" ? "bottom-24 left-4 lg:bottom-6 lg:left-[236px]" : "bottom-6 left-4 lg:left-[256px]"}`}
+        } ${
+          placement === "floating-mobile"
+            ? `fixed bottom-24 left-4 z-40 gap-2 px-2.5 py-2 ${variant === "portal" ? "sm:bottom-6" : ""}`
+            : `relative z-10 w-full ${collapsed ? "justify-center px-2 py-2" : "gap-2 px-2.5 py-2"}`
+        }`}
         style={{
           backgroundImage:
             "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(250,245,255,0.94) 100%)",
@@ -538,9 +573,11 @@ export function WhileYouRestLauncher({ variant }: Props) {
         <div className="relative shrink-0">
           <WhileYouRestLauncherIcon active={launcherActive} indicatorClassName={launcherTone} />
         </div>
-        <span className="relative whitespace-nowrap pr-0.5 text-[13px] font-medium leading-none tracking-[-0.02em] text-[#34178f] sm:text-[14px]">
-          Enquanto você descansa
-        </span>
+        {!collapsed ? (
+          <span className="relative whitespace-nowrap pr-0.5 text-[13px] font-medium leading-none tracking-[-0.02em] text-[#34178f] sm:text-[14px]">
+            Enquanto você descansa
+          </span>
+        ) : null}
       </button>
 
       <Sheet open={open} onOpenChange={setOpen}>

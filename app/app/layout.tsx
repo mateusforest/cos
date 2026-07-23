@@ -445,6 +445,10 @@ function DesktopSidebar() {
           })}
         </div>
       </div>
+
+      <div className="px-3 pb-3">
+        <WhileYouRestLauncher variant="app" placement="sidebar-desktop" />
+      </div>
     </aside>
   )
 }
@@ -597,13 +601,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <ProtectedRouteGuard>
       <SupportProvider>
         <AppInteractionsProvider>
-          <OperationsTemplatePreviewProvider realSegment={workspace?.metadata?.segment}>
-            <OperationsDashboardProvider workspaceId={workspace?.id}>
-              <AppShell>{children}</AppShell>
-              <WhileYouRestLauncher variant="app" />
-              <Toaster />
-            </OperationsDashboardProvider>
-          </OperationsTemplatePreviewProvider>
+            <OperationsTemplatePreviewProvider realSegment={workspace?.metadata?.segment}>
+              <OperationsDashboardProvider workspaceId={workspace?.id}>
+                <AppShell>{children}</AppShell>
+                <WhileYouRestLauncher variant="app" placement="floating-mobile" />
+                <Toaster />
+              </OperationsDashboardProvider>
+            </OperationsTemplatePreviewProvider>
         </AppInteractionsProvider>
       </SupportProvider>
     </ProtectedRouteGuard>

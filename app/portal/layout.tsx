@@ -39,7 +39,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         <PortalUIProvider>
           <PortalInteractionsProvider>
             <PortalShell>{children}</PortalShell>
-            <WhileYouRestLauncher variant="portal" />
+            <WhileYouRestLauncher variant="portal" placement="floating-mobile" />
             <Toaster />
           </PortalInteractionsProvider>
         </PortalUIProvider>
@@ -185,6 +185,10 @@ function PortalShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
         </nav>
+
+        <div className="px-3 pb-3">
+          <WhileYouRestLauncher variant="portal" placement="sidebar-desktop" collapsed={sidebarCollapsed} />
+        </div>
 
         <div className="p-3 border-t border-gray-100">
           <button
