@@ -26,6 +26,7 @@ import { OperationsTemplatePreviewProvider, useOperationsTemplatePreview } from 
 import { getOperationsPortalAreaSources } from "@/lib/area-configs"
 import { PortalUIProvider, usePortalUI } from "@/components/portal/portal-ui-context"
 import { PortalInteractionsProvider, usePortalInteractions } from "@/components/portal/portal-interactions"
+import { WhileYouRestLauncher } from "@/components/shared/while-you-rest-launcher"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { Toaster } from "@/components/ui/toaster"
 
@@ -38,6 +39,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         <PortalUIProvider>
           <PortalInteractionsProvider>
             <PortalShell>{children}</PortalShell>
+            <WhileYouRestLauncher variant="portal" />
             <Toaster />
           </PortalInteractionsProvider>
         </PortalUIProvider>

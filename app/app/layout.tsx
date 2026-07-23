@@ -47,6 +47,7 @@ import { useAuth } from "@/components/auth/auth-provider"
 import { ProtectedRouteGuard } from "@/components/auth/auth-route-guard"
 import { COSLoading } from "@/components/cos/cos-loading"
 import { OperationsTemplatePreviewProvider } from "@/components/operations/operations-template-preview"
+import { WhileYouRestLauncher } from "@/components/shared/while-you-rest-launcher"
 import { SupportProvider, useSupport } from "@/components/support/support-context"
 import { Toaster } from "@/components/ui/toaster"
 
@@ -609,6 +610,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <OperationsTemplatePreviewProvider realSegment={workspace?.metadata?.segment}>
             <OperationsDashboardProvider workspaceId={workspace?.id}>
               <AppShell>{children}</AppShell>
+              <WhileYouRestLauncher variant="app" />
               <Toaster />
             </OperationsDashboardProvider>
           </OperationsTemplatePreviewProvider>
