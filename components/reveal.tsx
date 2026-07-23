@@ -20,11 +20,11 @@ export function Reveal({
   children,
   className,
   /** Distância vertical inicial (px). Mantida pequena por padrão. */
-  distance = 26,
+  distance = 18,
   /** Blur inicial (px). */
-  blur = 8,
+  blur = 6,
   /** Escala inicial (leve profundidade). */
-  scaleFrom = 0.985,
+  scaleFrom = 0.992,
 }: {
   children: ReactNode
   className?: string
@@ -47,8 +47,8 @@ export function Reveal({
         const vh = window.innerHeight
         // Começa quando o topo ainda está ~15% abaixo do fim do viewport
         // e conclui quando o elemento subiu ~35% da tela: progresso amplo.
-        const start = vh * 0.9
-        const end = vh * 0.35
+        const start = vh * 1.02
+        const end = vh * 0.22
         setP(smooth(start, end, rect.top))
       })
     }

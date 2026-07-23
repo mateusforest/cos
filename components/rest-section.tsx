@@ -69,14 +69,14 @@ export function RestSection() {
 
   // Quatro momentos, com cross-fade contínuo (nada some bruscamente).
   // Faixas mais amplas => maior sobreposição entre cenas, transição cinematográfica.
-  const introO = 1 - smooth(0.18, 0.3, progress)
-  const chatO = smooth(0.19, 0.31, progress) * (1 - smooth(0.44, 0.56, progress))
-  const nightO = smooth(0.45, 0.57, progress) * (1 - smooth(0.7, 0.8, progress))
-  const morningO = smooth(0.71, 0.82, progress)
+  const introO = 1 - smooth(0.12, 0.24, progress)
+  const chatO = smooth(0.14, 0.27, progress) * (1 - smooth(0.4, 0.52, progress))
+  const nightO = smooth(0.41, 0.54, progress) * (1 - smooth(0.67, 0.77, progress))
+  const morningO = smooth(0.68, 0.8, progress)
 
   return (
     <section aria-label="Enquanto você descansa">
-      <div ref={trackRef} className="relative h-[620vh]">
+      <div ref={trackRef} className="relative h-[540vh]">
         <div className="sticky top-0 flex h-screen items-center overflow-hidden">
           <div className="mx-auto w-full max-w-3xl px-5 md:px-8">
             <div className="relative min-h-[70vh]">

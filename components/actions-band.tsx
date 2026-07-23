@@ -64,13 +64,13 @@ export function ActionsBand() {
   const eased = progress * progress * (3 - 2 * progress)
   // A linha atravessa a tela conforme o scroll: entra pela direita, cruza
   // lentamente e sai pela esquerda. Distância menor => movimento mais leve.
-  const x = 8 - eased * 60
+  const x = 6 - eased * 54
   // A faixa como um todo respira: quase transparente ao entrar/sair, forte no meio.
-  const bandO = smooth(0, 0.18, progress) * (1 - smooth(0.82, 1, progress))
+  const bandO = smooth(0, 0.14, progress) * (1 - smooth(0.88, 1, progress))
 
   return (
     <section aria-label="O que o COS faz">
-      <div ref={trackRef} className="relative h-[380vh]">
+      <div ref={trackRef} className="relative h-[300vh]">
         <div className="sticky top-0 flex h-screen items-center overflow-hidden">
           {/* Máscara de transparência horizontal: bordas somem em névoa suave */}
           <div

@@ -28,10 +28,10 @@ export function AuthLayout({ children }: AuthLayoutProps) {
             aria-hidden
             className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden"
           >
-            <div className="w-[128%] max-w-none translate-x-8 animate-breathe blur-[2px]">
+            <div className="w-[138%] max-w-none translate-x-10 scale-[1.03] animate-breathe opacity-35 blur-[10px] saturate-75">
               <HeroLiveDemo />
             </div>
-            <div className="absolute inset-0 bg-gradient-to-br from-background/78 via-background/66 to-background/85" />
+            <div className="absolute inset-0 bg-gradient-to-br from-background/90 via-background/82 to-background/94" />
           </div>
 
           <div className="relative z-10 flex flex-col gap-9 p-10">

@@ -204,7 +204,6 @@ export default function LoginPage() {
           variant="outline"
           size="lg"
           className="h-14 w-full rounded-xl text-base font-medium"
-          onClick={() => setError("Login com Google não está disponível nesta base no momento.")}
         >
           <GoogleIcon />
           Continuar com Google
