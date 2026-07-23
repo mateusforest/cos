@@ -905,13 +905,7 @@ export default function AppHomePage() {
                 </div>
 
                 <div className="rounded-xl border border-gray-100 bg-white p-3">
-                  {!isShortcutsReady || isStatsLoading ? (
-                    <COSLoading
-                      title="Carregando atalhos"
-                      description="Estamos preparando os indicadores da sua operacao."
-                      currentStep="Organizando atalhos"
-                    />
-                  ) : (
+                  {!isShortcutsReady || isStatsLoading ? null : (
                     <div className={`grid gap-2 ${enabledShortcuts.length <= 4 ? "grid-cols-4" : "grid-cols-3"}`}>
                       {enabledShortcuts.map((shortcut) => (
                         <button key={shortcut.id} onClick={() => handleShortcutAction(shortcut.id)} className="flex flex-col items-center text-center">

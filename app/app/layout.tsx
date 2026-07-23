@@ -502,20 +502,14 @@ function DesktopContextPanel() {
             <span className="text-sm font-semibold text-[#0a0a0a]">Financeiro</span>
           </div>
           <div className="space-y-2">
-            {isLoading && !financialSummary ? (
-              <COSLoading
-                title="Carregando financeiro"
-                description="Estamos reunindo o resumo financeiro do workspace."
-                currentStep="Atualizando contexto"
-              />
-            ) : (
-              financeiro.map((f) => (
-                <div key={f.label} className={`flex items-center justify-between rounded-xl px-3 py-2.5 ${f.accent ? "bg-[#0a0a0a]" : "bg-gray-50"}`}>
-                  <span className={`text-xs ${f.accent ? "text-gray-300" : "text-gray-500"}`}>{f.label}</span>
-                  <span className={`text-sm font-semibold ${f.accent ? "text-white" : f.color ?? "text-[#0a0a0a]"}`}>{f.value ?? "R$ 0,00"}</span>
-                </div>
-              ))
-            )}
+            {!isLoading || financialSummary
+              ? financeiro.map((f) => (
+                  <div key={f.label} className={`flex items-center justify-between rounded-xl px-3 py-2.5 ${f.accent ? "bg-[#0a0a0a]" : "bg-gray-50"}`}>
+                    <span className={`text-xs ${f.accent ? "text-gray-300" : "text-gray-500"}`}>{f.label}</span>
+                    <span className={`text-sm font-semibold ${f.accent ? "text-white" : f.color ?? "text-[#0a0a0a]"}`}>{f.value ?? "R$ 0,00"}</span>
+                  </div>
+                ))
+              : null}
           </div>
           {financialSummary && (
             <p className="mt-2 text-xs text-gray-400">{financialSummary.entriesCount} lancamentos financeiros no workspace.</p>
@@ -527,13 +521,7 @@ function DesktopContextPanel() {
             <Clock className="w-4 h-4 text-gray-400" />
             <span className="text-sm font-semibold text-[#0a0a0a]">Atividades recentes</span>
           </div>
-          {isLoading && activities.length === 0 ? (
-            <COSLoading
-              title="Carregando atividades"
-              description="Estamos reunindo os registros mais recentes do seu workspace."
-              currentStep="Atualizando contexto"
-            />
-          ) : activities.length === 0 ? (
+          {!isLoading && activities.length === 0 ? (
             <p className="text-sm text-gray-500">Nenhum registro ainda.</p>
           ) : (
             <div className="space-y-3">
@@ -583,6 +571,7 @@ function formatContextTimestamp(value: string | null) {
 function AppShell({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false)
   const [level, setLevel] = useState<MenuLevel>("main")
+  const { isLoading } = useOperationsDashboard()
 
   return (
     <FABContext.Provider value={{ isOpen, setIsOpen, level, setLevel }}>
@@ -595,6 +584,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <DesktopContextPanel />
         <ActionSheetMenu />
+        {isLoading ? <COSLoading title="Preparando" currentStep="Sincronizando tela" /> : null}
       </div>
     </FABContext.Provider>
   )

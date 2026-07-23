@@ -524,7 +524,7 @@ export function WhileYouRestLauncher({ variant }: Props) {
         onClick={() => setOpen(true)}
         className={`fixed z-40 flex items-center gap-2 rounded-full border border-[rgba(199,170,248,0.82)] bg-white/90 px-2.5 py-2 text-left backdrop-blur-xl transition-all ${
           launcherActive ? "scale-[1.01]" : "scale-100"
-        } ${variant === "app" ? "bottom-24 right-4 lg:bottom-6" : "bottom-6 right-4"}`}
+        } ${variant === "app" ? "bottom-24 left-4 lg:bottom-6 lg:left-[236px]" : "bottom-6 left-4 lg:left-[256px]"}`}
         style={{
           backgroundImage:
             "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(250,245,255,0.94) 100%)",
